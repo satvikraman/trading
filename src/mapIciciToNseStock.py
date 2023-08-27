@@ -1,0 +1,39 @@
+import logging
+import configparser
+import csv
+import os
+
+class mapIciciToNseStock():
+    def __init__(self, configFile):
+        if(os.path.isfile(configFile)):
+            self.__config = configparser.ConfigParser()
+            self.__config.read(configFile)
+        
+        if(self.__config['MAP-ICICI-2-NSE']['LOG_LEVEL'] == 'DEBUG'):
+            level = logging.DEBUG
+        elif(self.__config['MAP-ICICI-2-NSE']['LOG_LEVEL'] == 'INFO'):
+            level = logging.INFO
+        elif(self.__config['MAP-ICICI-2-NSE']['LOG_LEVEL'] == 'WARNING'):
+            level = logging.WARNING
+        elif(self.__config['MAP-ICICI-2-NSE']['LOG_LEVEL'] == 'ERROR'):
+            level = logging.ERROR
+        elif(self.__config['MAP-ICICI-2-NSE']['LOG_LEVEL'] == 'CRITICAL'):
+            level = logging.CRITICAL
+
+        self.__logger = logging.getLogger(__name__)
+        self.__logger.setLevel(level)
+
+
+    def mapIcici2Nse(self, iciciSym, series):
+        rowDict = {}
+        with(open(self.__config['MAP-ICICI-2-NSE']['ICICI_DATASET'], 'r')) as icicicsv:
+            iciciReader = csv.DictReader(icicicsv)
+            for iciciRow in iciciReader:
+                if (iciciRow[' "ShortName"'] != iciciSym or iciciRow[' "Series"'] != series):
+                    continue
+                else:
+                    rowDict['ICICI_SYMBOL'] = iciciSym
+                    rowDict['NSE_SYMBOL'] = iciciRow[' "ExchangeCode"']
+                    break
+        self.__logger.debug('Generated dictionary %s', rowDict)
+        return(rowDict)
