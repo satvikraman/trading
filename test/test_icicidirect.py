@@ -35,6 +35,12 @@ def setup():
     moduleHdl = iciciDirect.iciciDirect('./application.ini')
     return moduleHdl, marginData
 
+def test_loginAndScrape(setup):
+    iciciDirect, marginData = setup
+    iciciDirect.browseICICIDirect()
+    dictsArr = iciciDirect.scrapeMarginData()
+    print(dictsArr)
+
 def test_formatStockCell(setup):
     iciciDirect, marginData = setup
     cellDict = iciciDirect._iciciDirect__formatStockCell(marginData[0][0])

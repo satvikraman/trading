@@ -5,14 +5,13 @@ import time
 import configparser
 
 import mapIciciToNseStock
-import persistence
 
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
 
 class iciciDirect():
     tblHeadings = ['STOCK', 'ICICI_SYMBOL', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'CMP', 'LOW_REC_PRICE', 'HIGH_REC_PRICE', 'REC_DATE' , 'REC_TIME', 'TARGET', 'STOP_LOSS',
-                   'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+                   'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2', 'REC_STATUS']
 
     def __init__(self, configFile):
         if(os.path.isfile(configFile)):
@@ -45,13 +44,6 @@ class iciciDirect():
         iClick2Gain = menu2.find_element_by_partial_link_text("iCLICK-2-GAIN")
         iClick2Gain.click()
         time.sleep(5)
-
-    def browseICICIDirect(self):
-        # Open ICICI Direct and let the user login
-        self.__browser = webdriver.Chrome(self.config['DEFAULT']['CHROME_DRIVER'])
-        self.__browser.get(self.config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
-        input("Wait for the user to login...")
-        self.__browseResearchToClick_2_Gain()
 
     def __formatStockCell(self, cell):
         cellDict = {}
@@ -123,18 +115,25 @@ class iciciDirect():
         self.__logger.debug('==== Format Table Row To Dictionary ====')
         self.__logger.debug('Row data to format \n%s', tblRowCols)
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
-        cell1Dict = self.__formatStockCell(tblRowCols[0])
-        cell2Dict = self.__formatPriceCell(tblRowCols[1], 'CMP')
-        cell3Dict = self.__formatRecommendationCell(tblRowCols[2])
-        cell4Dict = self.__formatPriceCell(tblRowCols[3], 'TARGET')
-        cell5Dict = self.__formatPriceCell(tblRowCols[4], 'STOP_LOSS')
-        cell6Dict = self.__formatPartProfitCell(tblRowCols[5])
-        cell7Dict = self.__formatPriceCell(tblRowCols[6], 'FINAL_PROFIT_PRICE')
-        cell8Dict = self.__formatPriceCell(tblRowCols[7], 'EXIT_PRICE')
-        cell9Dict = self.__formatUpdateCell(tblRowCols[8])
+        cell1Dict = self.__formatStockCell(tblRowCols[0].text)
+        cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
+        cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
+        cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
+        cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
+        cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
+        cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
+        cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
+        cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
         rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
         self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
+
+    def browseICICIDirect(self):
+        # Open ICICI Direct and let the user login
+        self.__browser = webdriver.Chrome(self.__config['DEFAULT']['CHROME_DRIVER'])
+        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
+        input("Wait for the user to login...")
+        self.__browseResearchToClick_2_Gain()
 
     def scrapeMarginData(self):
         # Select Margin as the recommendation type
@@ -159,7 +158,19 @@ class iciciDirect():
             if(len(tblRowCols) == 10):
                 rowDict = {}
                 rowDict = self.__formatTblRowToDict(tblRowCols)
+
+                # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                # i.e. it has been struck-through, it means that recommendation has been dicarded
+                if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
+                    rowDict['REC_STATUS'] = 'DISCARD'
+                # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                # i.e. the background colour has been changed to grey it has been closed
+                elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
+                    rowDict['REC_STATUS'] = 'CLOSED'
+                else:
+                    rowDict['REC_STATUS'] = 'OPEN'
                 tblRowsArrOfDict.append(rowDict)
+        breakpoint()
         return tblRowsArrOfDict
 
     def closeBrowser(self):  

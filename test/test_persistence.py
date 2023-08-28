@@ -18,14 +18,21 @@ def setup():
     ['BIRLASOFT LIMITED  \n(KPITEC) \nMARGIN - BUY', '485.75', '482.50 - 483.10\n(25-Aug-2023 09:23)', '487.70', '479.70', '-  , -  ', '485.00', '-  ', 'Book Full Profit : 25-Aug-2023 09:42   ', 'Margin Buy MarginPLUS Buy  ']
     ]
     module1Hdl = iciciDirect.iciciDirect('./application.ini')
-    module2Hdl = persistence.persistence('./application.ini')
+    module2Hdl = persistence.persistence('./application.ini', './test/testTrade.json')
     return module1Hdl, module2Hdl, marginData
-
 
 def test_insertAndGetDb(setup):
     iciciDirect, persistence, marginData = setup
+    persistence.removeAll()
     cellDict = iciciDirect._iciciDirect__formatTblRowToDict(marginData[0])
     persistence.insertDb(cellDict)
+
+    isInDb = persistence.isInDb('PVRINOX', 'MARGIN')
+    assert isInDb == True
+
+    isInDb = persistence.isInDb('DABUR', 'MARGIN')
+    assert isInDb == False
+
     queryDicts = persistence.getDb('PVRINOX', 'MARGIN')
     cellDict = queryDicts[0]
 
