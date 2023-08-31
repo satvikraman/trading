@@ -7,11 +7,13 @@ import configparser
 import mapIciciToNseStock
 
 from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.select import Select
 
 class iciciDirect():
-    tblHeadings = ['STOCK', 'ICICI_SYMBOL', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'CMP', 'LOW_REC_PRICE', 'HIGH_REC_PRICE', 'REC_DATE' , 'REC_TIME', 'TARGET', 'STOP_LOSS',
-                   'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2', 'REC_STATUS']
+    tblHeadings = ['STOCK', 'ICICI_SYMBOL', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'CMP', 'QTY', 'LOW_REC_PRICE', 'HIGH_REC_PRICE', 'REC_DATE' , 'REC_TIME', 'TARGET', 'STOP_LOSS',
+                   'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2', 'ORDER_STATUS', 
+                   'REC_STATUS']
 
     def __init__(self, configFile):
         if(os.path.isfile(configFile)):
@@ -113,7 +115,8 @@ class iciciDirect():
 
     def __formatTblRowToDict(self, tblRowCols):
         self.__logger.debug('==== Format Table Row To Dictionary ====')
-        self.__logger.debug('Row data to format \n%s', tblRowCols)
+        for i in range(9):
+            self.__logger.debug('Row data to format. Cell %d \n%s', i, tblRowCols[i].text)
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatStockCell(tblRowCols[0].text)
         cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
@@ -144,7 +147,8 @@ class iciciDirect():
 
         # Click on view to see the results
         viewBtn = menu3.find_element_by_id("btnview")
-        viewBtn.click()
+        viewBtn.send_keys(Keys.ENTER)
+        #viewBtn.click()
         time.sleep(10)
 
         # Scrape the data (header + body) from the webpage
@@ -162,15 +166,14 @@ class iciciDirect():
                 # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
                 # i.e. it has been struck-through, it means that recommendation has been dicarded
                 if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
-                    rowDict['REC_STATUS'] = 'DISCARD'
+                    rowDict['REC_STATUS'] = 'CLOSE'
                 # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
                 # i.e. the background colour has been changed to grey it has been closed
                 elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
-                    rowDict['REC_STATUS'] = 'CLOSED'
+                    rowDict['REC_STATUS'] = 'CLOSE'
                 else:
                     rowDict['REC_STATUS'] = 'OPEN'
                 tblRowsArrOfDict.append(rowDict)
-        breakpoint()
         return tblRowsArrOfDict
 
     def closeBrowser(self):  

@@ -21,10 +21,22 @@ def setup():
     module2Hdl = persistence.persistence('./application.ini', './test/testTrade.json')
     return module1Hdl, module2Hdl, marginData
 
+class cell():
+    def __init__(self, str):
+        self.text = str
+
+def convArr2ArrofCell(list):
+    newList = []
+    for element in list:
+        newList.append(cell(element))
+    return newList
+
 def test_insertAndGetDb(setup):
     iciciDirect, persistence, marginData = setup
     persistence.removeAll()
-    cellDict = iciciDirect._iciciDirect__formatTblRowToDict(marginData[0])
+
+    tblRow = convArr2ArrofCell(marginData[0])
+    cellDict = iciciDirect._iciciDirect__formatTblRowToDict(tblRow)
     persistence.insertDb(cellDict)
 
     isInDb = persistence.isInDb('PVRINOX', 'MARGIN')
@@ -58,6 +70,7 @@ def test_insertAndGetDb(setup):
     assert cellDict['UPDATE_TIME_2'] == ''
 
     cellDict['EXIT_PRICE'] = '1745.00'
+    cellDict['ORDER_STATUS'] = 'CLOSED'
     persistence.updateDb(cellDict, cellDict['NSE_SYMBOL'], cellDict['STRATEGY'])
     queryDicts = persistence.getDb('PVRINOX', 'MARGIN')
     cellDict = queryDicts[0]
@@ -82,3 +95,10 @@ def test_insertAndGetDb(setup):
     assert cellDict['UPDATE_TIME_1'] == '25-Aug-2023 13:02'
     assert cellDict['UPDATE_ACTION_2'] == ''
     assert cellDict['UPDATE_TIME_2'] == ''
+    assert cellDict['ORDER_STATUS'] == 'CLOSED'
+
+def test_isInDB(setup):
+    iciciDirect, persistence, marginData = setup
+    isInDb = persistence.isInDb(nseSym='BHEL', strategy='MARGIN', date='30-Aug-2023', time='09:35', recStatus='OPEN')
+    assert isInDb == False
+
