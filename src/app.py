@@ -70,7 +70,7 @@ class app():
 
     def __openPosition(self, recDict):
         self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, type=%s", recDict['NSE_SYMBOL'], recDict['QTY'], recDict['BUY_SELL'], 'INTRADAY')
-        self.__payTmMoney.placeOrder(nseSym=recDict['NSE_SYMBOL'], qty=recDict['QTY'], buySell=recDict['BUY_SELL'], type='INTRADAY', orderType='MKT', limitPrice=0, triggerPrice=0)
+        self.__payTmMoney.placeOrder(nseSym=recDict['NSE_SYMBOL'], qty=recDict['QTY'], buySell=recDict['BUY_SELL'], product='INTRADAY', orderType='MKT', limitPrice=0, triggerPrice=0)
         recDict['ORDER_STATUS'] = 'POSITION'
         self.__persistence.insertDb(recDict)
 
@@ -78,7 +78,8 @@ class app():
         # Existing order. If there is a change in the recommendation then  Exit position
         buySell = 'SELL' if(dbDict['BUY_SELL'] == 'BUY') else 'BUY'
         self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, type=%s", dbDict['NSE_SYMBOL'], dbDict['QTY'], dbDict['BUY_SELL'], 'INTRADAY')
-        self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], qty=dbDict['QTY'], buySell=buySell, type='INTRADAY', orderType='MKT', limitPrice=0, triggerPrice=0)
+        self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], qty=dbDict['QTY'], buySell=buySell, product='INTRADAY', orderType='MKT', limitPrice=0, triggerPrice=0)
+        dbDict['REC_STATUS'] = 'CLOSE'
         dbDict['ORDER_STATUS'] = 'CLOSE'
         # Update the DB status stating that recommendation is closed
         self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], 
@@ -143,10 +144,10 @@ if __name__ == '__main__':
     trade = app('./application.ini', './db/trade.json')
     trade.openIciciSession()
     trade.openPayTmMoneySession()
-    squareOffMinus15 = True
-    while squareOffMinus15:
+    squareOffMinus15 = False
+    while not squareOffMinus15:
         trade.runPeriodicChecks()
         time.sleep(60)
         # Start closing all positions as soon as it is 3:00PM
-        squareOffMinus15 = int(datetime.datetime.now().strftime("%H")) >= 15 
-    app.closeAllOpenPositions()
+        squareOffMinus15 = int(datetime.datetime.now().strftime("%H")) >= 15
+    trade.closeAllOpenPositions()

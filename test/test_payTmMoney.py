@@ -27,7 +27,7 @@ def setup():
 def test_placeOrder(setup):
     module = setup
     module.payTmLogin()
-    res = module.placeOrder('PVRINOX', 1.0, 'BUY', 'INTRADAY', 'MKT', 0, 0)
+    res = module.placeOrder('BANKBARODA', 1.0, 'BUY', 'INTRADAY', 'MKT', 0, 0)
     print("Result %s", res)    
 
 def test_findSecurityCode(setup):

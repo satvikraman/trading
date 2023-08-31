@@ -80,7 +80,7 @@ class payTmMoney:
     def placeOrder(self, nseSym, qty, buySell, product, orderType, limitPrice, triggerPrice):
         status = False
         if(product != 'INTRADAY'):
-            self.__logger.error('Order type != INTRADAY')
+            self.__logger.error('product = %s != INTRADAY', product)
             return status
         else:
             product = 'I'
@@ -90,9 +90,8 @@ class payTmMoney:
         securityId = self.__findSecurityCode(nseSym)
 
         if(orderType == 'MKT'):
-            self.__logger.error('Order type != INTRADAY')
             try:
-                product = 'C'
+                qty = 1
 
                 self.__logger.info('Placing order: nseSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', nseSym, securityId, 
                                    qty, limitPrice, txnType, product, orderType)
@@ -106,7 +105,7 @@ class payTmMoney:
                                             order_type=orderType,
                                             price=0,
                                             source="N",
-                                            off_mkt_flag=True)
+                                            off_mkt_flag=False)
  
                 """
                 res = self.__pm.place_order(
@@ -121,10 +120,10 @@ class payTmMoney:
                                             source="R",
                                             off_mkt_flag=False)
                 """
-                logging.info("Response : {}".format(res))
+                self.__logger.info("Response : {}".format(res))
                 status = True
             except Exception as e:
-                logging.error("Error : {}".format(e))
+                self.__logger.error("Error : {}".format(e))
         else:
             self.__logger.critical('Invalid order type %s', orderType)
 
