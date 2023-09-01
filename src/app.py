@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import datetime
 import time
 import configparser
@@ -8,6 +7,13 @@ import configparser
 import iciciDirect
 import payTmMoney
 import persistence
+
+# Order Status transitions as 
+# NOT_PLACED --> OPEN --> PART_POSITION -|
+#                     |------------------|--> POSITION --> CLOSE
+
+# Reommendation Status transitions as 
+# OPEN --> CLOSE
 
 class app():
     def __init__(self, configFile, db):
@@ -18,7 +24,7 @@ class app():
             self.__iciciDirect = iciciDirect.iciciDirect(configFile)
             self.__payTmMoney = payTmMoney.payTmMoney(configFile)
             self.__amountPerOrder = self.__config['APP']['AMOUNT_PER_ORDER']
-            self.__initialScan = True
+            self.__timesMargin = self.__config['APP']['MARGIN_MUL_FACTOR']
             
             if(self.__config['APP']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
@@ -41,79 +47,152 @@ class app():
             logging.getLogger('').addHandler(consoleHandler)
             logging.getLogger('').addHandler(fileHandler)
 
-    def __sendOrderToPayTm(self, recDict):
-        status = False
-        if(recDict['STRATEGY'] == 'MARGIN'):
-            qty = self.__amountPerOrder / recDict['CMP']
-            orderType = 'INTRADAY'
-            status = self.__payTmMoney.placeOrder(nseSym=recDict['NSE_SYMBOL'], qty=qty, buySell=recDict['BUY_SELL'], 
-                                                  type=orderType, trigger=None)
-            return status
-
     def __hasRecChanged(self, recDict, dbDict):
         status = False
         tags = ['UPDATE_ACTION_1', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'REC_STATUS']
         self.__logger.debug("Comparing recDict %s == dbDict %s", recDict, dbDict)
         for tag in tags:            
             if(recDict[tag] != dbDict[tag]):
-                self.__logger.info("Recommendation for %s changed. New recommendation is \n%s", recDict['NSE_SYMBOL'], recDict)
+                self.__logger.debug("Recommendation for %s changed. Tag %s changed from %s to %s\n%s", recDict['NSE_SYMBOL'], tag, dbDict[tag], recDict[tag])
+                dbDict[tag] = recDict[tag]
                 status = True
-                break
-        return status
-
-    def __createDummyDbEntry(self, recDict):
-        recDict['ORDER_STATUS'] = 'OPEN'
-        recDict['QTY'] = 0
-        self.__logger.info("Creating Dummy Order: nseSym=%s, qty=%s, buySell=%s, type=%s orderStatus=%s", recDict['NSE_SYMBOL'], recDict['QTY'], recDict['BUY_SELL'], 
-                           recDict['ORDER_STATUS'], 'INTRADAY')
-        self.__persistence.insertDb(recDict)
+                
+        return status, dbDict
 
     def __openPosition(self, recDict):
-        self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, type=%s", recDict['NSE_SYMBOL'], recDict['QTY'], recDict['BUY_SELL'], 'INTRADAY')
-        self.__payTmMoney.placeOrder(nseSym=recDict['NSE_SYMBOL'], qty=recDict['QTY'], buySell=recDict['BUY_SELL'], product='INTRADAY', orderType='MKT', limitPrice=0, triggerPrice=0)
-        recDict['ORDER_STATUS'] = 'POSITION'
+        # If the order fails -> status will be False. Retry the order
+        status = False
+        # Set the higher end of the limit price, depending upon buy or sell 
+        limitPrice = float(recDict['HIGH_REC_PRICE']) if recDict['BUY_SELL'] == 'BUY' else float(recDict['LOW_REC_PRICE'])
+        while not status:
+            self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, product=%s, orderType=%s, limit=%.2f", 
+                               recDict['NSE_SYMBOL'], recDict['QTY'], recDict['BUY_SELL'], 'INTRADAY', 'LMT', limitPrice)
+            res = self.__payTmMoney.placeOrder(nseSym=recDict['NSE_SYMBOL'], qty=recDict['QTY'], buySell=recDict['BUY_SELL'], product='INTRADAY', 
+                                                  orderType='MKT', limitPrice=limitPrice, triggerPrice=0)
+            if res['status'] == 'success':
+                status = True
+                self.__logger.debug(res['message'])
+            else:
+                self.__logger.error(res['message'])
+                time.sleep(1)
+
+        # It is a limit order, so start it as an 'OPEN' order
+        recDict["order_no"] = res['data'][0]['order_no']
+        recDict['ORDER_STATUS'] = 'OPEN'
         self.__persistence.insertDb(recDict)
 
-    def __closePosition(self, dbDict):
+    def __squareOffPosition(self, dbDict):
         # Existing order. If there is a change in the recommendation then  Exit position
         buySell = 'SELL' if(dbDict['BUY_SELL'] == 'BUY') else 'BUY'
-        self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, type=%s", dbDict['NSE_SYMBOL'], dbDict['QTY'], dbDict['BUY_SELL'], 'INTRADAY')
-        self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], qty=dbDict['QTY'], buySell=buySell, product='INTRADAY', orderType='MKT', limitPrice=0, triggerPrice=0)
+        self.__logger.info("Squaring off position: nseSym=%s, qty=%s, buySell=%s, type=%s", dbDict['NSE_SYMBOL'], dbDict['QTY'], dbDict['BUY_SELL'], 'INTRADAY')
+        status = False
+        # If the order fails -> status will be False. Retry the order
+        while not status:
+            res = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], qty=dbDict['QTY'], buySell=buySell, product='INTRADAY', orderType='MKT', 
+                                                  limitPrice=0, triggerPrice=0)
+            status = res['status'] == 'success'
+            time.sleep(1)
         dbDict['REC_STATUS'] = 'CLOSE'
         dbDict['ORDER_STATUS'] = 'CLOSE'
         # Update the DB status stating that recommendation is closed
         self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], 
                                     time=dbDict['REC_TIME'], recStatus='OPEN')
 
-    def __handleMarginOrders(self, recDict):
-        self.__logger.debug("handleMarginOrders: Finding in DB nseSym=%s, strategy=%s, date=%s, time=%s, recStatus='OPEN'", recDict['NSE_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'])
-        status, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], 
-                                                   date=recDict['REC_DATE'], time=recDict['REC_TIME'], recStatus='OPEN')
-        self.__logger.debug("Find results: status = %s & dbDict = %s", status, dbDict)
-        # If no open recommendation found in DB and if the current recommendation is open, then
-        # Insert the order in DB and ask PayTm to buy the order as well
-        if(not status and (recDict['REC_STATUS'] == 'OPEN')):
-            # During the initial scan, if an entry was not found in the DB
-            # Create dummy entries. These will never be executed.
-            if(self.__initialScan):
-                self.__createDummyDbEntry(recDict)
-            else:                    
-                # New recommendation. Buy at current market price
-                qty = round(float(self.__amountPerOrder) / float(recDict['CMP']), 0)
-                if(qty > 0):
-                    recDict['QTY'] = qty
-                    self.__openPosition(recDict)
-                else:
-                    self.__logger.info("Amount not sufficient to buy even 1 stock of %s", recDict['NSE_SYMBOL'])
-        elif(status):
-            # If the recommendation has changed and if there is an open position
-            # Close it
-            if(self.__hasRecChanged(recDict, dbDict) and dbDict['ORDER_STATUS'] == 'POSITION'):
-                self.__closePosition(dbDict)
+    def __cancelOrder(self, dbDict):
+        resOrder = self.__findOrderInOrderBookResponse(dbDict['order_no'])
+        self.__payTmMoney.cancelOrder(resOrder)
+    
+    def __closePosition(self, dbDict):
+        resOrder = self.__findOrderInOrderBookResponse(dbDict['order_no'])
+        pos = self.__payTmMoney.getOrderPosition(resOrder)
+        qty = abs(pos)
+        buySell = 'SELL' if dbDict['BUY_SELL'] == 'BUY' else 'BUY'
+        self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], qty, buySell, 'INTRADAY', 'MKT')
+        status = False
+        # If the order fails -> status will be False. Retry the order
+        while not status:
+            res = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], qty=qty, buySell=buySell, product='INTRADAY', 
+                                        orderType='MKT', limitPrice=0, triggerPrice=0)
+            if res['status'] == 'success':
+                status = True
+                self.__logger.debug(res['message'])
             else:
-                self.__logger.info('Either recommendation has not changed or ORDER_STATUS != POSITION for %s', recDict['NSE_SYMBOL'])
-        else:
-            self.__logger.info("Neither buying nor closing this recDict %s => dbDict %s", recDict, dbDict)
+                self.__logger.error(res['message'])
+                time.sleep(1)
+
+        dbDict['ORDER_STATUS'] = 'CLOSE'
+        self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], 
+                                    time=dbDict['REC_TIME'], recStatus=None)
+
+    def __updateRecStatus(self, recDict):
+        # Find open recommendations matching the condition in DB
+        self.__logger.debug("updateRecStatus: Finding in DB nseSym=%s, strategy=%s, date=%s, time=%s, recStatus='OPEN'", 
+                            recDict['NSE_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'])
+        isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], 
+                                                   date=recDict['REC_DATE'], time=recDict['REC_TIME'], recStatus='OPEN')
+        self.__logger.debug("Find results: status = %s & dbDict = %s", isInDb, dbDict)
+
+        # If no open recommendation found in DB and if the current recommendation is open, then
+        # Insert the order in DB
+        if(not isInDb):
+            if(recDict['REC_STATUS'] == 'OPEN'):
+                # New recommendation. Create a new entry in DB
+                qty = round((float(self.__amountPerOrder) * float(self.__timesMargin)) / float(recDict['CMP']), 0)
+                if(qty < 1):
+                    self.__logger.info("Amount not sufficient to buy even 1 stock of %s", recDict['NSE_SYMBOL'])
+            else:
+                qty = 0
+                self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed", recDict['NSE_SYMBOL'])
+            recDict['QTY'] = qty
+            recDict['ORDER_STATUS'] = 'NOT_PLACED'
+            recDict['order_no'] = ''
+            recDict['TRADED_QTY'] = 0
+            self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+        elif(isInDb):
+            # If the recommendation has changed then
+            # Update Db irrespective of the recStatus
+            isChange, newDict = self.__hasRecChanged(recDict, dbDict)
+            if(isChange):
+                self.__persistence.updateDb(newDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'], recStatus=None)
+            #else: Nothing to be done
+
+    def __findOrderInOrderBookResponse(self, order_no):
+        for resOrder in self.__orderBook['data']:
+            if(resOrder['order_no'] ==  order_no):
+                return resOrder
+
+    def __updateOrderStatus(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None):
+        # Get the latest update on orders from Paytm
+        status = False
+        while not status:
+            self.__orderBook = self.__payTmMoney.getOrderBookUpdate()
+            if self.__orderBook['status'] == 'success':
+                status = True
+                self.__logger.debug(self.__orderBook['message'])
+            else:
+                self.__logger.error(self.__orderBook['message'])
+                time.sleep(1)
+
+        # Get all recommendations for today from DB
+        self.__logger.debug("updateOrderStatus: Finding in DB nseSym=%s, strategy=%s, date=%s, time=%s, recStatus=%s", 
+                            nseSym, strategy, date, time, recStatus)
+        dbDicts = self.__persistence.getDb(nseSym=nseSym, strategy=strategy, date=date, time=time, recStatus=recStatus)
+        self.__logger.debug("Num record = %d dbDicts = %s", len(dbDicts), dbDicts)
+
+        # Loop through all recommendations and update order status
+        for dbDict in dbDicts:
+            # If the order is 'OPEN' or 'PART_POSITION' state, check if it needs to be updated
+            if(dbDict['ORDER_STATUS'] == 'OPEN' or dbDict['ORDER_STATUS'] == 'PART_POSITION'):
+                resOrder = self.__findOrderInOrderBookResponse(dbDict['order_no'])
+                if(resOrder['traded_qty'] > 0):
+                    if(resOrder['traded_qty'] == resOrder['quantity']):
+                        orderStatus = 'POSITION'
+                    elif(resOrder['traded_qty'] < resOrder['quantity']):
+                        orderStatus = 'PART_POSITION'
+                    dbDict['ORDER_STATUS'] = orderStatus
+                    dbDict['TRADED_QTY'] = resOrder['traded_qty']
+                    self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'], 
+                                                recStatus=None)
 
     def openIciciSession(self):
         self.__iciciDirect.browseICICIDirect()
@@ -121,23 +200,89 @@ class app():
     def openPayTmMoneySession(self):
         self.__payTmMoney.payTmLogin()
 
+    def __reconcileRecOrderStatus(self):
+        # The purpose of this function is to exit closed recommendations. If the 
+        # recommendation is still open, there is nothing to be done
+
+        # If recommendation == 'CLOSE' and order == 'NOT_PLACED'
+        # Do nothing
+
+        # If recommendation == 'CLOSE' and order == 'OPEN'
+        # Cancel the order. Exit any position that could have got created between the time the order book status was last taken and now
+        dbDicts = self.__persistence.getDb(recStatus='CLOSE', orderStatus='OPEN')
+        for dbDict in dbDicts:
+            self.__cancelOrder(dbDict)
+            self.__closePosition(dbDict)
+
+        # If recommendation == 'CLOSE' and order == 'PART_POSITION'
+        # Cancel existing order --> Exit position equal to traded quantity
+        dbDicts = self.__persistence.getDb(recStatus='CLOSE', orderStatus='PART_POSITION')
+        for dbDict in dbDicts:
+            self.__cancelOrder(dbDict)
+            self.__closePosition(dbDict)
+
+        # If recommendation == 'CLOSE' and order == 'POSITION'
+        # Exit position immediately
+        dbDicts = self.__persistence.getDb(recStatus='CLOSE', orderStatus='POSITION')
+        for dbDict in dbDicts:
+            self.__closePosition(dbDict)
+
+        # If recommendation == 'CLOSE' and order == 'CLOSE'
+        # Do nothing
+
+        # If recommendation == 'OPEN' and order == 'NOT_PLACED'
+        # Place limit order
+        dbDicts = self.__persistence.getDb(recStatus='CLOSE', orderStatus='NOT_PLACED')
+        for dbDict in dbDicts:
+            self.__openPosition()
+
+        # If recommendation == 'OPEN' and order == 'OPEN'
+        # Do nothing. Wait for the order to transition to either 'PART_POSITION' or 'POSITION'
+
+        # If recommendation == 'OPEN' and order == 'PART_POSITION'
+        # Normal case. Do nothing. Wait for the order to transition to 'POSITION'
+
+        # If recommendation == 'OPEN' and order == 'POSITION'
+        # Normal case. Do nothing. Wait for the recommendation to 'CLOSE'
+
+        # If recommendation == 'OPEN' and order == 'CLOSE'
+        # How can this happen?
+
     def runPeriodicChecks(self):
+        # Scrape the recommendations scraped from ICICI Direct
         recDicts = self.__iciciDirect.scrapeMarginData() 
+        # Upate the recommendations scraped from ICICI Direct
         for recDict in recDicts:
             # If this is a new order
             if(recDict['STRATEGY'] == 'MARGIN'):
-                self.__handleMarginOrders(recDict)
-        if(self.__initialScan):
-            self.__initialScan = False
+                self.__updateRecStatus(recDict)
+
+        # Update the order status from PayTm Money for today
+        if(len(recDicts) > 0):
+            self.__updateOrderStatus(self, date=recDicts[0]['REC_DATE'])
+        
+        # All data is now in DB. Reconcile recommendation and order status
+        self.__reconcileRecOrderStatus()
 
     def closeAllOpenPositions(self):
         # Get all open positions
         self.__logger.info("Closing all open positions")
-        dbDicts = self.__persistence.getDb(recStatus='OPEN', orderStatus='POSITION')
-        self.__logger.info("Number of positions to close: %d", len(dbDicts))
+
+        # Check for all orders in 'OPEN' state
+        dbDicts = self.__persistence.getDb(recStatus=None, orderStatus='OPEN')
         for dbDict in dbDicts:
-            self.__logger.info("Closing: %s", dbDict['NSE_SYMBOL'])
-            dbDict['REC_STATUS'] = 'CLOSE'
+            self.__cancelOrder(dbDict)
+            self.__closePosition(dbDict)
+
+        # Check for all orders in 'PART_POSITION' state
+        dbDicts = self.__persistence.getDb(recStatus=None, orderStatus='PART_POSITION')
+        for dbDict in dbDicts:
+            self.__cancelOrder(dbDict)
+            self.__closePosition(dbDict)
+
+        # Check for all orders in 'POSITION' state
+        dbDicts = self.__persistence.getDb(recStatus=None, orderStatus='POSITION')
+        for dbDict in dbDicts:
             self.__closePosition(dbDict)
 
 if __name__ == '__main__':
@@ -147,7 +292,7 @@ if __name__ == '__main__':
     squareOffMinus15 = False
     while not squareOffMinus15:
         trade.runPeriodicChecks()
-        time.sleep(60)
+        time.sleep(45)
         # Start closing all positions as soon as it is 3:00PM
         squareOffMinus15 = int(datetime.datetime.now().strftime("%H")) >= 15
     trade.closeAllOpenPositions()

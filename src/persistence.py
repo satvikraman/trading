@@ -43,7 +43,7 @@ class persistence:
         return query
 
     def getDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus='OPEN', orderStatus=None):
-        dictArr = {}
+        dictArr = [{}]
         query = self.__formQuery(nseSym, strategy, date, time, recStatus, orderStatus)
         if(query != None):
             dictArr = self.__db.search(query)

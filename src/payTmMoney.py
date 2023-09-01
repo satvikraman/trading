@@ -36,7 +36,22 @@ class payTmMoney:
             if(self.__state_key == ''):
                 self.__state_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
                 dotenv.set_key('./.env', "state_key", self.__state_key)
-
+    
+    def __findSecurityCode(self, nseSym):
+        securityID = None
+        with(open(self.__config['PAYTM-MONEY']['SECURITYID_DATASET'], 'r', encoding="utf-8-sig")) as paytmcsv:
+            paytmReader = csv.DictReader(paytmcsv)
+            for paytmRow in paytmReader:
+                if (paytmRow['symbol'] != nseSym):
+                    continue
+                else:
+                     securityID = paytmRow['security_id']
+                     break
+        if(securityID == None):
+            self.__logger.critical('Unable to find security ID for %s', nseSym)
+        
+        return securityID
+        
     def payTmLogin(self):
         self.__pm = PMClient(api_key=self.__api_key, api_secret=self.__api_secret)
         if(self.__request_token == ''):
@@ -60,28 +75,33 @@ class payTmMoney:
         self.__pm.set_read_access_token(self.__read_access_token)
 
         print(self.__pm.get_user_details())
-    
-    def __findSecurityCode(self, nseSym):
-        securityID = None
-        with(open(self.__config['PAYTM-MONEY']['SECURITYID_DATASET'], 'r', encoding="utf-8-sig")) as paytmcsv:
-            paytmReader = csv.DictReader(paytmcsv)
-            for paytmRow in paytmReader:
-                if (paytmRow['symbol'] != nseSym):
-                    continue
-                else:
-                     securityID = paytmRow['security_id']
-                     break
-        if(securityID == None):
-            self.__logger.critical('Unable to find security ID for %s', nseSym)
-        
-        return securityID
 
-        
+    def getAllPositions(self):
+        resPos = self.__pm.position()
+        return resPos
+
+    def getOrderPosition(self, resOrder):
+        resPos = self.__pm.position_details(resOrder['security_id'], resOrder['product'], resOrder['exchange'])
+        qty = abs(resPos['traded_qty'])
+        return qty
+
+    def cancelOrder(self, resOrder):
+        self.__pm.cancel_order('N', resOrder['txn_type'], resOrder['exchange'], resOrder['segment'], resOrder['product'], 
+                               resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], 0, 
+                               resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'])
+
+    def getOrderBookUpdate(self):
+        try:
+            res = self.__pm.order_book()
+        except Exception as e:
+            self.__logger.error("Error : {}".format(e))
+        return res
+
     def placeOrder(self, nseSym, qty, buySell, product, orderType, limitPrice, triggerPrice):
-        status = False
+        res = {"status": 'FAIL'}
         if(product != 'INTRADAY'):
             self.__logger.error('product = %s != INTRADAY', product)
-            return status
+            return res
         else:
             product = 'I'
 
@@ -90,41 +110,30 @@ class payTmMoney:
         securityId = self.__findSecurityCode(nseSym)
 
         if(orderType == 'MKT'):
-            try:
-                qty = 1
-
-                self.__logger.info('Placing order: nseSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', nseSym, securityId, 
-                                   qty, limitPrice, txnType, product, orderType)
-                res = self.__pm.place_order(txn_type=txnType,
-                                            exchange="NSE",
-                                            segment="E",
-                                            product=product, 
-                                            security_id=securityId,
-                                            quantity=qty,
-                                            validity="DAY",
-                                            order_type=orderType,
-                                            price=0,
-                                            source="N",
-                                            off_mkt_flag=False)
- 
-                """
-                res = self.__pm.place_order(
-                                            txn_type=txnType,
-                                            exchange="NSE",
-                                            segment="E",
-                                            product=product, 
-                                            security_id=securityId,
-                                            quantity=qty,
-                                            validity="DAY",
-                                            order_type=orderType,
-                                            source="R",
-                                            off_mkt_flag=False)
-                """
-                self.__logger.info("Response : {}".format(res))
-                status = True
-            except Exception as e:
-                self.__logger.error("Error : {}".format(e))
+            price = 0
+        elif(orderType == 'LMT'):
+            price = limitPrice
         else:
             self.__logger.critical('Invalid order type %s', orderType)
 
-        return status
+        try:
+            qty = 1
+
+            self.__logger.info('Placing order: nseSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', nseSym, securityId, 
+                                qty, limitPrice, txnType, product, orderType)
+            res = self.__pm.place_order(txn_type=txnType,
+                                        exchange="NSE",
+                                        segment="E",
+                                        product=product, 
+                                        security_id=securityId,
+                                        quantity=qty,
+                                        validity="DAY",
+                                        order_type=orderType,
+                                        price=0,
+                                        source="N",
+                                        off_mkt_flag=False)
+            self.__logger.info("Response : {}".format(res))
+        except Exception as e:
+            self.__logger.error("Error : {}".format(e))
+
+        return res
