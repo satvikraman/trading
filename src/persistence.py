@@ -50,10 +50,11 @@ class persistence:
         return dictArr
 
     def insertDb(self, dict, nseSym=None, strategy=None, date=None, time=None):
-        found = self.isInDb(nseSym, strategy, date, time)
+        found, _ = self.isInDb(nseSym, strategy, date, time)
         if(not found and dict):
-            self.__db.insert(dict)
-            return dict
+            res = self.__db.insert(dict)
+            return (res > 0)
+        return False
         
     def updateDb(self, dict, nseSym=None, strategy=None, date=None, time=None, recStatus='OPEN'):
         query = self.__formQuery(nseSym, strategy, date, time, recStatus)

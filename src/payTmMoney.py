@@ -90,12 +90,26 @@ class payTmMoney:
                                resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], 0, 
                                resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'])
 
+    def findOrderStatusAndQtyInfo(self, orderNo):
+        status = False
+        for resOrder in self.__orderBook['data']:
+            if(('order_no' in resOrder) and (resOrder['order_no'] ==  order_no)):
+                status = True
+                qty = resOrder['quantity']
+                trdQty = resOrder['traded_qty']
+                return status, qty, trdQty
+        return status, None, None
+
+
     def getOrderBookUpdate(self):
         try:
-            res = self.__pm.order_book()
+            self.__orderBook = self.__pm.order_book()
+            self.__logger.debug(self.__orderBook['message'])
+            status = True
         except Exception as e:
             self.__logger.error("Error : {}".format(e))
-        return res
+            status = False
+        return status
 
     def placeOrder(self, nseSym, qty, buySell, product, orderType, limitPrice, triggerPrice):
         res = {"status": 'FAIL'}
