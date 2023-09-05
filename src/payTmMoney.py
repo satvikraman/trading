@@ -37,7 +37,7 @@ class payTmMoney:
                 self.__state_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
                 dotenv.set_key('./.env', "state_key", self.__state_key)
     
-    def __findSecurityCode(self, nseSym):
+    def findSecurityCode(self, nseSym):
         securityID = None
         with(open(self.__config['PAYTM-MONEY']['SECURITYID_DATASET'], 'r', encoding="utf-8-sig")) as paytmcsv:
             paytmReader = csv.DictReader(paytmcsv)
@@ -80,36 +80,49 @@ class payTmMoney:
         resPos = self.__pm.position()
         return resPos
 
-    def getOrderPosition(self, resOrder):
-        resPos = self.__pm.position_details(resOrder['security_id'], resOrder['product'], resOrder['exchange'])
+    def getSecurityPosition(self, securityId, product, exchange):
+        resPos = self.__pm.position_details(securityId, product, exchange)
         qty = abs(resPos['traded_qty'])
         return qty
-
-    def cancelOrder(self, resOrder):
-        self.__pm.cancel_order('N', resOrder['txn_type'], resOrder['exchange'], resOrder['segment'], resOrder['product'], 
-                               resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], 0, 
-                               resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'])
 
     def findOrderStatusAndQtyInfo(self, orderNo):
         status = False
         for resOrder in self.__orderBook['data']:
-            if(('order_no' in resOrder) and (resOrder['order_no'] ==  order_no)):
+            if(('order_no' in resOrder) and (resOrder['order_no'] ==  orderNo)):
                 status = True
                 qty = resOrder['quantity']
                 trdQty = resOrder['traded_qty']
                 return status, qty, trdQty
         return status, None, None
 
-
     def getOrderBookUpdate(self):
         try:
-            self.__orderBook = self.__pm.order_book()
+            res = self.__orderBook = self.__pm.order_book()
             self.__logger.debug(self.__orderBook['message'])
-            status = True
+            status = res['status'] == 'success'
         except Exception as e:
             self.__logger.error("Error : {}".format(e))
             status = False
         return status
+
+    def cancelOrder(self, orderNo):
+        for resOrder in self.__orderBook['data']:
+            if(('order_no' in resOrder) and (resOrder['order_no'] ==  orderNo)):
+                try:
+                    res = self.__pm.cancel_order('N', resOrder['txn_type'], resOrder['exchange'], resOrder['segment'], resOrder['product'], 
+                                        resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], 0, 
+                                        resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'])
+                    self.__logger.debug(self.__orderBook['message'])
+                    status = res['status']
+                    message = res['mesage']
+                    orderNum = res['data'][0]['order_no']
+                except Exception as e:
+                    status = 'exception'
+                    message = 'exception'
+                    orderNum = ''
+                    self.__logger.error("Error : {}".format(e))
+                    status = False
+        return status, message, orderNum
 
     def placeOrder(self, nseSym, qty, buySell, product, orderType, limitPrice, triggerPrice):
         res = {"status": 'FAIL'}
@@ -143,11 +156,17 @@ class payTmMoney:
                                         quantity=qty,
                                         validity="DAY",
                                         order_type=orderType,
-                                        price=0,
+                                        price=price,
                                         source="N",
                                         off_mkt_flag=False)
-            self.__logger.info("Response : {}".format(res))
+            status = res['status']
+            message = res['message']
+            orderNum = res['data'][0]['order_no']
+            self.__logger.debug("Response : {}".format(res))
         except Exception as e:
+            status = 'exception'
+            message = 'exception'
+            orderNum = ''
             self.__logger.error("Error : {}".format(e))
 
-        return res
+        return status, message, orderNum
