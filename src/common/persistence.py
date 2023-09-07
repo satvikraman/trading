@@ -5,7 +5,7 @@ import configparser
 from tinydb import TinyDB, Query, where
 
 class persistence:
-    def __init__(self, configFile, db):
+    def __init__(self, configFile, db, lock=None):
         if(os.path.isfile(configFile)):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
@@ -23,10 +23,19 @@ class persistence:
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
         
+            self.__lock = lock
             self.__db = TinyDB(db)
             self.__query = Query()
 
-    def __formQuery(self, nseSym=None, strategy=None, date=None, time=None, recStatus='OPEN', orderStatus=None):
+    def __acquireLock(self):
+        if(self.__lock != None):
+            self.__lock.acquire()
+
+    def __releaseLock(self):
+        if(self.__lock != None):
+            self.__lock.release()
+
+    def __formQuery(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None):
         query = self.__query.noop()
         if(nseSym != None):
             query = (where('NSE_SYMBOL') == nseSym)
@@ -38,35 +47,47 @@ class persistence:
             query = query & (where('REC_TIME') == time)
         if(recStatus != None):
             query = query & (where('REC_STATUS') == recStatus)
-        if(orderStatus != None):
-            query = query & (where('ORDER_STATUS') == orderStatus)
+        if(posHoldStatus != None):
+            query = query & (where('POS_HOLD_STATUS') == posHoldStatus)
         return query
 
-    def getDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus='OPEN', orderStatus=None):
+    def getDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None):
         dictArr = [{}]
-        query = self.__formQuery(nseSym, strategy, date, time, recStatus, orderStatus)
+        query = self.__formQuery(nseSym, strategy, date, time, recStatus, posHoldStatus)
         if(query != None):
+            self.__acquireLock()
             dictArr = self.__db.search(query)
-        return dictArr
+            self.__releaseLock()
+            return dictArr
 
     def insertDb(self, dict, nseSym=None, strategy=None, date=None, time=None):
         found, _ = self.isInDb(nseSym, strategy, date, time)
         if(not found and dict):
+            self.__acquireLock()
             res = self.__db.insert(dict)
+            self.__releaseLock()
+            if res <= 0:
+                self.__logger.critical("Unable to insert record in DB: %s", dict)
             return (res > 0)
+        else:
+            self.__logger.error("Record already in DB. Can't insert: %s", dict)
         return False
         
-    def updateDb(self, dict, nseSym=None, strategy=None, date=None, time=None, recStatus='OPEN'):
+    def updateDb(self, dict, nseSym=None, strategy=None, date=None, time=None, recStatus=None):
         query = self.__formQuery(nseSym, strategy, date, time, recStatus)
         if(query != None):
+            self.__acquireLock()
             self.__db.update(dict, query)
+            self.__releaseLock()
     
     def removeFromDb(self, nseSym=None, strategy=None, date=None, time=None):
         query = self.__formQuery(nseSym, strategy, date, time, recStatus=None)
         if(query != None):
+            self.__acquireLock()
             self.__db.remove(query)
+            self.__releaseLock()
     
-    def isInDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus='OPEN'):
+    def isInDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None):
         status = False
         if(nseSym == None) or (strategy == None) or (date == None) or (time == None):
             return status
@@ -80,4 +101,6 @@ class persistence:
         return status, retDict
 
     def removeAll(self):
+        self.__acquireLock()
         self.__db.truncate()
+        self.__releaseLock()

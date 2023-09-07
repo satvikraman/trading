@@ -47,6 +47,24 @@ class iciciDirect():
         iClick2Gain.click()
         time.sleep(5)
 
+    def __halfCloseRec(self, updateAction1):
+        status = False
+        actions = ['Book Partial Profit']
+        for action in actions:
+            if updateAction1.lower() == action.lower():
+                status = True
+                break
+        return status
+
+    def __closeRec(self, updateAction1, updateAction2):
+        status = False
+        actions = ['Book Full Profit', 'TGT1', 'Exit', 'SLTP']
+        for action in actions:
+            if updateAction1.lower() == action.lower() or updateAction2.lower() == action.lower():
+                status = True
+                break
+        return status
+
     def __formatStockCell(self, cell):
         cellDict = {}
         self.__logger.debug('==== STOCK CELL ====')
@@ -106,8 +124,12 @@ class iciciDirect():
         self.__logger.debug('Cell data to format \n%s', cell)
         data = cell.split(' : ')
         if(len(data) > 2):
-            self.__logger.critical('Multiple updates present. Unsupported!!!')
-        if(len(data) > 1):
+            # In this case, the 1st update wil always be 'Boot Partial Profit'
+            update2 = re.sub(r'Book Partial Profit.*$', '', cell)
+            data = update2.split(' : ')
+            cellDict['UPDATE_ACTION_2'] = data[0]
+            cellDict['UPDATE_TIME_2'] = re.sub(r'\s+$', '', data[1])            
+        elif(len(data) > 1):
             cellDict['UPDATE_ACTION_1'] = data[0]
             cellDict['UPDATE_TIME_1'] = re.sub(r'\s+$', '', data[1])
         self.__logger.debug('Generated dictionary %s', cellDict)
@@ -171,6 +193,10 @@ class iciciDirect():
                 # i.e. the background colour has been changed to grey it has been closed
                 elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
                     rowDict['REC_STATUS'] = 'CLOSE'
+                elif(self.__halfCloseRec(rowDict['UPDATE_ACTION_1'])):
+                    rowDict['REC_STATUS'] = 'PARTIAL_CLOSE'
+                elif(self.__closeRec(rowDict['UPDATE_ACTION_1'], rowDict['UPDATE_ACTION_2'])):
+                    rowDict["REC_STATUS"] = 'CLOSE'
                 else:
                     rowDict['REC_STATUS'] = 'OPEN'
                 tblRowsArrOfDict.append(rowDict)

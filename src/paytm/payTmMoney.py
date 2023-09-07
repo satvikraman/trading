@@ -1,5 +1,6 @@
 import logging
 import csv
+import datetime
 import os
 import sys
 import configparser
@@ -33,9 +34,6 @@ class payTmMoney:
             self.__api_secret = os.environ.get('api_secret', '')
             self.__request_token = os.environ.get('request_token', '')
             self.__state_key = os.environ.get('state_key', '')
-            if(self.__state_key == ''):
-                self.__state_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
-                dotenv.set_key('./.env', "state_key", self.__state_key)
     
     def findSecurityCode(self, nseSym):
         securityID = None
@@ -45,7 +43,7 @@ class payTmMoney:
                 if (paytmRow['symbol'] != nseSym):
                     continue
                 else:
-                     securityID = paytmRow['security_id']
+                     securityID = str(paytmRow['security_id'])
                      break
         if(securityID == None):
             self.__logger.critical('Unable to find security ID for %s', nseSym)
@@ -54,7 +52,11 @@ class payTmMoney:
         
     def payTmLogin(self):
         self.__pm = PMClient(api_key=self.__api_key, api_secret=self.__api_secret)
-        if(self.__request_token == ''):
+        valid_until_date = os.environ.get('valid_until_date', '')
+        valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
+        if(valid_until_date.lower() != valid_today):
+            self.__state_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
+            dotenv.set_key('./.env', "state_key", self.__state_key)
             loginURL = self.__pm.login(self.__state_key)
             self.__request_token = input("Enter the request token after looging into {} : ".format(loginURL))
             dotenv.set_key('./.env', "request_token", self.__request_token)
@@ -65,6 +67,7 @@ class payTmMoney:
             dotenv.set_key('./.env', "access_token", self.__access_token)
             dotenv.set_key('./.env', "public_access_token", self.__public_access_token)
             dotenv.set_key('./.env', "read_access_token", self.__read_access_token)
+            dotenv.set_key('./.env', "valid_until_date", valid_today)
         else:
             self.__access_token = os.environ.get('access_token', '')
             self.__public_access_token = os.environ.get('public_access_token', '')
@@ -76,14 +79,23 @@ class payTmMoney:
 
         print(self.__pm.get_user_details())
 
-    def getAllPositions(self):
-        resPos = self.__pm.position()
-        return resPos
+    def getLastTradedPrice(self, securityId, exchange='NSE'):
+        pref = exchange + ':' + securityId + ':EQUITY'
+        self.__pm.get_live_market_data('LTP', pref)
+ 
+    def getHoldingsData(self):
+        res = self.__pm.user_holdings_data()
+        resDictArr = []
+        for holding in res['data']['results']:
+            resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'QTY': holding['quantity']}
+            resDictArr.append(resDict)
+        return resDictArr
 
-    def getSecurityPosition(self, securityId, product, exchange):
+    def getSecurityPosition(self, securityId, product, exchange='NSE'):
+        product = 'I' if product == 'INTRADAY' else 'C'
         resPos = self.__pm.position_details(securityId, product, exchange)
         qty = abs(resPos['traded_qty'])
-        return qty
+        return resPos['status'], qty
 
     def findOrderStatusAndQtyInfo(self, orderNo):
         status = False
@@ -124,7 +136,7 @@ class payTmMoney:
                     status = False
         return status, message, orderNum
 
-    def placeOrder(self, nseSym, qty, buySell, product, orderType, limitPrice, triggerPrice):
+    def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice):
         res = {"status": 'FAIL'}
         if(product != 'INTRADAY'):
             self.__logger.error('product = %s != INTRADAY', product)
@@ -133,8 +145,6 @@ class payTmMoney:
             product = 'I'
 
         txnType = 'B' if buySell == 'BUY' else 'S'
-
-        securityId = self.__findSecurityCode(nseSym)
 
         if(orderType == 'MKT'):
             price = 0
