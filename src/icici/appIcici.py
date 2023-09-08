@@ -22,7 +22,7 @@ class app():
 
             self.__persistence = persistence(configFile, db)
             self.__iciciDirect = iciciDirect(configFile)
-            self.__numRetries = self.__config['APP']['NUM_RETRIES']
+            self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
             self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
             
             if(self.__config['APP']['LOG_LEVEL'] == 'DEBUG'):
@@ -38,7 +38,7 @@ class app():
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
     
-            formatter = logging.Formatter(self.__config.['LOGGING']['LOG_FORMATTER'])
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'], mode='w')
             consoleHandler = logging.StreamHandler()
             fileHandler.setFormatter(formatter)
@@ -51,7 +51,7 @@ class app():
         retries = self.__numRetries
         status = False
         while not status and retries >= 0:
-            url = self.__paytmBaseURL + 'rec'
+            url = self.__paytmBaseURL + 'v1/rec'
             if endPoint == 'NEW_REC':
                 res = requests.post(url, json=recDict)
             elif endPoint == 'UPDATE_REC':
@@ -110,11 +110,11 @@ class app():
         if(not isInDb):
             res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
             if res:
-                if(recDict['REC_STATUS'] == 'OPEN'):
+                if(recDict['REC_STATUS'] != 'CLOSE'):
                     self.__send2PayTm('NEW_REC', recDict)
                     self.__logger.info('New Recommendation %s', recDict)
                 else:
-                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'])
+                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
         elif(isInDb):
             # If the recommendation has changed then
             # Update Db irrespective of the recStatus
@@ -142,9 +142,9 @@ class app():
 if __name__ == '__main__':
     trade = app('./iciciDirect.ini')
     trade.openIciciSession()
-    squareOffMinus15 = False
-    while not squareOffMinus15:
+    marketClose = False
+    while not marketClose:
         trade.runPeriodicChecks()
         time.sleep(45)
         # Start closing all positions as soon as it is 3:00PM
-        squareOffMinus15 = int(datetime.datetime.now().strftime("%H")) >= 15
+        #marketClose = int(datetime.datetime.now().strftime("%H")) >= 15 and int(datetime.datetime.now().strftime("%M")) > 30

@@ -1,9 +1,11 @@
 import logging
 import os
 import re
+import sys
 import time
 import configparser
 
+sys.path.append('./src/common')
 import mapIciciToNseStock
 
 from selenium import webdriver
@@ -165,7 +167,8 @@ class iciciDirect():
         menu3 = self.__browser.find_element_by_id("iclick_gain")
         self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
         recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
-        recommendationType.select_by_value("MRGN")
+        # ALL - Everything; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
+        recommendationType.select_by_value("MMNT")
 
         # Click on view to see the results
         viewBtn = menu3.find_element_by_id("btnview")
