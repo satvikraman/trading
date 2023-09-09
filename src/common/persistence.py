@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import configparser
 
 from tinydb import TinyDB, Query, where
@@ -35,20 +36,49 @@ class persistence:
         if(self.__lock != None):
             self.__lock.release()
 
+    def __formSubQuery(self, keyword, val):
+        inverse = False
+        if '!' in val:
+            inverse = True
+            val = re.sub(r'!', '', val)
+
+        if '|' in val:
+            vals = val.split('|')
+            query = (where(keyword) == vals[0])
+            for item in vals[1:]:
+                query = query | (where(keyword) == item)
+        elif '&' in val:
+            vals = val.split('&')
+            query = (where(keyword) == vals[0])
+            for item in vals[1:]:
+                query = query & (where(keyword) == item)
+        else:
+            query = (where(keyword) == val)
+        
+        query = (~(query)) if inverse else (query)
+            
+        return query
+
     def __formQuery(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None):
         query = self.__query.noop()
         if(nseSym != None):
-            query = (where('NSE_SYMBOL') == nseSym)
+            #query = (where('NSE_SYMBOL') == nseSym)
+            query = query & self.__formSubQuery('NSE_SYMBOL', nseSym)
         if(strategy != None):
-            query = query & (where('STRATEGY') == strategy)
+            #query = query & (where('STRATEGY') == strategy)
+            query = query & self.__formSubQuery('STRATEGY', strategy)
         if(date != None):
-            query = query & (where('REC_DATE') == date)
+            #query = query & (where('REC_DATE') == date)
+            query = query & self.__formSubQuery('REC_DATE', date)
         if(time != None):
-            query = query & (where('REC_TIME') == time)
+            #query = query & (where('REC_TIME') == time)
+            query = query & self.__formSubQuery('REC_TIME', time)
         if(recStatus != None):
-            query = query & (where('REC_STATUS') == recStatus)
+            #query = query & (where('REC_STATUS') == recStatus)
+            query = query & self.__formSubQuery('REC_STATUS', recStatus)
         if(posHoldStatus != None):
-            query = query & (where('POS_HOLD_STATUS') == posHoldStatus)
+            #query = query & (where('POS_HOLD_STATUS') == posHoldStatus)
+            query = query & self.__formSubQuery('POS_HOLD_STATUS', posHoldStatus)
         return query
 
     def getDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None):

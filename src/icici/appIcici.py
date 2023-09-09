@@ -66,7 +66,8 @@ class app():
 
     def __hasRecChanged(self, recDict, dbDict):
         status = False
-        tags = ['UPDATE_ACTION_1', 'UPDATE_ACTION_2', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'REC_STATUS']
+        tags = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2', 'REC_STATUS']
+
         self.__logger.debug("Comparing recDict %s == dbDict %s", recDict, dbDict)
         for tag in tags:            
             if(recDict[tag] != dbDict[tag]):

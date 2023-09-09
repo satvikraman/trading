@@ -3,6 +3,7 @@ import csv
 import datetime
 import os
 import sys
+import time
 import configparser
 import random, string
 import dotenv
@@ -28,6 +29,7 @@ class payTmMoney:
                 level = logging.CRITICAL
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
+            self.__retries = int(self.__config['PAYTM-MONEY']['NUM_RETRIES'])
 
             dotenv.load_dotenv('./.env')
             self.__api_key = os.environ.get('api_key', '')
@@ -78,72 +80,111 @@ class payTmMoney:
         self.__pm.set_read_access_token(self.__read_access_token)
 
         print(self.__pm.get_user_details())
+        return True
+
 
     def getLastTradedPrice(self, securityId, exchange='NSE'):
         pref = exchange + ':' + securityId + ':EQUITY'
-        self.__pm.get_live_market_data('LTP', pref)
+        ltp = None
+        status = False
+        retries = self.__retries
+        while not status and retries >= 0:
+            res = self.__pm.get_live_market_data('LTP', pref)
+            if res['status'] == 'success':
+                status = True
+                ltp = res['data']['last_price']
+            else:
+                retries -= 1
+                time.sleep(1)
+        return status, ltp
+
  
     def getHoldingsData(self):
-        res = self.__pm.user_holdings_data()
         resDictArr = []
-        for holding in res['data']['results']:
-            resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'QTY': holding['quantity']}
-            resDictArr.append(resDict)
-        return resDictArr
+        status = False
+        retries = self.__retries
+        while not status and retries >= 0:
+            res = self.__pm.user_holdings_data()
+            if res['status'] == 'success':
+                status = True
+                for holding in res['data']['results']:
+                    resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'QTY': holding['quantity']}
+                    resDictArr.append(resDict)
+            else:
+                retries -= 1
+                time.sleep(1)
+
+        return status, resDictArr
+
 
     def getSecurityPosition(self, securityId, product, exchange='NSE'):
         product = 'I' if product == 'INTRADAY' else 'C'
-        resPos = self.__pm.position_details(securityId, product, exchange)
-        qty = abs(resPos['traded_qty'])
-        return resPos['status'], qty
+        qty = None
+        status = False
+        retries = self.__retries
+        while not status and retries >= 0:
+            res = self.__pm.position_details(securityId, product, exchange)
+            if res['status'] == 'success':
+                qty = abs(res['traded_qty'])
+                status = True
+            else:
+                retries -= 1
+                time.sleep(1)
+        return status, qty
 
     def findOrderStatusAndQtyInfo(self, orderNo):
         status = False
+        qty = trdQty = None
         for resOrder in self.__orderBook['data']:
             if(('order_no' in resOrder) and (resOrder['order_no'] ==  orderNo)):
                 status = True
                 qty = resOrder['quantity']
                 trdQty = resOrder['traded_qty']
-                return status, qty, trdQty
-        return status, None, None
+                break
+        return status, qty, trdQty
 
     def getOrderBookUpdate(self):
-        try:
-            res = self.__orderBook = self.__pm.order_book()
-            self.__logger.debug(self.__orderBook['message'])
-            status = res['status'] == 'success'
-        except Exception as e:
-            self.__logger.error("Error : {}".format(e))
-            status = False
+        status = False
+        retries = self.__retries
+        while not status and retries >= 0:
+            try:
+                res = self.__orderBook = self.__pm.order_book()
+                self.__logger.debug(self.__orderBook['message'])
+                status = res['status'] == 'success'
+            except Exception as e:
+                retries -= 1
+                self.__logger.error("Error : {}".format(e))
+                time.sleep(1)
         return status
 
     def cancelOrder(self, orderNo):
+        status = False
+        message = orderNum = None
         for resOrder in self.__orderBook['data']:
-            if(('order_no' in resOrder) and (resOrder['order_no'] ==  orderNo)):
-                try:
-                    res = self.__pm.cancel_order('N', resOrder['txn_type'], resOrder['exchange'], resOrder['segment'], resOrder['product'], 
-                                        resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], 0, 
-                                        resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'])
-                    self.__logger.debug(self.__orderBook['message'])
-                    status = res['status']
-                    message = res['mesage']
-                    orderNum = res['data'][0]['order_no']
-                except Exception as e:
-                    status = 'exception'
-                    message = 'exception'
-                    orderNum = ''
-                    self.__logger.error("Error : {}".format(e))
-                    status = False
+            if(('order_no' in resOrder.keys()) and (resOrder['order_no'] ==  orderNo)):
+                retries = self.__retries
+                while not status and retries >= 0:
+                    try:
+                        res = self.__pm.cancel_order('N', resOrder['txn_type'], resOrder['exchange'], resOrder['segment'], resOrder['product'], 
+                                            resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], 0, 
+                                            resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'])
+                        if res['status'] == 'success':
+                            status = True
+                            orderNum = res['data'][0]['order_no']
+                        else:
+                            retries -= 1
+                            time.sleep(1)
+                        message = res['mesage']
+                        self.__logger.debug("Response : {}".format(res))
+                    except Exception as e:
+                        retries -= 1
+                        message = e
+                        self.__logger.error("Error : {}".format(e))
+                        time.sleep(1)
         return status, message, orderNum
 
     def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice):
-        res = {"status": 'FAIL'}
-        if(product != 'INTRADAY'):
-            self.__logger.error('product = %s != INTRADAY', product)
-            return res
-        else:
-            product = 'I'
-
+        product = 'I' if product == 'INTRADAY' else 'C'
         txnType = 'B' if buySell == 'BUY' else 'S'
 
         if(orderType == 'MKT'):
@@ -153,30 +194,36 @@ class payTmMoney:
         else:
             self.__logger.critical('Invalid order type %s', orderType)
 
-        try:
-            qty = 1
-
-            self.__logger.info('Placing order: nseSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', nseSym, securityId, 
-                                qty, limitPrice, txnType, product, orderType)
-            res = self.__pm.place_order(txn_type=txnType,
-                                        exchange="NSE",
-                                        segment="E",
-                                        product=product, 
-                                        security_id=securityId,
-                                        quantity=qty,
-                                        validity="DAY",
-                                        order_type=orderType,
-                                        price=price,
-                                        source="N",
-                                        off_mkt_flag=False)
-            status = res['status']
-            message = res['message']
-            orderNum = res['data'][0]['order_no']
-            self.__logger.debug("Response : {}".format(res))
-        except Exception as e:
-            status = 'exception'
-            message = 'exception'
-            orderNum = ''
-            self.__logger.error("Error : {}".format(e))
+        retries = self.__retries
+        status = False
+        message = orderNum = None
+        while not status and retries >= 0:
+            try:
+                self.__logger.info('Placing order: nseSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', nseSym, securityId, 
+                                    qty, limitPrice, txnType, product, orderType)
+                res = self.__pm.place_order(txn_type=txnType,
+                                            exchange="NSE",
+                                            segment="E",
+                                            product=product, 
+                                            security_id=securityId,
+                                            quantity=qty,
+                                            validity="DAY",
+                                            order_type=orderType,
+                                            price=price,
+                                            source="N",
+                                            off_mkt_flag=False)
+                if res['status'] == 'success':
+                    status = True
+                    orderNum = res['data'][0]['order_no']
+                else:
+                    retries -= 1
+                    time.sleep(1)
+                message = res['message']
+                self.__logger.debug("Response : {}".format(res))
+            except Exception as e:
+                retries -= 1
+                message = e
+                self.__logger.error("Error : {}".format(e))
+                time.sleep(1)
 
         return status, message, orderNum

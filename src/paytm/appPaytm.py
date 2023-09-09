@@ -12,6 +12,7 @@ from flask import Flask, request
 sys.path.append('./src/common')
 
 from payTmMoney import payTmMoney
+from payTmMoneyMock import payTmMoneyMock
 from persistence import persistence
 
 # Individual order Status transitions as
@@ -19,6 +20,9 @@ from persistence import persistence
 
 # At a security level (multiple orders for a security) the POS_HOLD_STATUS transitions as 
 # OPEN  --> POSITION --> CLOSE
+# + OPEN        -> There are open orders or more orders can be placed
+# + POSITION    -> All orders that could have been placed have been placed
+# + CLOSE       -> The order has been squared off
 
 # Reommendation Status also transitions as 
 # OPEN --> PARTIAL_CLOSE --> CLOSE
@@ -27,7 +31,7 @@ from persistence import persistence
 flask = Flask(__name__)
 
 class app():
-    def __init__(self, configFile, db=None):
+    def __init__(self, configFile, db=None, dryRun=False):
         if(os.path.isfile(configFile)):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
@@ -40,10 +44,15 @@ class app():
 
             self.__lock = threading.Lock()
             self.__persistence = persistence(configFile, db)
-            self.__payTmMoney = payTmMoney(configFile)
+
+            self.__dryRun = dryRun
+            if dryRun:
+                self.__payTmMoney = payTmMoneyMock(configFile)
+            else:
+                self.__payTmMoney = payTmMoney(configFile)
+            
             self.__timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
             self.__LtpDisFactor = float(self.__config['APP']['LTP_DISTANCE_FACTOR'])
-            self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
             self.__squareOff = False
             self.__core = [ {'NSE_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': '2'}, 
                             {'NSE_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': '35'}, 
@@ -97,6 +106,7 @@ class app():
 
     def setAmountPerOrder(self, maxAmount):
             self.__amountPerOrder = int(maxAmount)
+            dotenv.set_key('./.env', "max_amount_per_order", str(maxAmount))
 
 
     def openPayTmMoneySession(self):
@@ -104,8 +114,9 @@ class app():
 
     
     def getHoldingsData(self):
-        self.__holdings = self.__payTmMoney.getHoldingsData()
-        print(self.__holdings)
+        status, self.__holdings = self.__payTmMoney.getHoldingsData()
+        if not status:
+            self.__logger.error("getHoldingsData function returned error")
 
     
     def addNewRec(self, recDict):
@@ -136,7 +147,7 @@ class app():
         # Security ID of the stock 
         securityId = self.__payTmMoney.findSecurityCode(recDict['NSE_SYMBOL'])
 
-        recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'POS_HOLD_QTY': 0, 'POS_HOLD_STATUS': 'OPEN', 'MAX_INV': maxAmount, 'OVERFLOW_PROTECTION': Overflow, 
+        recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'POS_HOLD_QTY': 0, 'POS_HOLD_STATUS': 'OPEN', 'MAX_AMOUNT': maxAmount, 'OVERFLOW_PROTECTION': Overflow, 
                         'OVERFLOWN': False, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
         self.__lock.acquire()
         res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
@@ -146,12 +157,15 @@ class app():
         isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], 
                                                    date=recDict['REC_DATE'], time=recDict['REC_TIME'], recStatus=None)
         # Copy values from the input dict to the DB dict and then update the DB
-        for key in recDict.keys():
-            dbDict[key] = recDict[key]
-        self.__lock.acquire()
-        res = self.__persistence.updateDb(dbDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
-        self.__lock.release()
-
+        keys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2', 'REC_STATUS']
+        if isInDb:
+            for key in keys:
+                dbDict[key] = recDict[key]
+            self.__lock.acquire()
+            res = self.__persistence.updateDb(dbDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+            self.__lock.release()
+        else:
+            self.__logger.error("Rec = %s came for update, but was not found in PayTm DB", recDict)
 
     def __handleOverflow(self, orderType, qty, limitPrice, dbDict):
         # Total investment done so far
@@ -165,48 +179,37 @@ class app():
             else:
                 self.__logger.error("For stock %s order_no %s is still open. dbDict = %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'], dbDict)
         
-        if orderType == 'MKT':
-            cost = dbDict['CMP'] 
-            margin = self.__timesMargin
-        else: 
-            cost = limitPrice
-            margin = 1
+        cost = dbDict['CMP'] if orderType == 'MKT' else limitPrice
+        margin = self.__timesMargin if dbDict['STRATEGY'] == 'MARGIN' else 1
+        totInv /= margin
 
         overflow = False
-        if (totInv + (qty * cost / margin)) > dbDict['MAX_AMOUNT']:
+        if totInv + (qty * cost / margin) > dbDict['MAX_AMOUNT']:
             qty_ = int((dbDict['MAX_AMOUNT'] - totInv) * margin / cost)
             qty_ = max(qty_, 0)
             overflow = True
-            self.__logger.warning("Overflow limits set. Stock: %s, CMP: %f, MaxAmount: %f, TotInv: %f, orderType: %s, desiredQty: %d, cost: %f, allowedQty: %f, dbDict: %s", 
+            self.__logger.warning("Overflow limits set. Stock: %s, CMP: %.2f, MaxAmount: %.2f, TotInv: %.2f, orderType: %s, desiredQty: %d, cost: %.2f, allowedQty: %.2f, dbDict: %s", 
                                   dbDict['NSE_SYMBOL'], dbDict['CMP'], dbDict['MAX_AMOUNT'], totInv, orderType, qty, cost, qty_, dbDict)
+        else:
+            qty_ = qty
+            overflow = False
         return qty_, overflow
 
     def __cancelOrder(self, dbDict):
         status = True
         for orderDict in dbDict['OPEN_ORDERS']:
             if orderDict['ORDER_STATUS'] == 'OPEN':
-                retries = self.__numRetries
-                status = False
-                while not status and retries >= 0:
-                    orderStatus, orderMessage, orderNum = self.__payTmMoney.cancelOrder(orderDict['ORDER_NO'])
-                    if orderStatus == 'success':
-                        status = True
-                        timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
-                        orderDict['ORDER_STATUS'] = 'CLOSE'
-                        orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': orderStatus, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
-                        self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
-                    else:
-                        retries -= 1
-                        time.sleep(1)
+                orderStatus, orderMessage, orderNum = self.__payTmMoney.cancelOrder(orderDict['ORDER_NO'])
+                if orderStatus:
+                    status = True
+                    timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
+                    orderDict['ORDER_STATUS'] = 'CLOSE'
+                    orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': orderStatus, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
+                    self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
         return status
 
 
     def __openPosition(self, dbDict):
-        # If either all orders are closed or if all orders are placed then return
-        if dbDict['POS_HOLD_STATUS'] == 'CLOSE':
-            self.__logger.debug("POS_HOLD_STATUS is closed, so not ordering for %s", dbDict)
-            return True
-        
         if dbDict['OVERFLOWN']:
             self.__logger.debug("Max investment limit reached, so no ordering for %s", dbDict)
             return True
@@ -237,7 +240,7 @@ class app():
             if tradedQty == 0:
                 qty = totalQty * 1 / 10
                 orderType = 'MKT'
-                limitPrice = 0
+                limitPrice = 0 if not self.__dryRun else dbDict['CMP']
             elif (totalQty * 1 / 10) == tradedQty:
                 qty = totalQty * 2 / 10
                 orderType = 'LMT'
@@ -265,55 +268,44 @@ class app():
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
-            ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
-            canOrder = False
-            if dbDict['BUY_SELL'] == 'BUY':
-                if limitPrice * self.__LtpDisFactor >= ltp:
-                    canOrder = True
+            status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
+            if status:
+                canOrder = False
+                if dbDict['BUY_SELL'] == 'BUY':
+                    if limitPrice * self.__LtpDisFactor >= ltp:
+                        canOrder = True
+                else:
+                    if limitPrice <= ltp * self.__LtpDisFactor:
+                        canOrder = True
+                if not canOrder:
+                    self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %d Limit = %d", dbDict['NSE_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
+                    return True
             else:
-                if limitPrice <= ltp * self.__LtpDisFactor:
-                    canOrder = True
-            if not canOrder:
-                self.__logger.debug("Limit & LTP not near enough. BUY_SELL = %s LTP = %d Limit = %d", dbDict['BUY_SELL'], ltp, limitPrice)
+                self.__logger.error("Unable to fetch LTP. Stock = %s ", dbDict['NSE_SYMBOL'])
                 return True
-
         trigger = 0
 
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
 
         # If the order fails -> status will be False. Retry the order
-        status = False
-        retries = self.__numRetries
-        while not status and retries >= 0:
-            self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, product=%s, orderType=%s, limit=%.2f", 
-                               dbDict['NSE_SYMBOL'], qty, dbDict['BUY_SELL'], product, orderType, limitPrice)
-            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=qty, buySell=dbDict['BUY_SELL'], 
-                                                                               product=product, orderType=orderType, limitPrice=limitPrice, triggerPrice=0)
-            if orderStatus == 'success':
-                status = True
-            else:
-                retries -= 1
-                time.sleep(1)
+        self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, product=%s, orderType=%s, limit=%.2f", 
+                            dbDict['NSE_SYMBOL'], qty, dbDict['BUY_SELL'], product, orderType, limitPrice)
+        orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=qty, buySell=dbDict['BUY_SELL'], 
+                                                                            product=product, orderType=orderType, limitPrice=limitPrice, triggerPrice=0)
 
-        if status:
+        if orderStatus:
             # If the order failed for some reason directly transition it to 'CLOSE' state
             # It is a limit order, so start it as an 'OPEN' order
             timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
             orderDict = {'BUY_SELL': dbDict['BUY_SELL'], 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': qty, 'TRADED_QTY': 0, 
                         'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr, 'OVERFLOW_PROTECTION': overflow}
             dbDict['OPEN_ORDERS'].append(orderDict)
-            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'], recStatus=dbDict['REC_STATUS'])
+            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
 
 
     def __closePosition(self, dbDict, partial=False):
-        retries = self.__numRetries
-        status = ''
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
-        while status != 'success' and retries >= 0:
-            status, pos = self.__payTmMoney.getSecurityPosition(dbDict['SECURITY_ID'], product)
-            if status != 'success':
-                retries -= 1
-                time.sleep(1)
+        status, pos = self.__payTmMoney.getSecurityPosition(dbDict['SECURITY_ID'], product)
 
         # Also get holdings if it is not an intraday order
         if dbDict['STRATEGY'] != 'MARGIN':
@@ -338,27 +330,17 @@ class app():
 
             self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], pos, buySell, product, orderType)
             
-            status = False
-            # If the order fails -> status will be False. Retry the order
-            retries = self.__numRetries
-            while not status and retries >= 0:
-                orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=pos, buySell=buySell, product='INTRADAY', 
-                                                                                   orderType='MKT', limitPrice=0, triggerPrice=0)
-                if orderStatus == 'success':
-                    status = True
-                else:
-                    retries -= 1
-                    time.sleep(1)
+            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=pos, buySell=buySell, product='INTRADAY', 
+                                                                                orderType='MKT', limitPrice=0, triggerPrice=0)
 
-            if not status:
+            if not orderStatus:
                 self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], pos, buySell, 'INTRADAY', 'MKT')
             
             timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
-            orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': pos, 'TRADED_QTY': pos, 
-                         'ORDER_NO': orderNum, 'ORDER_STATUS': orderStatus, 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
+            orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': pos, 'TRADED_QTY': 0, 
+                         'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
             dbDict['CLOSE_ORDERS'].append(orderDict)
-            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], 
-                                        time=dbDict['REC_TIME'], recStatus=None)
+            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
         else:
             self.__logger.critical("Unable to find order %s", dbDict['order_no'])
         
@@ -368,20 +350,14 @@ class app():
     # This function updates the order status
     def __updateOrderStatus(self, marketClose):
         # Get the latest update on orders from Paytm
-        status = False
-        retries = self.__numRetries
-        while not status and retries >= 0:
-            status = self.__payTmMoney.getOrderBookUpdate()
-            if not status:
-                retries -= 1
-                time.sleep(1)
+        status = self.__payTmMoney.getOrderBookUpdate()
 
         if status:
             # From when you get data from DB and until you update it, acquire the lock
             self.__lock.acquire()
             # Get all recommendations from DB where the POS_HOLD_STATUS is 'OPEN'. This implies there may be an order thats being executed
             # Check if we can update any order status based on the order book details from above
-            dbDicts = self.__persistence.getDb(posHoldStatus='OPEN')
+            dbDicts = self.__persistence.getDb(posHoldStatus='!CLOSE')
             self.__logger.debug("Num record = %d dbDicts = %s", len(dbDicts), dbDicts)
 
             # Loop through all recommendations and update order status
@@ -425,14 +401,13 @@ class app():
 
                 if totalOpenQty > 0 and totalOpenQty == totalCloseQty:
                     dbDict['POS_HOLD_STATUS'] = 'CLOSE'
-                elif totalCloseQty == 0 and totalOpenQty == dbDict['QTY']:
+                elif totalCloseQty == 0 and totalOpenQty == dbDict['QTY'] or dbDict['OVERFLOWN']:
                     dbDict['POS_HOLD_STATUS'] = 'POSITION'
                 else:
                     dbDict['POS_HOLD_STATUS'] = 'OPEN'
 
                 dbDict['POS_HOLD_QTY'] = totalOpenQty - totalCloseQty
-                self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], 
-                                            time=dbDict['REC_TIME'])
+                self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
             self.__lock.release()
 
 
@@ -558,17 +533,14 @@ class app():
 
 
     def runPeriodicChecks(self, squareOffMinus15, marketClose):
-        self.__updateOrderStatus(marketClose)
-
         if squareOffMinus15:
             self.__squareOff = True
-            self.__closeAllOpenIntraDayPositions()
             self.__updateOrderStatus(marketClose)
+            self.__closeAllOpenIntraDayPositions()
             
         # All data is now in DB. Reconcile recommendation and order status
-        self.__reconcileMarginRecs()
         self.__updateOrderStatus(marketClose)
-
+        self.__reconcileMarginRecs()
 
 trade = app('./payTmMoney.ini')
 
@@ -603,8 +575,6 @@ def update_rec():
 def max_amount_per_order():
     args = request.args
     maxAmount = args.get('max_amount', default=10000, type=int)
-    print("Setting max_amount = ", maxAmount)
-    dotenv.set_key('./.env', "max_amount_per_order", str(maxAmount))
     trade.setAmountPerOrder(maxAmount)
     return "", 201
 
