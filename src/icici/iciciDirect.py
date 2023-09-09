@@ -137,22 +137,46 @@ class iciciDirect():
         self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
 
-    def __formatTblRowToDict(self, tblRowCols):
+    def __formatiCLICK_2_INVESTTblRowToDict(self, tblRowCols):
+        strategiesToInvest = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'NANO NIVESH', 'QUANT', 'TOP PICKS']
+        rowDict = None
         self.__logger.debug('==== Format Table Row To Dictionary ====')
         for i in range(9):
             self.__logger.debug('Row data to format. Cell %d \n%s', i, tblRowCols[i].text)
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatStockCell(tblRowCols[0].text)
-        cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
-        cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
-        cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
-        cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
-        cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
-        cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
-        cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
-        cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
-        rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
-        self.__logger.debug('Generated dictionary %s', rowDict)
+        if cell1Dict['STRATEGY'].upper() in strategiesToInvest:
+            cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
+            cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
+            cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
+            cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
+            cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
+            cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
+            cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
+            cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
+            rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
+            self.__logger.debug('Generated dictionary %s', rowDict)
+        return rowDict
+
+    def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols):
+        strategiesToInvest = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
+        rowDict = None
+        self.__logger.debug('==== Format Table Row To Dictionary ====')
+        for i in range(9):
+            self.__logger.debug('Row data to format. Cell %d \n%s', i, tblRowCols[i].text)
+        # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
+        cell1Dict = self.__formatStockCell(tblRowCols[0].text)
+        if cell1Dict['STRATEGY'] in strategiesToInvest:
+            cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
+            cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
+            cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
+            cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
+            cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
+            cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
+            cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
+            cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
+            rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
+            self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
 
     def browseICICIDirect(self):
@@ -168,7 +192,7 @@ class iciciDirect():
         self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
         recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
         # ALL - Everything; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
-        recommendationType.select_by_value("MMNT")
+        recommendationType.select_by_value("ALL")
 
         # Click on view to see the results
         viewBtn = menu3.find_element_by_id("btnview")
@@ -186,23 +210,23 @@ class iciciDirect():
             # If we find a row with 10 entries
             if(len(tblRowCols) == 10):
                 rowDict = {}
-                rowDict = self.__formatTblRowToDict(tblRowCols)
-
-                # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
-                # i.e. it has been struck-through, it means that recommendation has been dicarded
-                if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
-                    rowDict['REC_STATUS'] = 'CLOSE'
-                # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
-                # i.e. the background colour has been changed to grey it has been closed
-                elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
-                    rowDict['REC_STATUS'] = 'CLOSE'
-                elif(self.__halfCloseRec(rowDict['UPDATE_ACTION_1'])):
-                    rowDict['REC_STATUS'] = 'PARTIAL_CLOSE'
-                elif(self.__closeRec(rowDict['UPDATE_ACTION_1'], rowDict['UPDATE_ACTION_2'])):
-                    rowDict["REC_STATUS"] = 'CLOSE'
-                else:
-                    rowDict['REC_STATUS'] = 'OPEN'
-                tblRowsArrOfDict.append(rowDict)
+                rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols)
+                if rowDict != None:
+                    # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                    # i.e. it has been struck-through, it means that recommendation has been dicarded
+                    if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
+                        rowDict['REC_STATUS'] = 'CLOSE'
+                    # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                    # i.e. the background colour has been changed to grey it has been closed
+                    elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
+                        rowDict['REC_STATUS'] = 'CLOSE'
+                    elif(self.__halfCloseRec(rowDict['UPDATE_ACTION_1'])):
+                        rowDict['REC_STATUS'] = 'PARTIAL_CLOSE'
+                    elif(self.__closeRec(rowDict['UPDATE_ACTION_1'], rowDict['UPDATE_ACTION_2'])):
+                        rowDict["REC_STATUS"] = 'CLOSE'
+                    else:
+                        rowDict['REC_STATUS'] = 'OPEN'
+                    tblRowsArrOfDict.append(rowDict)
         return tblRowsArrOfDict
 
     def closeBrowser(self):  

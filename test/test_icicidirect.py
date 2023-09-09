@@ -1,5 +1,5 @@
 import sys
-sys.path.append('./src')
+sys.path.append('./src/icici')
 import configparser
 import os
 import logging
@@ -30,9 +30,12 @@ def setup():
     ['LARSEN AND TOUBRO LIMITED  \n(LARTOU) \nMARGIN - SELL', '2646.20', '2,654.50 - 2,655.00\n(25-Aug-2023 10:09)', '2,640.00', '2,664.00', '-  , -  ', '2,643.30', '-  ', 'Book Full Profit : 25-Aug-2023 10:23   ', 'Margin Sell MarginPLUS Sell  '],
     ['DIVIS LABORATORIES LIMITED  \n(DIVLAB) \nMARGIN - SELL', '3633.25', '3,637.00 - 3,639.00\n(25-Aug-2023 09:40)', '3,604.00', '3,656.00', '-  , -  ', '3,619.55', '-  ', 'Book Full Profit : 25-Aug-2023 10:22   ', 'Margin Sell MarginPLUS Sell  '],
     ['EIH LIMITED  \n(EIHLIM) \nMARGIN - BUY', '234.85', '241.40 - 242.00\n(25-Aug-2023 09:25)', '246.00', '239.40', '-  , -  ', '-  ', '241.15', 'Exit : 25-Aug-2023 10:15   ', 'Margin Buy MarginPLUS Buy  '],
-    ['BIRLASOFT LIMITED  \n(KPITEC) \nMARGIN - BUY', '485.75', '482.50 - 483.10\n(25-Aug-2023 09:23)', '487.70', '479.70', '-  , -  ', '485.00', '-  ', 'Book Full Profit : 25-Aug-2023 09:42   ', 'Margin Buy MarginPLUS Buy  ']
+    ['BIRLASOFT LIMITED  \n(KPITEC) \nMARGIN - BUY', '485.75', '482.50 - 483.10\n(25-Aug-2023 09:23)', '487.70', '479.70', '-  , -  ', '485.00', '-  ', 'Book Full Profit : 25-Aug-2023 09:42   ', 'Margin Buy MarginPLUS Buy  '],
+    ['BHARAT HEAVY ELECTRICALS LTD  \n(BHEL) \nMOMENTUM PICK - BUY', '145.30', '141.00 - 144.00\n(08-Sep-2023 13:54)', '156.00', '137.00', '-  , -  ', '-  	', '-  ', ' ', ' '],
+    ['TATA MOTORS LIMITED  \n(TATMOT) \nGLADIATOR STOCKS - BUY', '627.25', '605.00 - 622.00\n(08-Sep-2023 10:55)', '696.00', '578.00', '-  , -  ', '-  	', '-  ', ' ', ' '],
+    ['HAVELLS INDIA LIMITED  \n(HAVIND) \nQUANT PICKS - BUY', '1,450.25', '1,310.00 - 1,330.00\n(23-Aug-2023 10:07)', '1,440.00', '1,245.00', '1,420.00   , 50.00 %	', '-  	', '-  ', 'Book Partial Profit : 08-Sep-2023 09:34   ', ' ']
     ]
-    moduleHdl = iciciDirect.iciciDirect('./application.ini')
+    moduleHdl = iciciDirect.iciciDirect('./iciciDirect.ini')
     return moduleHdl, marginData
 
 def test_loginAndScrape(setup):
@@ -106,6 +109,28 @@ def test_formatStockCell(setup):
     assert cellDict['STRATEGY'] == 'MARGIN'
     assert cellDict['BUY_SELL'] == 'BUY'
 
+    cellDict = iciciDirect._iciciDirect__formatStockCell(marginData[9][0])
+    assert cellDict['STOCK'] == "BHARAT HEAVY ELECTRICALS LTD"
+    assert cellDict['ICICI_SYMBOL'] == 'BHEL'
+    assert cellDict['NSE_SYMBOL'] == 'BHEL'
+    assert cellDict['STRATEGY'] == 'MOMENTUM PICK'
+    assert cellDict['BUY_SELL'] == 'BUY'
+
+    cellDict = iciciDirect._iciciDirect__formatStockCell(marginData[10][0])
+    assert cellDict['STOCK'] == "TATA MOTORS LIMITED"
+    assert cellDict['ICICI_SYMBOL'] == 'TATMOT'
+    assert cellDict['NSE_SYMBOL'] == 'TATAMOTORS'
+    assert cellDict['STRATEGY'] == 'GLADIATOR STOCKS'
+    assert cellDict['BUY_SELL'] == 'BUY'
+
+    cellDict = iciciDirect._iciciDirect__formatStockCell(marginData[11][0])
+    assert cellDict['STOCK'] == "HAVELLS INDIA LIMITED"
+    assert cellDict['ICICI_SYMBOL'] == 'HAVIND'
+    assert cellDict['NSE_SYMBOL'] == 'HAVELLS'
+    assert cellDict['STRATEGY'] == 'QUANT PICKS'
+    assert cellDict['BUY_SELL'] == 'BUY'
+
+
 def test_formatPriceCells(setup):
     iciciDirect, marginData = setup
     tag = 'CMP'
@@ -173,9 +198,20 @@ def test_formatPartProfitCell(setup):
     assert cellDict['PART_PROFIT_PRICE'] == '2120.00'
     assert cellDict['PART_PROFIT_PERC'] == '50.00'
 
+class cell():
+    def __init__(self, str):
+        self.text = str
+
+def convArr2ArrofCell(list):
+    newList = []
+    for element in list:
+        newList.append(cell(element))
+    return newList
+
 def test_formatTblRowToDict(setup):
     iciciDirect, marginData = setup
-    cellDict = iciciDirect._iciciDirect__formatTblRowToDict(marginData[0])
+    tblRow = convArr2ArrofCell(marginData[0])
+    cellDict = iciciDirect._iciciDirect__formatiCLICK_2_GAINTblRowToDict(tblRow)
     assert cellDict['STOCK'] == "PVR INOX LIMITED"
     assert cellDict['ICICI_SYMBOL'] == 'PVRLIM'
     assert cellDict['NSE_SYMBOL'] == 'PVRINOX'
@@ -197,7 +233,8 @@ def test_formatTblRowToDict(setup):
     assert cellDict['UPDATE_ACTION_2'] == ''
     assert cellDict['UPDATE_TIME_2'] == ''
 
-    cellDict = iciciDirect._iciciDirect__formatTblRowToDict(marginData[3])
+    tblRow = convArr2ArrofCell(marginData[3])
+    cellDict = iciciDirect._iciciDirect__formatiCLICK_2_GAINTblRowToDict(tblRow)
     assert cellDict['STOCK'] == "HERO MOTOCORP LIMITED"
     assert cellDict['ICICI_SYMBOL'] == 'HERHON'
     assert cellDict['NSE_SYMBOL'] == 'HEROMOTOCO'
@@ -219,7 +256,8 @@ def test_formatTblRowToDict(setup):
     assert cellDict['UPDATE_ACTION_2'] == ''
     assert cellDict['UPDATE_TIME_2'] == ''
 
-    cellDict = iciciDirect._iciciDirect__formatTblRowToDict(marginData[4])
+    tblRow = convArr2ArrofCell(marginData[4])
+    cellDict = iciciDirect._iciciDirect__formatiCLICK_2_GAINTblRowToDict(tblRow)
     assert cellDict['STOCK'] == "JINDAL STEEL & POWER LIMITED"
     assert cellDict['ICICI_SYMBOL'] == 'JINSP'
     assert cellDict['NSE_SYMBOL'] == 'JINDALSTEL'
@@ -241,3 +279,71 @@ def test_formatTblRowToDict(setup):
     assert cellDict['UPDATE_ACTION_2'] == ''
     assert cellDict['UPDATE_TIME_2'] == ''
 
+    tblRow = convArr2ArrofCell(marginData[9])
+    cellDict = iciciDirect._iciciDirect__formatiCLICK_2_GAINTblRowToDict(tblRow)
+    assert cellDict['STOCK'] == "BHARAT HEAVY ELECTRICALS LTD"
+    assert cellDict['ICICI_SYMBOL'] == 'BHEL'
+    assert cellDict['NSE_SYMBOL'] == 'BHEL'
+    assert cellDict['STRATEGY'] == 'MOMENTUM PICK'
+    assert cellDict['BUY_SELL'] == 'BUY'
+    assert cellDict['CMP'] == '145.30'
+    assert cellDict['LOW_REC_PRICE'] == '141.00'
+    assert cellDict['HIGH_REC_PRICE'] == '144.00'
+    assert cellDict['REC_DATE'] == '08-Sep-2023'
+    assert cellDict['REC_TIME'] == '13:54'
+    assert cellDict['TARGET'] == '156.00'
+    assert cellDict["STOP_LOSS"] == '137.00'
+    assert cellDict['PART_PROFIT_PRICE'] == ''
+    assert cellDict['PART_PROFIT_PERC'] == ''
+    assert cellDict['FINAL_PROFIT_PRICE'] == ''
+    assert cellDict['EXIT_PRICE'] == ''
+    assert cellDict['UPDATE_ACTION_1'] == ''
+    assert cellDict['UPDATE_TIME_1'] == ''
+    assert cellDict['UPDATE_ACTION_2'] == ''
+    assert cellDict['UPDATE_TIME_2'] == ''
+
+    tblRow = convArr2ArrofCell(marginData[10])
+    cellDict = iciciDirect._iciciDirect__formatiCLICK_2_GAINTblRowToDict(tblRow)
+    assert cellDict['STOCK'] == "TATA MOTORS LIMITED"
+    assert cellDict['ICICI_SYMBOL'] == 'TATMOT'
+    assert cellDict['NSE_SYMBOL'] == 'TATAMOTORS'
+    assert cellDict['STRATEGY'] == 'GLADIATOR STOCKS'
+    assert cellDict['BUY_SELL'] == 'BUY'
+    assert cellDict['CMP'] == '627.25'
+    assert cellDict['LOW_REC_PRICE'] == '605.00'
+    assert cellDict['HIGH_REC_PRICE'] == '622.00'
+    assert cellDict['REC_DATE'] == '08-Sep-2023'
+    assert cellDict['REC_TIME'] == '10:55'
+    assert cellDict['TARGET'] == '696.00'
+    assert cellDict["STOP_LOSS"] == '578.00'
+    assert cellDict['PART_PROFIT_PRICE'] == ''
+    assert cellDict['PART_PROFIT_PERC'] == ''
+    assert cellDict['FINAL_PROFIT_PRICE'] == ''
+    assert cellDict['EXIT_PRICE'] == ''
+    assert cellDict['UPDATE_ACTION_1'] == ''
+    assert cellDict['UPDATE_TIME_1'] == ''
+    assert cellDict['UPDATE_ACTION_2'] == ''
+    assert cellDict['UPDATE_TIME_2'] == ''
+
+    tblRow = convArr2ArrofCell(marginData[11])
+    cellDict = iciciDirect._iciciDirect__formatiCLICK_2_GAINTblRowToDict(tblRow)
+    assert cellDict['STOCK'] == "HAVELLS INDIA LIMITED"
+    assert cellDict['ICICI_SYMBOL'] == 'HAVIND'
+    assert cellDict['NSE_SYMBOL'] == 'HAVELLS'
+    assert cellDict['STRATEGY'] == 'QUANT PICKS'
+    assert cellDict['BUY_SELL'] == 'BUY'
+    assert cellDict['CMP'] == '1450.25'
+    assert cellDict['LOW_REC_PRICE'] == '1310.00'
+    assert cellDict['HIGH_REC_PRICE'] == '1330.00'
+    assert cellDict['REC_DATE'] == '23-Aug-2023'
+    assert cellDict['REC_TIME'] == '10:07'
+    assert cellDict['TARGET'] == '1440.00'
+    assert cellDict["STOP_LOSS"] == '1245.00'
+    assert cellDict['PART_PROFIT_PRICE'] == '1420.00'
+    assert cellDict['PART_PROFIT_PERC'] == '50.00'
+    assert cellDict['FINAL_PROFIT_PRICE'] == ''
+    assert cellDict['EXIT_PRICE'] == ''
+    assert cellDict['UPDATE_ACTION_1'] == 'Book Partial Profit'
+    assert cellDict['UPDATE_TIME_1'] == '08-Sep-2023 09:34'
+    assert cellDict['UPDATE_ACTION_2'] == ''
+    assert cellDict['UPDATE_TIME_2'] == ''
