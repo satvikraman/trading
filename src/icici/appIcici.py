@@ -1,10 +1,12 @@
 import logging
 import os
 import datetime
+import sys
 import time
 import configparser
 import requests
 
+sys.path.append('./src/common')
 from iciciDirect import iciciDirect
 from persistence import persistence
 
@@ -56,13 +58,12 @@ class app():
                 res = requests.post(url, json=recDict)
             elif endPoint == 'UPDATE_REC':
                 res = requests.put(url, json=recDict)
-            
-            if res.status_code == 200:
+            if int(res.status_code / 100) == 2:
                 status = True
             else:
                 self.__logger.error("Unable to send request to PayTm service. Attempt %d of %d: %s", self.__numRetries-retries, self.__numRetries, recDict)
                 retries -= 1
-
+        return status
 
     def __hasRecChanged(self, recDict, dbDict):
         status = False
@@ -71,7 +72,7 @@ class app():
         self.__logger.debug("Comparing recDict %s == dbDict %s", recDict, dbDict)
         for tag in tags:            
             if(recDict[tag] != dbDict[tag]):
-                self.__logger.debug("Recommendation for %s changed. Tag %s changed from %s to %s\n%s", recDict['NSE_SYMBOL'], tag, dbDict[tag], recDict[tag])
+                self.__logger.debug("Recommendation for %s changed. Tag %s changed from %s to %s", recDict['NSE_SYMBOL'], tag, dbDict[tag], recDict[tag])
                 dbDict[tag] = recDict[tag]
                 status = True
                 
@@ -87,54 +88,71 @@ class app():
         for dbDict in dbDicts:
             found = False
             for recDict in recDicts:
-                if dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['REC_DATE'] == recDict['REC_DATE'] and dbDict['REC_TIME'] == recDict['REC_TIME']:
+                if dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['STRATEGY'] == recDict['STRATEGY'] and dbDict['REC_DATE'] == recDict['REC_DATE'] and dbDict['REC_TIME'] == recDict['REC_TIME']:
                     found = True
                     break
 
             # Close the recommendation that was not found
             if not found:
                 dbDict['REC_STATUS'] = 'CLOSE'
+                status = self.__send2PayTm('UPDATE_REC', dbDict)
+                dbDict['ACK'] = 'OK' if status else 'NOT_OK'
                 self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'], recStatus='OPEN')
-                self.__send2PayTm('UPDATE_REC', dbDict)
 
 
     def __updateRecStatus(self, recDict):
         # Find open recommendations matching the condition in DB
         self.__logger.debug("updateRecStatus: Finding in DB nseSym=%s, strategy=%s, date=%s, time=%s, recStatus=%s", 
                             recDict['NSE_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'], 'None')
-        isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], 
-                                                   date=recDict['REC_DATE'], time=recDict['REC_TIME'], recStatus=None)
+        isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
         self.__logger.debug("Find results: status = %s & dbDict = %s", isInDb, dbDict)
 
-        # If no open recommendation found in DB and if the current recommendation is open, then
-        # Insert the order in DB
-        if(not isInDb):
-            res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
-            if res:
-                if(recDict['REC_STATUS'] != 'CLOSE'):
-                    self.__send2PayTm('NEW_REC', recDict)
-                    self.__logger.info('New Recommendation %s', recDict)
-                else:
-                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
-        elif(isInDb):
+        # If no recommendation found in DB and if the current recommendation is not close, then
+        # Insert the recommendation in DB
+        if not isInDb:
+            if(recDict['REC_STATUS'] != 'CLOSE'):
+                status = self.__send2PayTm('NEW_REC', recDict)
+                recDict['ACK'] = 'OK' if status else 'NOT_OK'
+                res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+                self.__logger.info('New Recommendation %s', recDict)
+            else:
+                self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
+        elif isInDb:
             # If the recommendation has changed then
             # Update Db irrespective of the recStatus
             isChange, newDict = self.__hasRecChanged(recDict, dbDict)
-            if(isChange):
-                self.__persistence.updateDb(newDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'], recStatus=None)
-                self.__send2PayTm('UPDATE_REC', recDict)
+            if isChange:
+                status = self.__send2PayTm('UPDATE_REC', recDict)
+                newDict['ACK'] = 'OK' if status else 'NOT_OK'
+                self.__persistence.updateDb(newDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
             #else: Nothing to be done
 
 
+    def __sendNonAckedRecs(self):
+        # Find open recommendations matching the condition in DB
+        self.__logger.debug("__sendNonAckedRecs: Finding in DB ACK=False")
+        dbDicts = self.__persistence.getDb(ack='!OK')
+        self.__logger.debug("Find results: dbDict = %s", dbDicts)
+
+        for dbDict in dbDicts:
+            status = self.__send2PayTm('UPDATE_REC', dbDict)
+            dbDict['ACK'] = 'OK' if status else 'NOT_OK'
+            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+
+
     def runPeriodicChecks(self):
+        # Send all recommendations in DB that haven't be ACK'ed
+        self.__sendNonAckedRecs()
+
         # Scrape the recommendations scraped from ICICI Direct
         recDicts = self.__iciciDirect.scrapeMarginData() 
         
-        # Upate the recommendations scraped from ICICI Direct
         self.__closeMarginRecsNotUpdated(recDicts)
 
+        # Upate the recommendations scraped from ICICI Direct
         for recDict in recDicts:
             self.__updateRecStatus(recDict)
+
 
     def openIciciSession(self):
         self.__iciciDirect.browseICICIDirect()

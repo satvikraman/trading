@@ -41,6 +41,11 @@ class payTmMoneyMock:
         self.__incompleteOrders = enable
         self.__incompleteOrderFraction = fraction
 
+    def cheatAddHoldingsData(self, nseSym, securityId, qty):
+        if nseSym == None and securityId == None and qty == 0:
+            self.__stockDictArr.clear()
+        self.__stockDictArr.append({'NSE_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'QTY': qty})
+
     def findSecurityCode(self, nseSym):
         securityID = None
         with(open(self.__config['PAYTM-MONEY']['SECURITYID_DATASET'], 'r', encoding="utf-8-sig")) as paytmcsv:

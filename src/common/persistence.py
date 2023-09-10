@@ -59,7 +59,7 @@ class persistence:
             
         return query
 
-    def __formQuery(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None):
+    def __formQuery(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None, ack=None):
         query = self.__query.noop()
         if(nseSym != None):
             #query = (where('NSE_SYMBOL') == nseSym)
@@ -79,11 +79,13 @@ class persistence:
         if(posHoldStatus != None):
             #query = query & (where('POS_HOLD_STATUS') == posHoldStatus)
             query = query & self.__formSubQuery('POS_HOLD_STATUS', posHoldStatus)
+        if(ack != None):
+            query = query & self.__formSubQuery('ACK', ack)
         return query
 
-    def getDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None):
+    def getDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None, ack=None):
         dictArr = [{}]
-        query = self.__formQuery(nseSym, strategy, date, time, recStatus, posHoldStatus)
+        query = self.__formQuery(nseSym, strategy, date, time, recStatus, posHoldStatus, ack)
         if(query != None):
             self.__acquireLock()
             dictArr = self.__db.search(query)
@@ -91,24 +93,29 @@ class persistence:
             return dictArr
 
     def insertDb(self, dict, nseSym=None, strategy=None, date=None, time=None):
+        status = False
         found, _ = self.isInDb(nseSym, strategy, date, time)
         if(not found and dict):
             self.__acquireLock()
             res = self.__db.insert(dict)
             self.__releaseLock()
-            if res <= 0:
+            if res > 0:
+                status = True
+            else:
                 self.__logger.critical("Unable to insert record in DB: %s", dict)
-            return (res > 0)
         else:
             self.__logger.error("Record already in DB. Can't insert: %s", dict)
-        return False
+        return status
         
     def updateDb(self, dict, nseSym=None, strategy=None, date=None, time=None, recStatus=None):
+        status = False
         query = self.__formQuery(nseSym, strategy, date, time, recStatus)
         if(query != None):
             self.__acquireLock()
-            self.__db.update(dict, query)
+            res = self.__db.update(dict, query)
             self.__releaseLock()
+            status = True if len(res) > 0 else False
+        return status
     
     def removeFromDb(self, nseSym=None, strategy=None, date=None, time=None):
         query = self.__formQuery(nseSym, strategy, date, time, recStatus=None)

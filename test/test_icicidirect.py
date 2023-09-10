@@ -20,6 +20,16 @@ if(os.path.isfile(configFile)):
     logging.getLogger('').addHandler(consoleHandler)
     logging.getLogger('').addHandler(fileHandler)
 
+class cell():
+    def __init__(self, str):
+        self.text = str
+
+def convArr2ArrofCell(list):
+    newList = []
+    for element in list:
+        newList.append(cell(element))
+    return newList
+
 @pytest.fixture
 def setup():
     marginData = [['PVR INOX LIMITED  \n(PVRLIM) \nMARGIN - BUY', '1737.75', '1,756.00 - 1,758.00\n(25-Aug-2023 12:33)', '1,778.00', '1,744.80', '-  , -  ', '-  ', '-  ', 'SLTP : 25-Aug-2023 13:02   ', 'Margin Buy MarginPLUS Buy  '],
@@ -197,16 +207,6 @@ def test_formatPartProfitCell(setup):
     cellDict = iciciDirect._iciciDirect__formatPartProfitCell('2,120.00   , 50.00 %')
     assert cellDict['PART_PROFIT_PRICE'] == '2120.00'
     assert cellDict['PART_PROFIT_PERC'] == '50.00'
-
-class cell():
-    def __init__(self, str):
-        self.text = str
-
-def convArr2ArrofCell(list):
-    newList = []
-    for element in list:
-        newList.append(cell(element))
-    return newList
 
 def test_formatTblRowToDict(setup):
     iciciDirect, marginData = setup

@@ -1,12 +1,13 @@
 import sys
 sys.path.append('./src/icici')
 import configparser
+import datetime
 import os
 import logging
 import pytest
 
 from appIcici import app
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 configFile = './application.ini'
 if(os.path.isfile(configFile)):
@@ -21,80 +22,80 @@ if(os.path.isfile(configFile)):
     logging.getLogger('').addHandler(consoleHandler)
     logging.getLogger('').addHandler(fileHandler)
 
-@pytest.fixture
-def setup():
-    marginData = [
-        ['PVR INOX LIMITED  \n(PVRLIM) \nMARGIN - BUY', '1737.75', '1,756.00 - 1,758.00\n(25-Aug-2023 12:33)', '1,778.00', '1,744.80', '-  , -  ', '-  ', '-  ', ' ', 'Margin Buy MarginPLUS Buy  '],
-        ['PVR INOX LIMITED  \n(PVRLIM) \nMARGIN - BUY', '1737.75', '1,756.00 - 1,758.00\n(25-Aug-2023 12:33)', '1,778.00', '1,744.80', '-  , -  ', '-  ', '-  ', 'SLTP : 25-Aug-2023 13:02   ', 'Margin Buy MarginPLUS Buy  '],
-    ]
-    
-    moduleHdl = app('./application.ini', './test/testTrade.json')
-    return moduleHdl, marginData
 
-class cell():
-    def __init__(self, str):
-        self.text = str
+@patch('appIcici.requests')
+@patch('appIcici.iciciDirect')
+def test_appIcici_1(mock_iciciDirect, mock_requests):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_requests.post.return_value = mock_response
+    mock_requests.put.return_value = mock_response
 
-def convArr2ArrofCell(list):
-    newList = []
-    for element in list:
-        newList.append(cell(element))
-    return newList
-
-def test_formatStockCell(setup):
-    app, marginData = setup
-    app._app__persistence.removeAll()
-    
-    tblRow = convArr2ArrofCell(marginData[0])
-    rowDict = app._app__iciciDirect._iciciDirect__formatTblRowToDict(tblRow)
-    rowDict['REC_STATUS'] = 'OPEN'
-    cellDict = app._app__handleMarginOrders(rowDict)
-
-    tblRow = convArr2ArrofCell(marginData[1])
-    rowDict['REC_STATUS'] = 'CLOSE'
-    rowDict = app._app__iciciDirect._iciciDirect__formatTblRowToDict(tblRow)
-    cellDict = app._app__handleMarginOrders(rowDict)
-
-def retFindOrderStatusAndQtyInfo1(order_no):
-    if order_no == '212106222471':
-        return [True, 5, 5]
-    elif order_no == '212106222472':
-        return [True, 101, 51]
-    elif order_no == '212106222473':
-        return [True, 57, 29]
-
-def retFindOrderStatusAndQtyInfo2(order_no):
-    if order_no == '212106222471':
-        return [True, 5, 5]
-    elif order_no == '212106222472':
-        return [True, 101, 51]
-    elif order_no == '212106222473':
-        return [True, 57, 57]
-    elif order_no == '212106222475':
-        return [True, 5, 0]
-
-def retPlaceOrder(nseSym, qty, buySell, product, orderType, limitPrice, triggerPrice):
-    if nseSym == 'COFORGE':
-        res = {"status": "success", "message": "Order submitted successfully. Your Order Ref No. 212106222471","data": [{"order_no": "212106222471"}],"error_code": "RS-0023"}
-    elif nseSym == 'HINDPETRO':
-        res = {"status": "success","message": "Order submitted successfully. Your Order Ref No. 212106222472","data": [{"order_no": "212106222472"}],"error_code": "RS-0023"}
-    elif nseSym == 'ITC':
-        res = {"status": "success","message": "Order submitted successfully. Your Order Ref No. 212106222473","data": [{"order_no": "212106222473"}],"error_code": "RS-0023"}
-    elif nseSym == 'KABRAEXTRU':
-        res = {"status": "success","message": "Order submitted successfully. Your Order Ref No. 212106222475","data": [{"order_no": "212106222475"}],"error_code": "RS-0023"}
-    return res
-
-@patch('app.iciciDirect')
-@patch('app.payTmMoney')
-def test_recOpen2Close(mock_payTmMoney, mock_iciciDirect):
-    mock_paytm = Mock()
-    mock_payTmMoney.return_value = mock_paytm
     mock_icici = Mock()
     mock_iciciDirect.return_value = mock_icici
-    trade = app('./application.ini', './test/testTrade.json')
-    
+
+    trade = app('./iciciDirect.ini', './test/testTrade.json')
     trade._app__persistence.removeAll()
 
+    recDicts = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
+                {"STOCK": "ITC LIMITED", "ICICI_SYMBOL": "ITC", "NSE_SYMBOL": "ITC", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "437.50", "HIGH_REC_PRICE": "438.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": "432.40", "STOP_LOSS": "439.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", 'ACK': 'OK'}]
+    scrapeDicts = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
+    mock_icici.scrapeMarginData.return_value = scrapeDicts
+    
+    # Tests __closeMarginRecsNotUpdated
+    mock_requests.reset_mock()
+    # Assume ITC was acknowledged previously
+    recDicts[1]['ACK'] = 'OK'
+    recDicts[1]['REC_DATE'] = datetime.datetime.now().strftime("%d-%b-%Y")
+    trade._app__persistence.insertDb(recDicts[1], recDicts[1]['NSE_SYMBOL'], recDicts[1]['STRATEGY'], recDicts[1]['REC_DATE'], recDicts[1]['REC_TIME'])
+    trade.runPeriodicChecks()
+    dbDicts = trade._app__persistence.getDb(recStatus='CLOSE')
+    assert dbDicts[0]['NSE_SYMBOL'] == 'ITC'
+    mock_requests.put.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=dbDicts[0])
+    # Tests __updateRecStatus: COFORGE not in DB. Will get inserted in DB
+    dbDicts = trade._app__persistence.getDb(recStatus='OPEN')
+    assert dbDicts[0]['NSE_SYMBOL'] == 'COFORGE'
+    assert dbDicts[0]['ACK'] == 'OK'
+    mock_requests.post.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
+
+    # Tests - Change of recommendation - REST API is successful
+    mock_requests.reset_mock()
+    scrapeDicts[0]['PART_PROFIT_PRICE'] = 5500.00
+    scrapeDicts[0]['PART_PROFIT_PERC'] = 50.00
+    scrapeDicts[0]['UPDATE_ACTION_1'] = 'Book Partial Profit'
+    trade.runPeriodicChecks()
+    dbDicts = trade._app__persistence.getDb(nseSym='COFORGE')
+    assert dbDicts[0]['PART_PROFIT_PRICE'] == 5500.00
+    assert dbDicts[0]['PART_PROFIT_PERC'] == 50.00
+    assert dbDicts[0]['UPDATE_ACTION_1'] == 'Book Partial Profit'
+    assert dbDicts[0]['REC_STATUS'] == 'OPEN'
+    assert dbDicts[0]['ACK'] == 'OK'
+    mock_requests.put.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
+    
+    # Tests - Change of recommendation - REST API is not successful initially
+    mock_requests.reset_mock()
+    mock_response.status_code = 500
+    scrapeDicts[0]['FINAL_PROFIT_PRICE'] = 5500.00
+    scrapeDicts[0]['UPDATE_ACTION_2'] = 'Book Full Profit'
+    scrapeDicts[0]['REC_STATUS'] = 'CLOSE'
+    trade.runPeriodicChecks()
+    dbDicts = trade._app__persistence.getDb(nseSym='COFORGE')
+    assert dbDicts[0]['FINAL_PROFIT_PRICE'] == 5500.00
+    assert dbDicts[0]['UPDATE_ACTION_2'] == 'Book Full Profit'
+    assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
+    assert dbDicts[0]['ACK'] == 'NOT_OK'
+    mock_requests.put.assert_called_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
+
+    # Tests - Retry sending. REST API is successful this time
+    mock_requests.reset_mock()
+    mock_response.status_code = 202
+    trade.runPeriodicChecks()
+    dbDicts = trade._app__persistence.getDb(nseSym='COFORGE')
+    assert dbDicts[0]['ACK'] == 'OK'
+    mock_requests.put.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
+
+
+    """
     #                           REC_SATTUS = CLOSE      |       REC_STATUS = OPEN
     # ORDER: NOT_PLACED         JAICORPLTD              |       COFORGE, HINDPETRO, ITC
     # ORDER: OPEN               KABRAEXTRU              |       KABRAEXTRU
@@ -236,3 +237,4 @@ def test_getHoldingsData():
     trade = app('./payTmMoney.ini', './test/testTrade.json')
     trade.openPayTmMoneySession()
     trade.getHoldingsData()
+    """

@@ -54,6 +54,7 @@ class app():
             self.__timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
             self.__LtpDisFactor = float(self.__config['APP']['LTP_DISTANCE_FACTOR'])
             self.__squareOff = False
+            self.__marketClose = False
             self.__core = [ {'NSE_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': '2'}, 
                             {'NSE_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': '35'}, 
                             {'NSE_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': '8'}, 
@@ -118,11 +119,16 @@ class app():
         if not status:
             self.__logger.error("getHoldingsData function returned error")
 
-    
-    def addNewRec(self, recDict):
+
+    def __addNewRec(self, recDict):
+        status = False
         # If square off time, stop accepting new orders
         if self.__squareOff == True and recDict['STRATEGY'] == 'MARGIN':
-            return
+            return status
+        
+        # Add no new recommendations after markets have closed
+        if self.__marketClose:
+            return status
         
         recDict['CMP'] = float(recDict['CMP'])
         recDict['HIGH_REC_PRICE'] = float(recDict['HIGH_REC_PRICE'])
@@ -151,21 +157,72 @@ class app():
                         'OVERFLOWN': False, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
         self.__lock.acquire()
         res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+        status = True if res > 0 else False
         self.__lock.release()
+        return status
+    
 
-    def updateRec(self, recDict):
-        isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], 
-                                                   date=recDict['REC_DATE'], time=recDict['REC_TIME'], recStatus=None)
+    def __updateRec(self, recDict, dbDict):
         # Copy values from the input dict to the DB dict and then update the DB
         keys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2', 'REC_STATUS']
-        if isInDb:
-            for key in keys:
-                dbDict[key] = recDict[key]
-            self.__lock.acquire()
-            res = self.__persistence.updateDb(dbDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
-            self.__lock.release()
+        for key in keys:
+            dbDict[key] = recDict[key]
+        self.__lock.acquire()
+        res = self.__persistence.updateDb(dbDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+        status = True if res else False
+        self.__lock.release()
+        return status
+
+
+    def __inHoldings(self, nseSym):
+        status = False
+        # If in holding find its quantity
+        holdQty = 0
+        for holding in self.__holdings:
+            if nseSym == holding['NSE_SYMBOL']:
+                holdQty = holding['QTY'] 
+        
+        # If in core find its quantity
+        coreQty = 0
+        for core in self.__core:
+            if nseSym == core['NSE_SYMBOL']:
+                coreQty = holding['QTY'] 
+
+        # if in holding and quantity more than that in core --> return True
+        if holdQty > 0 and holdQty > coreQty:
+            status = True
+
+        return status
+
+
+    def handleRec(self, recDict):
+        today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
+        isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+
+        # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
+        if recDict['REC_DATE'].lower() == today:
+            status = self.__updateRec(recDict, dbDict) if isInDb else self.__addNewRec(recDict)
+        # else if in holdings (- any holding in the core portfolio), 
+        elif self.__inHoldings(recDict['NSE_SYMBOL']):
+        #   if in DB (Normal case) -> call updateRec
+            if isInDb:
+                status = self.__updateRec(recDict, dbDict)
+        #   else not in DB (Manual investment)
+            else:
+        #       if REC_STATUS == 'OPEN'             --> Do nothing. Adding to DB will start processing here to open new positions and 
+        #           We won't create new positions using stale recommendations. We will only close existing holdings. Send ACK anyways, else 
+        #           we will keep getting these updates
+        #       if REC_STATUS == 'PARTIAL_CLOSE'    --> Add to DB, so that the holdings can be closed
+        #       if REC_STATUS == 'CLOSE'            --> Add to DB, so that the holdings can be closed
+                if recDict['REC_STATUS'] == 'OPEN':
+                    status = True
+                else:
+                    status = self.__addNewRec(recDict)
+        # else i.e. old recommendation and not in holdings --> Do nothing. Send ACK anyways
         else:
-            self.__logger.error("Rec = %s came for update, but was not found in PayTm DB", recDict)
+            status = True
+
+        return status
 
     def __handleOverflow(self, orderType, qty, limitPrice, dbDict):
         # Total investment done so far
@@ -400,8 +457,9 @@ class app():
                         totalCloseQty += orderDict['TRADED_QTY']
 
                 if totalOpenQty > 0 and totalOpenQty == totalCloseQty:
+                    assert dbDict['REC_STATUS'] == 'CLOSE'
                     dbDict['POS_HOLD_STATUS'] = 'CLOSE'
-                elif totalCloseQty == 0 and totalOpenQty == dbDict['QTY'] or dbDict['OVERFLOWN']:
+                elif totalOpenQty == dbDict['QTY'] or dbDict['OVERFLOWN'] or totalCloseQty > 0:
                     dbDict['POS_HOLD_STATUS'] = 'POSITION'
                 else:
                     dbDict['POS_HOLD_STATUS'] = 'OPEN'
@@ -411,10 +469,10 @@ class app():
             self.__lock.release()
 
 
-    def __reconcileMarginRecs(self):
+    def __reconcileRecs(self):
         # If recommendation == 'OPEN' and order == 'OPEN'
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='OPEN', posHoldStatus='OPEN')
+        dbDicts = self.__persistence.getDb(recStatus='OPEN', posHoldStatus='OPEN')
         for dbDict in dbDicts:
             self.__openPosition(dbDict)
         self.__lock.release()
@@ -425,75 +483,23 @@ class app():
         # If recommendation == 'OPEN' and order == 'CLOSE'
         # This should ideally never happen
 
-        # If recommendation == 'CLOSE' and order == 'OPEN'
-        # Cancel the order. Exit any open position
+        # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
+        # Cancel open orders. Exit any open position (partially)
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='CLOSE', posHoldStatus='OPEN')
+        dbDicts = self.__persistence.getDb(recStatus='!OPEN', posHoldStatus='OPEN')
         for dbDict in dbDicts:
             self.__cancelOrder(dbDict)
-            self.__closePosition(dbDict)
+            partial = True if dbDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
+            self.__closePosition(dbDict, partial)
         self.__lock.release()
 
-        # If recommendation == 'CLOSE' and order == 'POSITION'
-        # Exit position immediately
+        # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
+        # Exit (partial) position immediately
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='CLOSE', posHoldStatus='POSITION')
+        dbDicts = self.__persistence.getDb(recStatus='!OPEN', posHoldStatus='POSITION')
         for dbDict in dbDicts:
-            self.__closePosition(dbDict)
-        self.__lock.release()
-
-        # If recommendation == 'CLOSE' and order == 'CLOSE'
-        # Do nothing
-
-
-    def __reconcileOtherRecs(self):
-        # If recommendation == 'OPEN' and order == 'OPEN'
-        self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='OPEN', posHoldStatus='OPEN')
-        for dbDict in dbDicts:
-            self.__openPosition(dbDict)
-        self.__lock.release()
-
-        # If recommendation == 'OPEN' and order == 'POSITION'
-        # Do nothing. All orders have been placed. Wait for the recommendation to close
-
-        # If recommendation == 'OPEN' and order == 'CLOSE'
-        # This should ideally never happen
-
-        # If recommendation == 'PARTIAL_CLOSE' and order == 'OPEN'
-        self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='PARTIAL_CLOSE', posHoldStatus='OPEN')
-        for dbDict in dbDicts:
-            self.__cancelOrder(dbDict)
-            self.__closePosition(dbDict, partial=True)
-        self.__lock.release()
-
-        # If recommendation == 'PARTIAL_CLOSE' and order == 'POSITION'
-        # Do nothing. All orders have been placed. Wait for the recommendation to close
-        self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='PARTIAL_CLOSE', posHoldStatus='POSITION')
-        for dbDict in dbDicts:
-            self.__closePosition(dbDict, partial=True)
-        self.__lock.release()
-
-        # If recommendation == 'PARTIAL_CLOSE' and order == 'CLOSE'
-        # This should ideally never happen
-
-        # If recommendation == 'CLOSE' and order == 'OPEN'
-        # Cancel the order. Exit any open position
-        self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='CLOSE', posHoldStatus='OPEN')
-        for dbDict in dbDicts:
-            self.__cancelOrder(dbDict)
-            self.__closePosition(dbDict)
-        self.__lock.release()
-
-        # If recommendation == 'CLOSE' and order == 'POSITION'
-        # Exit position immediately
-        self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', recStatus='CLOSE', posHoldStatus='POSITION')
-        for dbDict in dbDicts:
-            self.__closePosition(dbDict)
+            partial = True if dbDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
+            self.__closePosition(dbDict, partial)
         self.__lock.release()
 
         # If recommendation == 'CLOSE' and order == 'CLOSE'
@@ -533,6 +539,7 @@ class app():
 
 
     def runPeriodicChecks(self, squareOffMinus15, marketClose):
+        self.__marketClose = marketClose
         if squareOffMinus15:
             self.__squareOff = True
             self.__updateOrderStatus(marketClose)
@@ -540,7 +547,7 @@ class app():
             
         # All data is now in DB. Reconcile recommendation and order status
         self.__updateOrderStatus(marketClose)
-        self.__reconcileMarginRecs()
+        self.__reconcileRecs()
 
 trade = app('./payTmMoney.ini')
 
@@ -558,18 +565,12 @@ def payTmThread():
         marketClose = int(datetime.datetime.now().strftime("%H")) >= 15 and int(datetime.datetime.now().strftime("%M")) > 30
 
 
-@flask.route('/v1/rec', methods=['POST'])
-def new_rec():
+@flask.route('/v1/rec', methods=['POST', 'PUT'])
+def rec():
     recDict = request.get_json()
-    trade.addNewRec(recDict)
+    trade.handleRec(recDict)
     return "", 202
 
-
-@flask.route('/v1/rec', methods=['PUT'])
-def update_rec():
-    recDict = request.get_json()
-    trade.updateRec(recDict)
-    return "", 202
 
 @flask.route('/v1/max_amount', methods=['POST'])
 def max_amount_per_order():
