@@ -561,8 +561,8 @@ def payTmThread():
         trade.runPeriodicChecks(squareOffMinus15, marketClose)
         time.sleep(15)
         # Start closing all positions as soon as it is 3:00PM
-        squareOffMinus15 = int(datetime.datetime.now().strftime("%H")) >= 15
-        marketClose = int(datetime.datetime.now().strftime("%H")) >= 15 and int(datetime.datetime.now().strftime("%M")) > 30
+        squareOffMinus15 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
+        marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30) 
 
 
 @flask.route('/v1/rec', methods=['POST', 'PUT'])

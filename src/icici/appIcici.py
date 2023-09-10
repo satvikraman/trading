@@ -164,6 +164,6 @@ if __name__ == '__main__':
     marketClose = False
     while not marketClose:
         trade.runPeriodicChecks()
-        time.sleep(45)
+        time.sleep(30)
         # Start closing all positions as soon as it is 3:00PM
         #marketClose = int(datetime.datetime.now().strftime("%H")) >= 15 and int(datetime.datetime.now().strftime("%M")) > 30
