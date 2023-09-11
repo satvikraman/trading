@@ -19,10 +19,12 @@ from persistence import persistence
 # OPEN --> CLOSE
 
 # At a security level (multiple orders for a security) the POS_HOLD_STATUS transitions as 
-# OPEN  --> POSITION --> CLOSE
-# + OPEN        -> There are open orders or more orders can be placed
-# + POSITION    -> All orders that could have been placed have been placed
-# + CLOSE       -> The order has been squared off
+# OPEN  --> POSITION ------------------------> CLOSE
+#                    |--> PARTIAL_CLOSE -->|
+# + OPEN          -> There are open orders or more orders can be placed
+# + POSITION      -> All orders that could have been placed have been placed
+# + PARTIAL_CLOSE -> Started selling stocks, though we have not completely sold it.
+# + CLOSE         -> The order has been squared off
 
 # Reommendation Status also transitions as 
 # OPEN --> PARTIAL_CLOSE --> CLOSE
@@ -467,7 +469,9 @@ class app():
                 if totalOpenQty > 0 and totalOpenQty == totalCloseQty:
                     assert dbDict['REC_STATUS'] == 'CLOSE'
                     dbDict['POS_HOLD_STATUS'] = 'CLOSE'
-                elif totalOpenQty == dbDict['QTY'] or dbDict['OVERFLOWN'] or totalCloseQty > 0:
+                elif totalCloseQty > 0:
+                    dbDict['POS_HOLD_STATUS'] = 'PARTIAL_CLOSE'
+                elif totalOpenQty == dbDict['QTY'] or dbDict['OVERFLOWN']:
                     dbDict['POS_HOLD_STATUS'] = 'POSITION'
                 else:
                     dbDict['POS_HOLD_STATUS'] = 'OPEN'
@@ -488,8 +492,11 @@ class app():
         # If recommendation == 'OPEN' and order == 'POSITION'
         # Do nothing. All orders have been placed. Wait for the recommendation to close
 
+        # If recommendation == 'OPEN' and order == 'PARTIAL_CLOSE'
+        # Do nothing. No more orders should be placed. No need to sell anything as well
+
         # If recommendation == 'OPEN' and order == 'CLOSE'
-        # This should ideally never happen
+        # This should ideally never happen. In any case, do nothing
 
         # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
         # Cancel open orders. Exit any open position (partially)
@@ -507,6 +514,18 @@ class app():
         dbDicts = self.__persistence.getDb(recStatus='!OPEN', posHoldStatus='POSITION')
         for dbDict in dbDicts:
             partial = True if dbDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
+            self.__closePosition(dbDict, partial)
+        self.__lock.release()
+
+        # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
+        # Do nothing. We had to sell half of the position and we have already done that
+
+        # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
+        # Exit positions immediately
+        self.__lock.acquire()
+        dbDicts = self.__persistence.getDb(recStatus='CLOSE', posHoldStatus='PARTIAL_CLOSE')
+        for dbDict in dbDicts:
+            partial = False
             self.__closePosition(dbDict, partial)
         self.__lock.release()
 
