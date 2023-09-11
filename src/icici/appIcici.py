@@ -54,14 +54,18 @@ class app():
         status = False
         while not status and retries >= 0:
             url = self.__paytmBaseURL + 'v1/rec'
-            if endPoint == 'NEW_REC':
-                res = requests.post(url, json=recDict)
-            elif endPoint == 'UPDATE_REC':
-                res = requests.put(url, json=recDict)
-            if int(res.status_code / 100) == 2:
-                status = True
-            else:
-                self.__logger.error("Unable to send request to PayTm service. Attempt %d of %d: %s", self.__numRetries-retries, self.__numRetries, recDict)
+            try:
+                if endPoint == 'NEW_REC':
+                    res = requests.post(url, json=recDict)
+                elif endPoint == 'UPDATE_REC':
+                    res = requests.put(url, json=recDict)
+                if int(res.status_code / 100) == 2:
+                    status = True
+                else:
+                    self.__logger.error("Unable to send request to PayTm service. Attempt %d of %d: %s", self.__numRetries-retries, self.__numRetries, recDict)
+                    retries -= 1
+            except Exception as e:
+                self.__logger.error("Exception: %s. Attempt %d of %d: %s", e, self.__numRetries-retries, self.__numRetries, recDict)
                 retries -= 1
         return status
 
@@ -166,4 +170,4 @@ if __name__ == '__main__':
         trade.runPeriodicChecks()
         time.sleep(30)
         # Start closing all positions as soon as it is 3:00PM
-        #marketClose = int(datetime.datetime.now().strftime("%H")) >= 15 and int(datetime.datetime.now().strftime("%M")) > 30
+        marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)

@@ -25,7 +25,7 @@ class mapIciciToNseStock():
 
 
     def mapIcici2Nse(self, iciciSym, series):
-        rowDict = {}
+        rowDict = {'ICICI_SYMBOL': '', 'NSE_SYMBOL': ''}
         with(open(self.__config['MAP-ICICI-2-NSE']['ICICI_DATASET'], 'r')) as icicicsv:
             iciciReader = csv.DictReader(icicicsv)
             for iciciRow in iciciReader:

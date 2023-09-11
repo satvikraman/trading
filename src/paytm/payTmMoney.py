@@ -105,10 +105,10 @@ class payTmMoney:
         retries = self.__retries
         while not status and retries >= 0:
             res = self.__pm.user_holdings_data()
-            if res['status'] == 'success':
+            if len(res['data']['results']) > 0:
                 status = True
                 for holding in res['data']['results']:
-                    resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'QTY': holding['quantity']}
+                    resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'QTY': int(holding['quantity'])}
                     resDictArr.append(resDict)
             else:
                 retries -= 1
@@ -119,13 +119,14 @@ class payTmMoney:
 
     def getSecurityPosition(self, securityId, product, exchange='NSE'):
         product = 'I' if product == 'INTRADAY' else 'C'
-        qty = None
+        qty = 0
         status = False
         retries = self.__retries
         while not status and retries >= 0:
             res = self.__pm.position_details(securityId, product, exchange)
             if res['status'] == 'success':
-                qty = abs(res['traded_qty'])
+                if len(res['data']) > 0:
+                    qty = abs(res['data'][0]['traded_qty'])
                 status = True
             else:
                 retries -= 1

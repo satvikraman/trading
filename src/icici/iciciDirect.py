@@ -191,8 +191,8 @@ class iciciDirect():
         menu3 = self.__browser.find_element_by_id("iclick_gain")
         self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
         recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
-        # ALL - Everything; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
-        recommendationType.select_by_value("ALL")
+        # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
+        recommendationType.select_by_value("MRGN")
 
         # Click on view to see the results
         viewBtn = menu3.find_element_by_id("btnview")

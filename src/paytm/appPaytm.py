@@ -55,6 +55,7 @@ class app():
             self.__LtpDisFactor = float(self.__config['APP']['LTP_DISTANCE_FACTOR'])
             self.__squareOff = False
             self.__marketClose = False
+
             self.__core = [ {'NSE_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': '2'}, 
                             {'NSE_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': '35'}, 
                             {'NSE_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': '8'}, 
@@ -103,6 +104,7 @@ class app():
             consoleHandler.setFormatter(formatter)
             logging.getLogger('').addHandler(consoleHandler)
             logging.getLogger('').addHandler(fileHandler)
+            self.__logger.info('Max Amount Per Order %d', self.__amountPerOrder)
 
 
     def setAmountPerOrder(self, maxAmount):
@@ -138,15 +140,18 @@ class app():
 
         # Qty of stock that can be bought
         avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
-        qty = int(self.__amountPerOrder / avgPrice)
+        if recDict['STRATEGY'] == 'MARGIN':
+            maxAmount = self.__amountPerOrder / 4
+        else:
+            maxAmount = self.__amountPerOrder
+
+        qty = int(maxAmount / avgPrice)
         qty = max(int((qty + 5) / 10), 1) * 10
-        maxAmount = self.__amountPerOrder
         margin = 1
         if recDict['STRATEGY'] == 'MARGIN':
             margin = self.__timesMargin
             qty = qty * margin
-            maxAmount = maxAmount / 4
-
+            
         # If the order is not going to go more than 5% of the maxAmount allowed, don't enable overflow protection
         Overflow = True if (qty * recDict['CMP'] / margin) >= (maxAmount * 1.05) else False
 
@@ -322,6 +327,8 @@ class app():
                     dbDict['OVERFLOWN'] = True
                     self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
                     return True
+            else:
+                overflow = False
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
@@ -371,6 +378,7 @@ class app():
                 if dbDict['NSE_SYMBOL'] == holdingDict['NSE_SYMBOL']:
                     holding = holdingDict['QTY']
                     pos += holding
+                    break
             # If however we had bought it already as part of the core portfolio subtract that qty
             for coreDict in self.__core:
                 if dbDict['NSE_SYMBOL'] == coreDict['NSE_SYMBOL']:
@@ -549,27 +557,34 @@ class app():
         self.__updateOrderStatus(marketClose)
         self.__reconcileRecs()
 
-trade = app('./payTmMoney.ini')
+
+trade = app('./payTmMoney.ini', dryRun=True)
+trade.openPayTmMoneySession()
+trade.getHoldingsData()
+
 
 def payTmThread():
-    trade = app('./payTmMoney.ini', './db/payTmMoney.json')
-    trade.openPayTmMoneySession()
-    trade.getHoldingsData()
     squareOffMinus15 = False
     marketClose = False
+    marketOpen = False
     while not marketClose:
-        trade.runPeriodicChecks(squareOffMinus15, marketClose)
-        time.sleep(15)
-        # Start closing all positions as soon as it is 3:00PM
-        squareOffMinus15 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
-        marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30) 
+        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
+        if marketOpen:
+            trade.runPeriodicChecks(squareOffMinus15, marketClose)
+            time.sleep(15)
+            # Start closing all positions as soon as it is 3:00PM
+            squareOffMinus15 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
+            marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30) 
+        else:
+            time.sleep(5)
 
 
 @flask.route('/v1/rec', methods=['POST', 'PUT'])
 def rec():
     recDict = request.get_json()
-    trade.handleRec(recDict)
-    return "", 202
+    status = trade.handleRec(recDict)
+    statusCode = 200 if status else 500
+    return "", statusCode
 
 
 @flask.route('/v1/max_amount', methods=['POST'])
@@ -591,8 +606,8 @@ if __name__ == '__main__':
     flaskThr.daemon = True
     
     # Start the threads
+    paytmThr.start()
     flaskThr.start()
-    #paytmThr.start()
 
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
