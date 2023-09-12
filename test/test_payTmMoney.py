@@ -1,5 +1,5 @@
 import sys
-sys.path.append('./src')
+sys.path.append('./src/paytm')
 sys.path.append('../pyPMClient')
 import os
 import configparser
@@ -23,7 +23,7 @@ if(os.path.isfile(configFile)):
 
 @pytest.fixture
 def setup():
-    moduleHdl = payTmMoney.payTmMoney('./application.ini')
+    moduleHdl = payTmMoney.payTmMoney('./payTmMoney.ini')
     return(moduleHdl)
 
 def test_placeOrder(setup):
@@ -65,8 +65,22 @@ def test_orderBook(mock_PMClient, setup):
 
 def test_findSecurityCode(setup):
     module = setup
-    securityId = module._payTmMoney__findSecurityCode('PVRINOX')
+    securityId = module.findSecurityCode('PVRINOX')
     assert securityId == '13147'
-    securityId = module._payTmMoney__findSecurityCode('PAGEIND')
+    securityId = module.findSecurityCode('PAGEIND')
     assert securityId == '14413'
+
+def test_cancelOrder(setup):
+    module = setup
+    nseSym = 'PVRINOX'
+    securityId = module.findSecurityCode(nseSym)
+    limit = 1700.00
+    trigger = 0
+    module.payTmLogin()
+    status1, message, orderNum = module.placeOrder(nseSym, securityId, 1, 'BUY', 'DELIVERY', 'LMT', limit, trigger, offline=True)
+    status2 = module.getOrderBookUpdate()
+    if status2:
+        breakpoint()
+        res = module.cancelOrder(orderNum, offline=True)
+        print(res)
     

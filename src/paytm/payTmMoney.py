@@ -84,15 +84,15 @@ class payTmMoney:
 
 
     def getLastTradedPrice(self, securityId, exchange='NSE'):
-        pref = exchange + ':' + securityId + ':EQUITY'
+        pref = [exchange, str(securityId),'EQUITY']
         ltp = None
         status = False
         retries = self.__retries
         while not status and retries >= 0:
             res = self.__pm.get_live_market_data('LTP', pref)
-            if res['status'] == 'success':
+            if len(res['data']) > 0:
                 status = True
-                ltp = res['data']['last_price']
+                ltp = res['data'][0]['last_price']
             else:
                 retries -= 1
                 time.sleep(1)
@@ -158,7 +158,7 @@ class payTmMoney:
                 time.sleep(1)
         return status
 
-    def cancelOrder(self, orderNo):
+    def cancelOrder(self, orderNo, offline=False):
         status = False
         message = orderNum = None
         for resOrder in self.__orderBook['data']:
@@ -167,15 +167,15 @@ class payTmMoney:
                 while not status and retries >= 0:
                     try:
                         res = self.__pm.cancel_order('N', resOrder['txn_type'], resOrder['exchange'], resOrder['segment'], resOrder['product'], 
-                                            resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], 0, 
-                                            resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'])
+                                            resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], resOrder['price'], 
+                                            resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'], off_mkt_flag=offline)
                         if res['status'] == 'success':
                             status = True
                             orderNum = res['data'][0]['order_no']
                         else:
                             retries -= 1
                             time.sleep(1)
-                        message = res['mesage']
+                        message = res['message']
                         self.__logger.debug("Response : {}".format(res))
                     except Exception as e:
                         retries -= 1
@@ -184,7 +184,7 @@ class payTmMoney:
                         time.sleep(1)
         return status, message, orderNum
 
-    def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice):
+    def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice, offline=False):
         product = 'I' if product == 'INTRADAY' else 'C'
         txnType = 'B' if buySell == 'BUY' else 'S'
 
@@ -212,7 +212,7 @@ class payTmMoney:
                                             order_type=orderType,
                                             price=price,
                                             source="N",
-                                            off_mkt_flag=False)
+                                            off_mkt_flag=offline)
                 if res['status'] == 'success':
                     status = True
                     orderNum = res['data'][0]['order_no']

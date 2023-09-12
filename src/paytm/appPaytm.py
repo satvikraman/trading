@@ -577,7 +577,7 @@ class app():
         self.__reconcileRecs()
 
 
-trade = app('./payTmMoney.ini', dryRun=True)
+trade = app('./payTmMoney.ini', dryRun=False)
 trade.openPayTmMoneySession()
 trade.getHoldingsData()
 
@@ -596,6 +596,7 @@ def payTmThread():
             marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30) 
         else:
             time.sleep(5)
+    trade._app__logger.info("Markets have closed. Exiting gracefully")
 
 
 @flask.route('/v1/rec', methods=['POST', 'PUT'])

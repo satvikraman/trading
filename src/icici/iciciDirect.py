@@ -187,46 +187,50 @@ class iciciDirect():
         self.__browseResearchToClick_2_Gain()
 
     def scrapeMarginData(self):
-        # Select Margin as the recommendation type
-        menu3 = self.__browser.find_element_by_id("iclick_gain")
-        self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
-        recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
-        # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
-        recommendationType.select_by_value("MRGN")
-
-        # Click on view to see the results
-        viewBtn = menu3.find_element_by_id("btnview")
-        viewBtn.send_keys(Keys.ENTER)
-        #viewBtn.click()
-        time.sleep(10)
-
-        # Scrape the data (header + body) from the webpage
-        tbl = self.__browser.find_element_by_id("pnlclick2gain")
-        tblBody = tbl.find_element_by_tag_name("tbody")
-        tblRows = tblBody.find_elements_by_tag_name("tr")
         tblRowsArrOfDict = []
-        for tblRow in tblRows:
-            tblRowCols = tblRow.find_elements_by_tag_name("td")
-            # If we find a row with 10 entries
-            if(len(tblRowCols) == 10):
-                rowDict = {}
-                rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols)
-                if rowDict != None:
-                    # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
-                    # i.e. it has been struck-through, it means that recommendation has been dicarded
-                    if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
-                        rowDict['REC_STATUS'] = 'CLOSE'
-                    # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
-                    # i.e. the background colour has been changed to grey it has been closed
-                    elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
-                        rowDict['REC_STATUS'] = 'CLOSE'
-                    elif(self.__halfCloseRec(rowDict['UPDATE_ACTION_1'])):
-                        rowDict['REC_STATUS'] = 'PARTIAL_CLOSE'
-                    elif(self.__closeRec(rowDict['UPDATE_ACTION_1'], rowDict['UPDATE_ACTION_2'])):
-                        rowDict["REC_STATUS"] = 'CLOSE'
-                    else:
-                        rowDict['REC_STATUS'] = 'OPEN'
-                    tblRowsArrOfDict.append(rowDict)
+        try:
+            # Select Margin as the recommendation type
+            menu3 = self.__browser.find_element_by_id("iclick_gain")
+            self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
+            recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
+            # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
+            recommendationType.select_by_value("MRGN")
+
+            # Click on view to see the results
+            viewBtn = menu3.find_element_by_id("btnview")
+            viewBtn.send_keys(Keys.ENTER)
+            #viewBtn.click()
+            time.sleep(10)
+
+            # Scrape the data (header + body) from the webpage
+            tbl = self.__browser.find_element_by_id("pnlclick2gain")
+            tblBody = tbl.find_element_by_tag_name("tbody")
+            tblRows = tblBody.find_elements_by_tag_name("tr")
+            tblRowsArrOfDict = []
+            for tblRow in tblRows:
+                tblRowCols = tblRow.find_elements_by_tag_name("td")
+                # If we find a row with 10 entries
+                if(len(tblRowCols) == 10):
+                    rowDict = {}
+                    rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols)
+                    if rowDict != None:
+                        # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                        # i.e. it has been struck-through, it means that recommendation has been dicarded
+                        if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
+                            rowDict['REC_STATUS'] = 'CLOSE'
+                        # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                        # i.e. the background colour has been changed to grey it has been closed
+                        elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
+                            rowDict['REC_STATUS'] = 'CLOSE'
+                        elif(self.__halfCloseRec(rowDict['UPDATE_ACTION_1'])):
+                            rowDict['REC_STATUS'] = 'PARTIAL_CLOSE'
+                        elif(self.__closeRec(rowDict['UPDATE_ACTION_1'], rowDict['UPDATE_ACTION_2'])):
+                            rowDict["REC_STATUS"] = 'CLOSE'
+                        else:
+                            rowDict['REC_STATUS'] = 'OPEN'
+                        tblRowsArrOfDict.append(rowDict)
+        except Exception as e:
+            time.sleep(5)
         return tblRowsArrOfDict
 
     def closeBrowser(self):  
