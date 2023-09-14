@@ -33,21 +33,23 @@ def test_Margin1():
     trade = app('./payTmMoney.ini', './test/testTrade.json', True)
     trade.setAmountPerOrder(50000)    
     trade._app__persistence.removeAll()
-
-    trade._app__addNewRec(recDicts[0])
+    
+    trade.getHoldingsData()
+    recDicts[0]['REC_DATE'] = datetime.datetime.today().strftime("%d-%b-%Y")
+    trade.handleRec(recDicts[0])
 
     # If new recommendations have come in (True)
     # Place orders (1st - 10%)
     trade.runPeriodicChecks(False, False)
-
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 5
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 1
     # Will fail because in dryRun=True mode we don't pass the limit as 0 while opening position
     #assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
@@ -58,16 +60,16 @@ def test_Margin1():
     # Now when the 2nd time runPeriodicChecks happens a new order should be placed. However it won't complete 
     # because setIncompleteOrders has been set True
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_QTY'] == 5
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 5
+    assert dbDict[0]['POS_HOLD_QTY'] == 1
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 1
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 6
+    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 2
     assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDicts[0]['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'OPEN'
@@ -78,26 +80,26 @@ def test_Margin1():
 
     # Its 3:00PM and the 2nd order wouldn't have completed, a closing order should be placed
     trade.runPeriodicChecks(True, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='CLOSE')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 6
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 2
+    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 2
+    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 0
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 7
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 1
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 7
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 1
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
     # After that ICICI closes the recommendation
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='CLOSE')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     newDict = dbDict[0]
     newDict['REC_STATUS'] = 'CLOSE'
     newDict['UPDATE_ACTION_1'] = 'Book Full Profit'
@@ -105,7 +107,7 @@ def test_Margin1():
 
     # No action should be taken
     trade.runPeriodicChecks(True, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='CLOSE')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_QTY'] == 0
@@ -124,21 +126,22 @@ def test_Margin2():
     trade.setAmountPerOrder('50000')    
     trade._app__persistence.removeAll()
 
-    trade._app__addNewRec(recDicts[0])
+    trade.getHoldingsData()
+    recDicts[0]['REC_DATE'] = datetime.datetime.today().strftime("%d-%b-%Y")
+    trade.handleRec(recDicts[0])
 
     # If new recommendations have come in (True)
     # Place orders (1st - 10%)
     trade.runPeriodicChecks(False, False)
 
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OVERFLOWN'] == False
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 5
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 1
     # Will fail because in dryRun=True mode we don't pass the limit as 0 while opening position
     #assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
@@ -148,19 +151,18 @@ def test_Margin2():
 
     # When the next runPeriodicChecks is done, if the 1st order is completed (True)
     # additional orders (2nd - 20%) should be placed where possible. 2nd order won't 
-    # complete since PayTm mocker has been configured to enable incomplete orders
+    # complete immediately since PayTm mocker has been configured to enable incomplete orders
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_QTY'] == 5
-    assert dbDict[0]['OVERFLOWN'] == False
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 5
+    assert dbDict[0]['POS_HOLD_QTY'] == 1
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 1
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 6
+    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 2
     assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDicts[0]['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'OPEN'
@@ -172,84 +174,70 @@ def test_Margin2():
     # When the next runPeriodicChecks is done, the 2nd order is completed (False) 
     # additional orders (3rd - 30%) won't be placed
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_QTY'] == 8
+    assert dbDict[0]['POS_HOLD_QTY'] == 2
     assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 6
+    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 2
     assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDicts[0]['HIGH_REC_PRICE']
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 3
+    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 1
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'OPEN'
-    assert dbDict[0]['OVERFLOWN'] == False
     assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # When the next runPeriodicChecks is done, if the 2nd order is completed (True) 
-    # additional orders (3rd - 30%) won't be placed since we have alredy overflown amount limits
+    # additional orders (3rd - 30%) will be placed
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
-    assert dbDict[0]['POS_HOLD_QTY'] == 11
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['POS_HOLD_QTY'] == 3
     assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 6
+    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 2
     assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDicts[0]['HIGH_REC_PRICE']
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 6
+    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 2
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OVERFLOWN'] == True
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert len(dbDict[0]['OPEN_ORDERS']) == 3
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
+
+    # Turn off incomplete orders
+    trade._app__payTmMoney.setIncompleteOrders(False, 1)
 
     # No new orders will be placed, even if runPeriodicChecks is called because stock has already overflown amount limits 
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
+    assert len(dbDict[0]['OPEN_ORDERS']) == 4
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # Close the recommendation
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     newDict = dbDict[0]
     newDict['REC_STATUS'] = 'CLOSE'
     newDict['UPDATE_ACTION_1'] = 'Book Full Profit'
     trade._app__updateRec(newDict, dbDict[0])
 
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='CLOSE')
-    assert dbDict[0]['REC_STATUS'] == 'CLOSE'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
-    assert dbDict[0]['POS_HOLD_QTY'] == 11
-    assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 11
-    assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 1
-
-    # Run period check once again to get the updated status of the orders
-    trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='CLOSE')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 11
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 10
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 11
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 10
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert len(dbDict[0]['OPEN_ORDERS']) == 4
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
-    trade._app__addNewRec(recDicts[1])
+    recDicts[1]['REC_DATE'] = datetime.datetime.today().strftime("%d-%b-%Y")
+    trade.handleRec(recDicts[1])
     dbDict = trade._app__persistence.getDb(recStatus='OPEN')
     assert len(dbDict) == 1
 
@@ -260,22 +248,23 @@ def test_Margin3():
     trade = app('./payTmMoney.ini', './test/testTrade.json', True)
     trade.setAmountPerOrder(25000)    
     trade._app__persistence.removeAll()
-
-    trade._app__addNewRec(recDicts[0])
+    
+    trade.getHoldingsData()
+    recDicts[0]['REC_DATE'] = datetime.datetime.today().strftime("%d-%b-%Y")
+    trade.handleRec(recDicts[0])
 
     # If new recommendations have come in (True)
     # Place orders (1st - 10%)
     trade.runPeriodicChecks(False, False)
 
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OVERFLOWN'] == False
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 5
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 1
     # Will fail because in dryRun=True mode we don't pass the limit as 0 while opening position
     #assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
@@ -285,36 +274,34 @@ def test_Margin3():
 
     # Lets say incorrectly you do get the same set of recommendations again
     # No new records should get added to the DB
-    trade._app__addNewRec(recDicts[0])
+    trade.handleRec(recDicts[0])
 
     # When the next runPeriodicChecks is done, if the 1st order is completed (True)
-    # additional orders (2nd - 20%) should be placed if the max amount is not getting exceeded (False)
-    # In this case, nothing can be bought in the 2nd order
+    # additional orders (2nd - 20%) should be placed
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['OVERFLOWN'] == True
-    assert dbDict[0]['POS_HOLD_QTY'] == 5
+    assert dbDict[0]['POS_HOLD_QTY'] == 1
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 5
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 1
     # Will fail because in dryRun=True mode we don't pass the limit as 0 while opening position
     #assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 5
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 1
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 1
+    assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # runPeriodicChecks can be called any number of times now. No further order will be placed
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
-    assert len(dbDict[0]['OPEN_ORDERS']) == 1
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
+    assert len(dbDict[0]['OPEN_ORDERS']) == 3
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # Close the recommendation
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     newDict = recDicts[0]
     newDict['REC_STATUS'] = 'CLOSE'
     newDict['UPDATE_ACTION_1'] = 'Book Full Profit'
@@ -322,31 +309,21 @@ def test_Margin3():
 
     # When the next periodic check is done, close orders should be placed
     trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='CLOSE')
+    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN')
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
-    assert dbDict[0]['POS_HOLD_QTY'] == 5
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
     assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 5
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 1
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 1
-
-    # Run periodic check one last time to get the updated status
-    trade.runPeriodicChecks(False, False)
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='CLOSE')
-    assert dbDict[0]['REC_STATUS'] == 'CLOSE'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
-    assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 5
-    assert len(dbDict[0]['OPEN_ORDERS']) == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
+    assert len(dbDict[0]['OPEN_ORDERS']) == 3
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
-    trade._app__addNewRec(recDicts[1])
+    trade.handleRec(recDicts[1])
     dbDict = trade._app__persistence.getDb(recStatus='OPEN')
     assert len(dbDict) == 1
 

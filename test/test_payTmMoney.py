@@ -83,4 +83,17 @@ def test_cancelOrder(setup):
         breakpoint()
         res = module.cancelOrder(orderNum, offline=True)
         print(res)
-    
+
+def test_securityPosition(setup):
+    module = setup
+    nseSym = 'NHPC'
+    securityId = module.findSecurityCode(nseSym)
+    limit = 55.00
+    trigger = 0
+    module.payTmLogin()
+    status1, message, orderNum1 = module.placeOrder(nseSym, securityId, 1, 'BUY', 'INTRADAY', 'LMT', limit, trigger, offline=False)
+    status2, message, orderNum2 = module.placeOrder(nseSym, securityId, 2, 'BUY', 'INTRADAY', 'LMT', limit, trigger, offline=False)
+    status3, qty = module.getSecurityPosition(securityId, 'INTRADAY', exchange='NSE') 
+    status3, message, orderNum3 = module.placeOrder(nseSym, securityId, qty, 'SELL', 'INTRADAY', 'MKT', 0, trigger, offline=False)
+    status3, qty = module.getSecurityPosition(securityId, 'INTRADAY', exchange='NSE') 
+    assert qty == 0

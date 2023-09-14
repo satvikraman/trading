@@ -82,23 +82,22 @@ class payTmMoneyMock:
 
 
     def getSecurityPosition(self, securityId, product, exchange='NSE'):
-        status = False
-        pos = None
+        status = True
+        pos = openQty = closeQty = 0
         for dict in self.__stockDictArr:
             if dict['SECURITY_ID'] == securityId:
                 status = True
-                openQty = 0
                 for orderDict in dict['OPEN_ORDERS']:
                     openQty += orderDict['ORDER_TRADED_QTY']
 
-                closeQty = 0
                 for orderDict in dict['CLOSE_ORDERS']:
                     closeQty += orderDict['ORDER_TRADED_QTY']
                 
-                pos = openQty - closeQty
                 dict['POS_HOLD_QTY'] = pos
                 break
-        return status, pos
+        if status:
+            pos = openQty - closeQty
+        return status, openQty, closeQty, pos
 
 
     def findOrderStatusAndQtyInfo(self, orderNo):
