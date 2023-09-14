@@ -126,21 +126,36 @@ class payTmMoney:
         return status, resDictArr
 
 
-    def getSecurityPosition(self, securityId, product, exchange='NSE'):
+    def getSecurityPosition(self, securityId, product, openOrderType, exchange='NSE'):
         product = 'I' if product == 'INTRADAY' else 'C'
-        qty = 0
         status = False
+        pos = buyQty = sellQty = 0
         retries = self.__retries
         while not status and retries >= 0:
             res = self.__pm.position_details(securityId, product, exchange)
             if res['status'] == 'success':
                 if len(res['data']) > 0:
-                    qty = abs(res['data'][0]['traded_qty'])
+                    for dataDict in res['data']:
+                        if dataDict['txn_type'] == 'B':
+                            buyQty += dataDict['traded_qty']
+                        else:
+                            sellQty += dataDict['traded_qty']
                 status = True
             else:
                 retries -= 1
                 time.sleep(1)
-        return status, qty
+        
+        if openOrderType == 'BUY':
+           openQty = buyQty
+           closeQty = sellQty
+        else:
+            openQty = sellQty
+            closeQty = buyQty
+        
+        if status:
+            pos = openQty - closeQty
+        
+        return status, openQty, closeQty, pos
 
     def findOrderStatusAndQtyInfo(self, orderNo):
         status = False

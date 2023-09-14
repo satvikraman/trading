@@ -124,7 +124,7 @@ class app():
             self.__logger.error("getHoldingsData function returned error")
 
 
-    def __addNewRec(self, recDict):
+    def __addNewRec(self, recDict, holdQty, coreQty):
         status = False
         # If square off time, stop accepting new orders
         if self.__squareOff == True and recDict['STRATEGY'] == 'MARGIN':
@@ -147,21 +147,20 @@ class app():
         else:
             maxAmount = self.__amountPerOrder
 
-        qty = int(maxAmount / avgPrice)
-        qty = max(int((qty + 5) / 10), 1) * 10
+        qty = max(int(maxAmount / avgPrice), 1)
         margin = 1
         if recDict['STRATEGY'] == 'MARGIN':
             margin = self.__timesMargin
             qty = qty * margin
-            
-        # If the order is not going to go more than 5% of the maxAmount allowed, don't enable overflow protection
-        Overflow = True if (qty * recDict['CMP'] / margin) >= (maxAmount * 1.05) else False
+        
+        qty = 2
 
         # Security ID of the stock 
         securityId = self.__payTmMoney.findSecurityCode(recDict['NSE_SYMBOL'])
-
-        recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'POS_HOLD_QTY': 0, 'POS_HOLD_STATUS': 'OPEN', 'MAX_AMOUNT': maxAmount, 'OVERFLOW_PROTECTION': Overflow, 
-                        'OVERFLOWN': False, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
+        recDict['HOLD_QTY'] = holdQty
+        recDict['CORE_QTY'] = coreQty
+        recDict['POS_HOLD_QTY'] = holdQty - coreQty
+        recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'POS_QTY': 0, 'POS_HOLD_STATUS': 'OPEN', 'MAX_AMOUNT': maxAmount, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
         self.__lock.acquire()
         res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
         status = True if res > 0 else False
@@ -185,32 +184,41 @@ class app():
         status = False
         # If in holding find its quantity
         holdQty = 0
+        coreQty = 0
         for holding in self.__holdings:
             if nseSym == holding['NSE_SYMBOL']:
                 holdQty = holding['QTY'] 
-        
-        # If in core find its quantity
-        coreQty = 0
-        for core in self.__core:
-            if nseSym == core['NSE_SYMBOL']:
-                coreQty = holding['QTY'] 
+                # If in holding, check if it is in core as well and find its quantity
+                for core in self.__core:
+                    if nseSym == core['NSE_SYMBOL']:
+                        coreQty = holding['QTY'] 
+                        break
+                break
 
         # if in holding and quantity more than that in core --> return True
         if holdQty > 0 and holdQty > coreQty:
             status = True
 
-        return status
+        return status, holdQty, coreQty
 
 
     def handleRec(self, recDict):
+        if self.__squareOff and recDict['STRATEGY'] == 'MARGIN':
+            return True
+        
         today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
         isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+        if recDict['STRATEGY'] == 'MARGIN':
+            inHolding = False
+            holdQty = coreQty = 0
+        else:
+            inHolding, holdQty, coreQty = self.__inHoldings(recDict['NSE_SYMBOL'])
 
         # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
         if recDict['REC_DATE'].lower() == today:
-            status = self.__updateRec(recDict, dbDict) if isInDb else self.__addNewRec(recDict)
+            status = self.__updateRec(recDict, dbDict) if isInDb else self.__addNewRec(recDict, holdQty, coreQty)
         # else if in holdings (- any holding in the core portfolio), 
-        elif self.__inHoldings(recDict['NSE_SYMBOL']):
+        elif inHolding:
         #   if in DB (Normal case) -> call updateRec
             if isInDb:
                 status = self.__updateRec(recDict, dbDict)
@@ -224,40 +232,36 @@ class app():
                 if recDict['REC_STATUS'] == 'OPEN':
                     status = True
                 else:
-                    status = self.__addNewRec(recDict)
+                    status = self.__addNewRec(recDict, holdQty, coreQty)
         # else i.e. old recommendation and not in holdings --> Do nothing. Send ACK anyways
         else:
             status = True
 
         return status
 
-    def __handleOverflow(self, orderType, qty, limitPrice, dbDict):
-        # Total investment done so far
-        totInv = 0
-        for orderDict in dbDict['OPEN_ORDERS']:
-            if orderDict['ORDER_STATUS'] == 'CLOSE':
-                if orderDict['ORDER_TYPE'] == 'MKT':
-                    totInv += orderDict['TRADED_QTY'] * dbDict['CMP']
-                else:
-                    totInv += orderDict['TRADED_QTY'] * orderDict['LIMIT']
-            else:
-                self.__logger.error("For stock %s order_no %s is still open. dbDict = %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'], dbDict)
-        
-        cost = dbDict['CMP'] if orderType == 'MKT' else limitPrice
-        margin = self.__timesMargin if dbDict['STRATEGY'] == 'MARGIN' else 1
-        totInv /= margin
 
-        overflow = False
-        if totInv + (qty * cost / margin) > dbDict['MAX_AMOUNT']:
-            qty_ = int((dbDict['MAX_AMOUNT'] - totInv) * margin / cost)
-            qty_ = max(qty_, 0)
-            overflow = True
-            self.__logger.warning("Overflow limits set. Stock: %s, CMP: %.2f, MaxAmount: %.2f, TotInv: %.2f, orderType: %s, desiredQty: %d, cost: %.2f, allowedQty: %.2f, dbDict: %s", 
-                                  dbDict['NSE_SYMBOL'], dbDict['CMP'], dbDict['MAX_AMOUNT'], totInv, orderType, qty, cost, qty_, dbDict)
-        else:
-            qty_ = qty
-            overflow = False
-        return qty_, overflow
+    # This function updates the position of a stock and finds its status
+    def __getPosStatus(self, dbDict):
+        # From when you get data from DB and until you update it, acquire the lock
+        product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
+        status, openQty, closeQty, posQty = self.__payTmMoney.getSecurityPosition(dbDict['SECURITY_ID'], product, dbDict['BUY_SELL'])
+        holdQty = dbDict['HOLD_QTY']
+        coreQty = dbDict['CORE_QTY']
+
+        newPosState = posHoldQty = None
+        if status:
+            posHoldQty = posQty + holdQty - coreQty
+            if closeQty > 0 and posHoldQty == 0:
+                newPosState = 'CLOSE'
+            elif closeQty > 0:
+                newPosState = 'PARTIAL_CLOSE'
+            elif openQty == dbDict['QTY']:
+                newPosState = 'POSITION'
+            else:
+                newPosState = 'OPEN'
+            
+        return status, newPosState, posQty, posHoldQty
+
 
     def __cancelOrder(self, dbDict):
         status = True
@@ -269,68 +273,57 @@ class app():
                     timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
                     orderDict['ORDER_STATUS'] = 'CLOSE'
                     orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': orderStatus, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
-                    self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
-        return status
+        return status, dbDict
 
 
     def __openPosition(self, dbDict):
-        if dbDict['OVERFLOWN']:
-            self.__logger.debug("Max investment limit reached, so no ordering for %s", dbDict)
-            return True
-
-        # First  order is a 'MKT' order
-        incompleteOrder = False
-        for orderDict in dbDict['OPEN_ORDERS']:
-            # If the order has not traded completely consider it an incomplete order irrespective of whether the order 
-            # close or didn't. The order's status will transition to 'CLOSE' state at the end of market hours
-            if orderDict['QTY'] != orderDict['TRADED_QTY']:
-                # Order is still active wait for it to complete
-                if orderDict['ORDER_STATUS'] == 'OPEN':
-                    return True
-                else:
-                    # Order got closed perhaps at the end of market hours. Place a new order the next day
-                    orderType = orderDict['ORDER_TYPE']
-                    limitPrice = orderDict['LIMIT']
-                    qty = orderDict['QTY'] - orderDict['TRADED_QTY']
-                    incompleteOrder = True
-                    self.__logger.debug("Incomplete order found. dbDict = %s orderDict = %s", dbDict, orderDict)
-                    break
+        # Even before you check whether an order can be placed, lets first update the position-holding-status
+        status, posHoldStatus, posQty, posHoldQty = self.__getPosStatus(dbDict)
+        if not status:
+            return False
         
-        if not incompleteOrder:
-            totalQty = dbDict['QTY']
-            tradedQty = dbDict['POS_HOLD_QTY']
+        dbDict['POS_QTY'] = posQty
+        dbDict['POS_HOLD_QTY'] = posHoldQty
+        dbDict['POS_HOLD_STATUS'] = posHoldStatus
+        self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
 
-            # First  order is a 'MKT' order
-            if tradedQty == 0:
-                qty = totalQty * 1 / 10
-                orderType = 'MKT'
-                limitPrice = 0 if not self.__dryRun else dbDict['CMP']
-            elif (totalQty * 1 / 10) == tradedQty:
-                qty = totalQty * 2 / 10
-                orderType = 'LMT'
-                limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-            elif (totalQty * 3 / 10) == tradedQty:
-                qty = totalQty * 3 / 10
-                orderType = 'LMT'
-                limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-                limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
-            elif (totalQty * 6 / 10) == tradedQty:
-                qty = totalQty * 4 / 10
-                orderType = 'LMT'
-                limitPrice = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
-            else:
-                self.__logger.error("Why is this not an incomplete order? dbDict = %s ")
+        # If there is an open order in the system return
+        for orderDict in dbDict['OPEN_ORDERS']:
+            if orderDict['ORDER_STATUS'] == 'OPEN':
+                return True
 
-            # While deciding the quantity for a new order at a new price, check if the stock can overflow
-            # This stock can potentially overflow. Limit the total investment
-            if dbDict['OVERFLOW_PROTECTION']:
-                qty, overflow = self.__handleOverflow(orderType, qty, limitPrice, dbDict)
-                if qty == 0:
-                    dbDict['OVERFLOWN'] = True
-                    self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
-                    return True
-            else:
-                overflow = False
+        totalQty = dbDict['QTY']
+        remQty = totalQty - posHoldQty
+        if remQty < 0:
+            self.__logger.critical("Stock: %s remQty %d is < 0", dbDict['NSE_SYMBOL'], remQty)
+            return False
+        if remQty == 0:
+            self.__logger.error("POS_HOLD_STATUS of stock %s should have gone to POSITION state", dbDict['NSE_SYMBOL'])
+            return True
+        if totalQty == 0:
+            self.__logger.error("POS_HOLD_STATUS of stock %s should have gone to CLOSE state", dbDict['NSE_SYMBOL'])
+            return True
+        
+        # First  order is a 'MKT' order
+        qty = 0
+        invPerc = posHoldQty * 100 / totalQty
+        if invPerc == 0:
+            qty = max(int(totalQty * 1 / 10) - posHoldQty, 1)
+            orderType = 'MKT'
+            limitPrice = 0 if not self.__dryRun else dbDict['CMP']
+        if invPerc <= 10 and qty == 0:
+            qty = int(totalQty * 3 / 10) - posHoldQty
+            orderType = 'LMT'
+            limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
+        if invPerc <= 30 and qty == 0:
+            qty = int(totalQty * 6 / 10) - posHoldQty
+            orderType = 'LMT'
+            limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
+            limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
+        if invPerc <= 60 and qty == 0:
+            qty = remQty
+            orderType = 'LMT'
+            limitPrice = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
@@ -364,58 +357,63 @@ class app():
             # It is a limit order, so start it as an 'OPEN' order
             timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
             orderDict = {'BUY_SELL': dbDict['BUY_SELL'], 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': qty, 'TRADED_QTY': 0, 
-                        'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr, 'OVERFLOW_PROTECTION': overflow}
+                        'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
             dbDict['OPEN_ORDERS'].append(orderDict)
             self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+            return True
+        else:
+            return False
 
 
     def __closePosition(self, dbDict, partial=False):
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
-        status, pos = self.__payTmMoney.getSecurityPosition(dbDict['SECURITY_ID'], product)
+        status, posState, posQty, posHoldQty = self.__getPosStatus(dbDict)
 
         # Also get holdings if it is not an intraday order
-        if dbDict['STRATEGY'] != 'MARGIN':
-            # If not intraday, add the qty of stock in our holding
-            for holdingDict in self.__holdings:
-                if dbDict['NSE_SYMBOL'] == holdingDict['NSE_SYMBOL']:
-                    holding = holdingDict['QTY']
-                    pos += holding
-                    break
-            # If however we had bought it already as part of the core portfolio subtract that qty
-            for coreDict in self.__core:
-                if dbDict['NSE_SYMBOL'] == coreDict['NSE_SYMBOL']:
-                    holding = coreDict['QTY']
-                    pos -= holding
-        
+        dbDict['POS_HOLD_STATUS'] = posState
+        dbDict['POS_QTY'] = posQty
+        dbDict['POS_HOLD_QTY'] = posHoldQty
+
+        if posHoldQty == 0:
+            self.__logger.warning("Nothing to be closed for %s. product = %s pos = %d holdQty = %d", dbDict['NSE_SYMBOL'], posQty, posHoldQty)
+            return True, dbDict, ''
+
+        orderNum = ''
         if status:
-            buySell = 'SELL' if dbDict['BUY_SELL'] == 'BUY' else 'BUY'
+            if dbDict['BUY_SELL'] == 'BUY':
+                openOp = 'BUY'
+                closeOp = 'SELL'
+            else:
+                openOp = 'SELL'
+                closeOp = 'BUY'
+
+            buySell = openOp if posHoldQty < 0 else closeOp
             orderType = 'MKT'
             limitPrice = 0
             trigger = 0
             if(partial):
                 pos = int(pos / 2)
 
-            self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], pos, buySell, product, orderType)
+            self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], posHoldQty, buySell, product, orderType)
             
-            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=pos, buySell=buySell, product='INTRADAY', 
-                                                                                orderType='MKT', limitPrice=0, triggerPrice=0)
-
+            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=abs(posHoldQty), buySell=buySell, 
+                                                                               product=product, orderType='MKT', limitPrice=0, triggerPrice=0)
             if not orderStatus:
-                self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], pos, buySell, 'INTRADAY', 'MKT')
+                self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], posHoldQty, buySell, 'INTRADAY', 'MKT')
+            status = orderStatus
             
             timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
-            orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': pos, 'TRADED_QTY': 0, 
+            orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': posHoldQty, 'TRADED_QTY': 0, 
                          'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
             dbDict['CLOSE_ORDERS'].append(orderDict)
-            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
         else:
             self.__logger.critical("Unable to find order %s", dbDict['order_no'])
         
-        return status
+        return status, dbDict, orderNum
 
 
     # This function updates the order status
-    def __updateOrderStatus(self, marketClose):
+    def __updateOpenOrderStatus(self, marketClose):
         # Get the latest update on orders from Paytm
         status = self.__payTmMoney.getOrderBookUpdate()
 
@@ -429,13 +427,10 @@ class app():
 
             # Loop through all recommendations and update order status
             for dbDict in dbDicts:
-                totalOpenQty = 0
-                totalCloseQty = 0
                 for orderDict in dbDict['OPEN_ORDERS']:
                     if orderDict['ORDER_STATUS'] == 'OPEN':
                         status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
                         if status:
-                            totalOpenQty += trdQty
                             orderDict['TRADED_QTY'] = trdQty
                             if marketClose:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
@@ -443,45 +438,82 @@ class app():
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
                         else:
                             self.__logger.critical("Unable to find order info %s", dbDict['order_no'])
-                    else:
-                        totalOpenQty += orderDict['TRADED_QTY']
                     
-                    # If the order's status has changed to 'CLOSE' and overflow protection was enabled on it
-                    # no more orders can be placed for this security
-                    if orderDict['ORDER_STATUS'] == 'CLOSE' and orderDict['OVERFLOW_PROTECTION']:
-                        dbDict['OVERFLOWN'] = True
-
-                for orderDict in dbDict['CLOSE_ORDERS']:
-                    if orderDict['ORDER_STATUS'] == 'OPEN':
-                        status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
-                        if status:
-                            totalCloseQty += trdQty
-                            orderDict['TRADED_QTY'] = trdQty
-                            if marketClose:
-                                orderDict['ORDER_STATUS'] = 'CLOSE'
-                            elif trdQty == qty:
-                                orderDict['ORDER_STATUS'] = 'CLOSE'
-                        else:
-                            self.__logger.critical("Unable to find order info %s", dbDict['order_no'])
-                    else:
-                        totalCloseQty += orderDict['TRADED_QTY']
-
-                if totalOpenQty > 0 and totalOpenQty == totalCloseQty:
-                    assert dbDict['REC_STATUS'] == 'CLOSE'
-                    dbDict['POS_HOLD_STATUS'] = 'CLOSE'
-                elif totalCloseQty > 0:
-                    dbDict['POS_HOLD_STATUS'] = 'PARTIAL_CLOSE'
-                elif totalOpenQty == dbDict['QTY'] or dbDict['OVERFLOWN']:
-                    dbDict['POS_HOLD_STATUS'] = 'POSITION'
-                else:
-                    dbDict['POS_HOLD_STATUS'] = 'OPEN'
-
-                dbDict['POS_HOLD_QTY'] = totalOpenQty - totalCloseQty
                 self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
             self.__lock.release()
 
 
-    def __reconcileRecs(self):
+    def __waitForCloseOrdersToComplete(self, closeDbDictOrderNumArr):
+        allCloseOrdersComplete = False
+        
+        while not allCloseOrdersComplete:            
+            time.sleep(1)
+            # Get the latest update on orders from Paytm
+            status = self.__payTmMoney.getOrderBookUpdate()
+
+            allCloseOrdersComplete = True
+            for closeDbDictOrderNum in closeDbDictOrderNumArr:
+                orderComplete = False
+                dbDict = closeDbDictOrderNum['DB_DICT']
+                orderNum = closeDbDictOrderNum['ORDER_NO']
+                status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderNum)
+                if status:
+                    if trdQty == qty:
+                        orderComplete = True
+                        for closeOrderDict in dbDict['CLOSE_ORDERS']:
+                            if closeOrderDict['ORDER_NO'] == orderNum and closeOrderDict['ORDER_STATUS'] != 'CLOSE':
+                                closeOrderDict['ORDER_STATUS'] = 'CLOSE'
+                                closeOrderDict['TRADED_QTY'] = trdQty
+                    else:
+                        break
+                else:
+                    self.__logger.critical("Unable to find order info %s", orderNum)
+                
+                allCloseOrdersComplete = allCloseOrdersComplete and orderComplete
+        return True, closeDbDictOrderNumArr
+
+
+    def __executeClosureSeq(self, dbDicts, cancelOrder=False, forceCloseRec=False):
+        # Cancel any open orders and place orders to close open positions
+        closeDbDictOrderNumArr = []
+        for dbDict in dbDicts:
+            if forceCloseRec:
+                dbDict['REC_STATUS'] = 'CLOSE'
+
+            if cancelOrder:
+                _, cancelDict = self.__cancelOrder(dbDict)
+            else:
+                cancelDict = dbDict
+            
+            partial = True if cancelDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
+            _, closeDbDict, orderNum = self.__closePosition(cancelDict, partial)
+            closeDbDictOrderNumArr.append({'DB_DICT': closeDbDict, 'ORDER_NO': orderNum})
+        
+        # Wait for all close orers to complete execution. All market orders. Shouldn't take that long
+        status, closeDbDictOrderNumArr = self.__waitForCloseOrdersToComplete(closeDbDictOrderNumArr)
+
+        # Now that all orders have executed update the position status
+        for closeDbDictOrderNum in closeDbDictOrderNumArr:
+            closeDbDict = closeDbDictOrderNum['DB_DICT']
+            _, posHoldStatus, posQty, posHoldQty = self.__getPosStatus(closeDbDict)
+            closeDbDict['POS_QTY'] = posQty
+            closeDbDict['POS_HOLD_QTY'] = posHoldQty
+            closeDbDict['POS_HOLD_STATUS'] = posHoldStatus
+            self.__persistence.updateDb(closeDbDict, nseSym=closeDbDict['NSE_SYMBOL'], strategy=closeDbDict['STRATEGY'], date=closeDbDict['REC_DATE'], time=closeDbDict['REC_TIME'])
+
+
+    def __executeEOMSeq(self, dbDicts):
+        # Cancel any open orders and place orders to close open positions
+        for dbDict in dbDicts:
+            _, cancelDict = self.__cancelOrder(dbDict)
+            _, posHoldStatus, posQty, posHoldQty = self.__getPosStatus(cancelDict)
+            cancelDict['POS_QTY'] = posQty
+            cancelDict['POS_HOLD_QTY'] = posHoldQty
+            cancelDict['POS_HOLD_STATUS'] = posHoldStatus
+            self.__persistence.updateDb(cancelDict, nseSym=cancelDict['NSE_SYMBOL'], strategy=cancelDict['STRATEGY'], date=cancelDict['REC_DATE'], time=cancelDict['REC_TIME'])
+
+
+    def __reconcileRecs(self, marketClose):
         # If recommendation == 'OPEN' and order == 'OPEN'
         self.__lock.acquire()
         dbDicts = self.__persistence.getDb(recStatus='OPEN', posHoldStatus='OPEN')
@@ -502,19 +534,16 @@ class app():
         # Cancel open orders. Exit any open position (partially)
         self.__lock.acquire()
         dbDicts = self.__persistence.getDb(recStatus='!OPEN', posHoldStatus='OPEN')
-        for dbDict in dbDicts:
-            self.__cancelOrder(dbDict)
-            partial = True if dbDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
-            self.__closePosition(dbDict, partial)
+        if len(dbDicts) > 0:
+            self.__executeClosureSeq(dbDicts, cancelOrder=True, forceCloseRec=False)
         self.__lock.release()
 
         # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
         # Exit (partial) position immediately
         self.__lock.acquire()
         dbDicts = self.__persistence.getDb(recStatus='!OPEN', posHoldStatus='POSITION')
-        for dbDict in dbDicts:
-            partial = True if dbDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
-            self.__closePosition(dbDict, partial)
+        if len(dbDicts) > 0:
+            self.__executeClosureSeq(dbDicts, cancelOrder=False, forceCloseRec=False)
         self.__lock.release()
 
         # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
@@ -524,9 +553,8 @@ class app():
         # Exit positions immediately
         self.__lock.acquire()
         dbDicts = self.__persistence.getDb(recStatus='CLOSE', posHoldStatus='PARTIAL_CLOSE')
-        for dbDict in dbDicts:
-            partial = False
-            self.__closePosition(dbDict, partial)
+        if len(dbDicts) > 0:
+            self.__executeClosureSeq(dbDicts, cancelOrder=False, forceCloseRec=False)
         self.__lock.release()
 
         # If recommendation == 'CLOSE' and order == 'CLOSE'
@@ -538,43 +566,48 @@ class app():
         self.__logger.info("Closing all open positions")
 
         # Check for all orders in 'OPEN' state
+        self.__lock.acquire()
         # Some orders are still open --> cancel them and close position
-        self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', posHoldStatus='OPEN')
-        for dbDict in dbDicts:
-            dbDict['REC_STATUS'] = 'CLOSE'
-            self.__cancelOrder(dbDict)
-            self.__closePosition(dbDict)
-        self.__lock.release()
-
-        # Check for all orders in 'POSITION' state
-        self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', posHoldStatus='POSITION')
-        # All orders have executed. Only thing to be done is to close position
-        for dbDict in dbDicts:
-            dbDict['REC_STATUS'] = 'CLOSE'
-            self.__closePosition(dbDict)
+        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', posHoldStatus='OPEN|POSITION')
+        if len(dbDicts) > 0:
+            self.__executeClosureSeq(dbDicts, cancelOrder=True, forceCloseRec=True)
         self.__lock.release()
 
         # Check for all orders in 'CLOSE' state.
         # Do nothing
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', posHoldStatus='CLOSE')
-        # All orders have executed. Only thing to be done is to close position
-        for dbDict in dbDicts:
-            if dbDict['REC_STATUS'] != 'CLOSE':
-                self.__logger.error("POS_HOLD_STATUS == CLOSE but REC_STATUS != CLOSE. Rec = %s", dbDict)
 
 
-    def runPeriodicChecks(self, squareOffMinus15, marketClose):
-        self.__marketClose = marketClose
-        if squareOffMinus15:
-            self.__squareOff = True
-            self.__updateOrderStatus(marketClose)
-            self.__closeAllOpenIntraDayPositions()
-            
-        # All data is now in DB. Reconcile recommendation and order status
-        self.__updateOrderStatus(marketClose)
-        self.__reconcileRecs()
+    def __closeAllOpenDeliveryOrders(self):
+        # Get all open positions
+        self.__logger.info("Closing all open positions")
+
+        # Check for all orders in 'OPEN' state
+        self.__lock.acquire()
+        # Some orders are still open --> cancel them and close position
+        dbDicts = self.__persistence.getDb(strategy= '!MARGIN', posHoldStatus='OPEN|POSITION|PART_POSITION')
+        # Cancel order & Get final position
+        if len(dbDicts) > 0:
+            self.__executeEOMSeq(dbDicts)
+        self.__lock.release()
+
+
+        # Check for all orders in 'CLOSE' state.
+        # Do nothing
+
+
+    def runPeriodicChecks(self, squareOffMinus15, marketCloseMinus1):
+        self.__marketClose = marketCloseMinus1
+        if not marketCloseMinus1:
+            if squareOffMinus15:
+                self.__squareOff = True
+                self.__updateOpenOrderStatus(marketCloseMinus1)
+                self.__closeAllOpenIntraDayPositions()
+                
+            # All data is now in DB. Reconcile recommendation and order status
+            self.__updateOpenOrderStatus(marketCloseMinus1)
+            self.__reconcileRecs(marketCloseMinus1)
+        else:
+            self.__closeAllOpenDeliveryOrders()
 
 
 trade = app('./payTmMoney.ini', dryRun=False)
@@ -584,16 +617,16 @@ trade.getHoldingsData()
 
 def payTmThread():
     squareOffMinus15 = False
-    marketClose = False
+    marketCloseMinus1 = False
     marketOpen = False
-    while not marketClose:
+    while not marketCloseMinus1:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
         if marketOpen:
-            trade.runPeriodicChecks(squareOffMinus15, marketClose)
+            trade.runPeriodicChecks(squareOffMinus15, marketCloseMinus1)
             time.sleep(15)
             # Start closing all positions as soon as it is 3:00PM
-            squareOffMinus15 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
-            marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30) 
+            squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
+            marketCloseMinus1 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=29) 
         else:
             time.sleep(5)
     trade._app__logger.info("Markets have closed. Exiting gracefully")
