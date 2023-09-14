@@ -1,0 +1,17 @@
+<!DOCTYPE HTML>
+<html xmlns:th="https://www.thymeleaf.org">
+<head>
+    <title>Submit TPIN Req to CDSL</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+<h1>Request TPIN</h1>
+<form action="https://eDIS.cdslindia.com/eDIS/VerifyDIS" method="post">
+    <p>DpId: <input type="text"  name="DpId"/></p>
+    <p>ReqId: <input type="text" name="ReqId"/></p>
+    <p>Version: <input type="text" name="Version"/></p>
+    <p>TransDtls: <input type="text" name="TransDtls"/></p>
+    <p><input type="submit" value="Submit" /> <input type="reset" value="Reset" /></p>
+</form>
+</body>
+</html>

@@ -84,3 +84,16 @@ def test_cancelOrder(setup):
         res = module.cancelOrder(orderNum, offline=True)
         print(res)
     
+def test_edisValidateTpin(setup):
+    module = setup
+    module.payTmLogin()
+    breakpoint()
+    # The process needs to work as mentioned here https://forum.paytmmoney.com/t/buy-order-working-but-sell-order-not-working-using-pmclient/230/7
+    status, holdings = module.getHoldingsData()
+    if status:
+        isinList = []
+        for holding in holdings:
+            isinDict = {'isin': holding['ISIN_CODE'], 'qty': holding['QTY']}
+            isinList.append(isinDict)
+        module.validateTpin(isinList)
+    module.edisStatus(23562887)

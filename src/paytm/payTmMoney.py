@@ -83,6 +83,15 @@ class payTmMoney:
         return True
 
 
+    def edisValidateTpin(self, isinList):
+        res = self.__pm.validate_tpin('PRE', isinList)
+        print(res)
+
+    
+    def edisStatus(self, requestId):
+        res = self.__pm.status(requestId)
+        print(res)
+
     def getLastTradedPrice(self, securityId, exchange='NSE'):
         pref = [exchange, str(securityId),'EQUITY']
         ltp = None
@@ -108,7 +117,7 @@ class payTmMoney:
             if len(res['data']['results']) > 0:
                 status = True
                 for holding in res['data']['results']:
-                    resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'QTY': int(holding['quantity'])}
+                    resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'ISIN_CODE': holding['isin_code'],'QTY': int(holding['quantity'])}
                     resDictArr.append(resDict)
             else:
                 retries -= 1
