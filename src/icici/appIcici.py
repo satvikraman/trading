@@ -84,6 +84,10 @@ class app():
 
 
     def __closeMarginRecsNotUpdated(self, recDicts):
+        # Sometime the table just does not show any entries. Do view this as the rec has been cancelled
+        if len(recDicts) == 0:
+            return
+
         # Find all 'MARGIN' recommendations in DB that are open
         dateStr = datetime.datetime.now().strftime("%d-%b-%Y")
         dbDicts = self.__persistence.getDb(nseSym=None, strategy='MARGIN', date=dateStr, time=None, recStatus='OPEN')
