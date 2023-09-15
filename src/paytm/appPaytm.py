@@ -114,6 +114,12 @@ class app():
             dotenv.set_key('./.env', "max_amount_per_order", str(maxAmount))
 
 
+    def setMarketTimer(self, squareOff, marketClose):
+        self.__squareOff = squareOff
+        self.__marketClose = marketClose
+        return
+
+
     def openPayTmMoneySession(self):
         self.__payTmMoney.payTmLogin()
 
@@ -153,7 +159,7 @@ class app():
             margin = self.__timesMargin
             qty = qty * margin
         
-        qty = 2
+        qty = min(qty, 10)
 
         # Security ID of the stock 
         securityId = self.__payTmMoney.findSecurityCode(recDict['NSE_SYMBOL'])
@@ -237,6 +243,8 @@ class app():
         else:
             status = True
 
+        self.runPeriodicChecks(self.__squareOff, self.__marketClose)
+
         return status
 
 
@@ -251,7 +259,7 @@ class app():
         newPosState = posHoldQty = None
         if status:
             posHoldQty = posQty + holdQty - coreQty
-            if closeQty > 0 and posHoldQty == 0:
+            if (closeQty > 0 and posHoldQty == 0) or (dbDict['REC_STATUS'] == 'CLOSE' and posHoldQty == 0):
                 newPosState = 'CLOSE'
             elif closeQty > 0:
                 newPosState = 'PARTIAL_CLOSE'
@@ -307,12 +315,13 @@ class app():
         # First  order is a 'MKT' order
         qty = 0
         invPerc = posHoldQty * 100 / totalQty
-        if invPerc == 0:
-            qty = max(int(totalQty * 1 / 10) - posHoldQty, 1)
-            orderType = 'MKT'
-            limitPrice = 0 if not self.__dryRun else dbDict['CMP']
+        #if invPerc == 0:
+        #    qty = max(int(totalQty * 1 / 10) - posHoldQty, 1)
+        #    orderType = 'MKT'
+        #    limitPrice = 0 if not self.__dryRun else dbDict['CMP']
         if invPerc <= 10 and qty == 0:
             qty = int(totalQty * 3 / 10) - posHoldQty
+            qty = max(qty, 1)
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
         if invPerc <= 30 and qty == 0:
@@ -375,7 +384,7 @@ class app():
         dbDict['POS_HOLD_QTY'] = posHoldQty
 
         if posHoldQty == 0:
-            self.__logger.warning("Nothing to be closed for %s. product = %s pos = %d holdQty = %d", dbDict['NSE_SYMBOL'], posQty, posHoldQty)
+            self.__logger.warning("Nothing to be closed for %s. product = %s pos = %d holdQty = %d", dbDict['NSE_SYMBOL'], product, posQty, posHoldQty)
             return True, dbDict, ''
 
         orderNum = ''
@@ -456,18 +465,21 @@ class app():
                 orderComplete = False
                 dbDict = closeDbDictOrderNum['DB_DICT']
                 orderNum = closeDbDictOrderNum['ORDER_NO']
-                status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderNum)
-                if status:
-                    if trdQty == qty:
-                        orderComplete = True
-                        for closeOrderDict in dbDict['CLOSE_ORDERS']:
-                            if closeOrderDict['ORDER_NO'] == orderNum and closeOrderDict['ORDER_STATUS'] != 'CLOSE':
-                                closeOrderDict['ORDER_STATUS'] = 'CLOSE'
-                                closeOrderDict['TRADED_QTY'] = trdQty
+                if orderNum != '':
+                    status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderNum)
+                    if status:
+                        if trdQty == qty:
+                            orderComplete = True
+                            for closeOrderDict in dbDict['CLOSE_ORDERS']:
+                                if closeOrderDict['ORDER_NO'] == orderNum and closeOrderDict['ORDER_STATUS'] != 'CLOSE':
+                                    closeOrderDict['ORDER_STATUS'] = 'CLOSE'
+                                    closeOrderDict['TRADED_QTY'] = trdQty
+                        else:
+                            break
                     else:
-                        break
+                        self.__logger.critical("Unable to find order info %s", orderNum)
                 else:
-                    self.__logger.critical("Unable to find order info %s", orderNum)
+                    orderComplete = True
                 
                 allCloseOrdersComplete = allCloseOrdersComplete and orderComplete
         return True, closeDbDictOrderNumArr
@@ -528,7 +540,7 @@ class app():
         # Do nothing. No more orders should be placed. No need to sell anything as well
 
         # If recommendation == 'OPEN' and order == 'CLOSE'
-        # This should ideally never happen. In any case, do nothing
+        # Check if this is indeed true
 
         # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
         # Cancel open orders. Exit any open position (partially)
@@ -558,7 +570,60 @@ class app():
         self.__lock.release()
 
         # If recommendation == 'CLOSE' and order == 'CLOSE'
-        # Do nothing
+        # Check if this is indeed true
+
+
+    def __selfHealChecksMargin(self, dbDicts):
+        if len(dbDicts) == 0:
+            return True
+        
+        for dbDict in dbDicts:
+            status, posHoldStatus, posQty, posHoldQty = self.__getPosStatus(dbDict)
+            if status:            
+                dbDict['POS_QTY'] = posQty
+                dbDict['POS_HOLD_QTY'] = posHoldQty
+                dbDict['POS_HOLD_STATUS'] = posHoldStatus
+                self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+
+
+    def selfHeal(self):
+        while not self.__squareOff:
+            # If recommendation == 'OPEN' and order == 'OPEN'
+            # No need to self heal. Being handled in main  thread
+
+            # If recommendation == 'OPEN' and order == 'POSITION'
+            # Do nothing. All orders have been placed. Wait for the recommendation to close
+
+            # If recommendation == 'OPEN' and order == 'PARTIAL_CLOSE'
+            # Do nothing. No more orders should be placed. No need to sell anything as well
+
+            # If recommendation == 'OPEN|CLOSE' and order == 'CLOSE'
+            # Check if this is indeed true
+            self.__lock.acquire()
+            dbDicts = self.__persistence.getDb(strategy='MARGIN', posHoldStatus='CLOSE')
+            self.__selfHealChecksMargin(dbDicts)
+            self.__lock.release()
+
+            # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
+            # No need to self heal. Being handled in main  thread
+
+            # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
+            # No need to self heal. Being handled in main  thread
+
+            # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
+            # Do nothing. We had to sell half of the position and we have already done that
+
+            # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
+            # No need to self heal. Being handled in main  thread
+
+            # If recommendation == 'CLOSE' and order == 'CLOSE'
+            # Check if this is indeed true. Being checked above
+            time.sleep(60)
+
+
+    def startSelfHeal(self):
+        self.__paytmSelfHealThr = threading.Thread(target=self.selfHeal)
+        self.__paytmSelfHealThr.start()
 
 
     def __closeAllOpenIntraDayPositions(self):
@@ -596,10 +661,8 @@ class app():
 
 
     def runPeriodicChecks(self, squareOffMinus15, marketCloseMinus1):
-        self.__marketClose = marketCloseMinus1
         if not marketCloseMinus1:
             if squareOffMinus15:
-                self.__squareOff = True
                 self.__updateOpenOrderStatus(marketCloseMinus1)
                 self.__closeAllOpenIntraDayPositions()
                 
@@ -619,16 +682,19 @@ def payTmThread():
     squareOffMinus15 = False
     marketCloseMinus1 = False
     marketOpen = False
+
+    trade.startSelfHeal()    
+
     while not marketCloseMinus1:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
         if marketOpen:
-            trade.runPeriodicChecks(squareOffMinus15, marketCloseMinus1)
-            time.sleep(15)
             # Start closing all positions as soon as it is 3:00PM
             squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
-            marketCloseMinus1 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=29) 
-        else:
-            time.sleep(5)
+            marketCloseMinus1 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=25) 
+            trade.setMarketTimer(squareOffMinus15, marketCloseMinus1)
+            trade.runPeriodicChecks(squareOffMinus15, marketCloseMinus1)
+        time.sleep(60)
+
     trade._app__logger.info("Markets have closed. Exiting gracefully")
 
 
