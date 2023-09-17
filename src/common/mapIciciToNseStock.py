@@ -37,3 +37,17 @@ class mapIciciToNseStock():
                     break
         self.__logger.debug('Generated dictionary %s', rowDict)
         return(rowDict)
+
+    def mapNse2Icici(self, nseSym, series):
+        rowDict = {'ICICI_SYMBOL': '', 'NSE_SYMBOL': ''}
+        with(open(self.__config['MAP-ICICI-2-NSE']['ICICI_DATASET'], 'r')) as icicicsv:
+            iciciReader = csv.DictReader(icicicsv)
+            for iciciRow in iciciReader:
+                if (iciciRow[' "ExchangeCode"'] != nseSym or iciciRow[' "Series"'] != series):
+                    continue
+                else:
+                    rowDict['NSE_SYMBOL'] = nseSym
+                    rowDict['ICICI_SYMBOL'] = iciciRow[' "ShortName"']
+                    break
+        self.__logger.debug('Generated dictionary %s', rowDict)
+        return(rowDict)

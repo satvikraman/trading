@@ -41,10 +41,22 @@ class payTmMoneyMock:
         self.__incompleteOrders = enable
         self.__incompleteOrderFraction = fraction
 
-    def cheatAddHoldingsData(self, nseSym, securityId, qty):
-        if nseSym == None and securityId == None and qty == 0:
-            self.__stockDictArr.clear()
-        self.__stockDictArr.append({'NSE_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'QTY': qty})
+    def setCMP(self, nseSym, cmp):
+        status = False
+        for dict in self.__stockDictArr:
+            if dict['NSE_SYMBOL'] == nseSym:
+                status = True
+                dict['CMP'] = cmp
+        return status, cmp
+
+    def cheatAddStockDictArr(self, recDict):
+        removeDict = None
+        for stockDict in self.__stockDictArr:
+            if stockDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and stockDict['STRATEGY'] == recDict['STRATEGY'] and stockDict['REC_DATE'] == recDict['REC_DATE']:
+                removeDict = stockDict
+        if removeDict != None:
+            self.__stockDictArr.remove(removeDict)
+        self.__stockDictArr.append(recDict)
 
     def findSecurityCode(self, nseSym):
         securityID = None
@@ -76,10 +88,9 @@ class payTmMoneyMock:
         status = True
         resDictArr = []
         for dict in self.__stockDictArr:
-            resDict = {'NSE_SYMBOL': dict['NSE_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'QTY': dict['QTY']}
+            resDict = {'NSE_SYMBOL': dict['NSE_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'QTY': dict['HOLD_QTY']}
             resDictArr.append(resDict)
         return status, resDictArr
-
 
     def getSecurityPosition(self, securityId, product, exchange='NSE'):
         status = True
@@ -88,15 +99,15 @@ class payTmMoneyMock:
             if dict['SECURITY_ID'] == securityId:
                 status = True
                 for orderDict in dict['OPEN_ORDERS']:
-                    openQty += orderDict['ORDER_TRADED_QTY']
+                    openQty += orderDict['TRADED_QTY']
 
                 for orderDict in dict['CLOSE_ORDERS']:
-                    closeQty += orderDict['ORDER_TRADED_QTY']
+                    closeQty += orderDict['TRADED_QTY']
                 
+                pos = openQty - closeQty
                 dict['POS_HOLD_QTY'] = pos
                 break
-        if status:
-            pos = openQty - closeQty
+
         return status, openQty, closeQty, pos
 
 
@@ -105,27 +116,27 @@ class payTmMoneyMock:
         qty = trdQty = None
         for dict in self.__stockDictArr:
             for orderDict in dict['OPEN_ORDERS']:
-                if orderDict['ORDER_NUM'] == orderNo:
+                if orderDict['ORDER_NO'] == orderNo:
                     qty = orderDict['ORDER_QTY']
                     if self.__incompleteOrders:
                         qtyToClose = int(qty/self.__incompleteOrderFraction)
-                        if orderDict['ORDER_TRADED_QTY'] + qtyToClose >= qty:
-                            trdQty = orderDict['ORDER_TRADED_QTY'] = qty
+                        if orderDict['TRADED_QTY'] + qtyToClose >= qty:
+                            trdQty = orderDict['TRADED_QTY'] = qty
                             orderDict['ORDER_STATUS'] = 'CLOSE'
                         else:
-                            trdQty = orderDict['ORDER_TRADED_QTY'] + qtyToClose
-                            orderDict['ORDER_TRADED_QTY'] = trdQty
+                            trdQty = orderDict['TRADED_QTY'] + qtyToClose
+                            orderDict['TRADED_QTY'] = trdQty
                     else:
-                        trdQty = orderDict['ORDER_TRADED_QTY'] = qty
+                        trdQty = orderDict['TRADED_QTY'] = qty
                         orderDict['ORDER_STATUS'] = 'CLOSE'
                     status = True
                     break
             
             if not status:
                 for orderDict in dict['CLOSE_ORDERS']:
-                    if orderDict['ORDER_NUM'] == orderNo:
+                    if orderDict['ORDER_NO'] == orderNo:
                         qty = orderDict['ORDER_QTY']
-                        trdQty = orderDict['ORDER_TRADED_QTY'] = qty
+                        trdQty = orderDict['TRADED_QTY'] = qty
                         orderDict['ORDER_STATUS'] = 'CLOSE'
                         status = True
                         break
@@ -139,7 +150,7 @@ class payTmMoneyMock:
         status = False
         for dict in self.__stockDictArr:
             for orderDict in dict['OPEN_ORDERS']:
-                if orderDict['ORDER_NUM'] == orderNo:
+                if orderDict['ORDER_NO'] == orderNo:
                     if orderDict['ORDER_STATUS'] == 'OPEN':
                         status = True
                         orderDict['ORDER_STATUS'] = 'CLOSE'
@@ -155,12 +166,12 @@ class payTmMoneyMock:
     def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice):
         status = True
         prevOrdered = False
-        orderDict = {'ORDER_NUM': '', 'ORDER_QTY': qty, 'ORDER_TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'CANCEL_ORDER_NUM': ''}
+        orderDict = {'ORDER_NO': '', 'ORDER_QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'CANCEL_ORDER_NUM': ''}
         for dict in self.__stockDictArr:
             if dict['NSE_SYMBOL'] == nseSym and dict['PRODUCT'] == product:
                 prevOrdered = True
                 orderNum = str(self.__orderNum)
-                orderDict['ORDER_NUM'] = orderNum
+                orderDict['ORDER_NO'] = orderNum
                 self.__orderNum += 1
                 # If the buySell matches with the buySell type used while placing the 1st order, then these are additional open orders
                 # else mark them as close orders
@@ -172,7 +183,7 @@ class payTmMoneyMock:
         
         if not prevOrdered:
             orderNum = str(self.__orderNum)
-            orderDict['ORDER_NUM'] = orderNum
+            orderDict['ORDER_NO'] = orderNum
             self.__orderNum += 1
             stockDict = {'NSE_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'CMP': limitPrice, 'QTY': qty, 'POS_HOLD_QTY': 0, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'OPEN_BUY_SELL': buySell,
                          'LIMIT': limitPrice, 'TRIGGER': triggerPrice, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []}

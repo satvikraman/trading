@@ -60,7 +60,7 @@ class payTmMoney:
             self.__state_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
             dotenv.set_key('./.env', "state_key", self.__state_key)
             loginURL = self.__pm.login(self.__state_key)
-            self.__request_token = input("Enter the request token after looging into {} : ".format(loginURL))
+            self.__request_token = input("Enter the request token after logging into {} : ".format(loginURL))
             dotenv.set_key('./.env', "request_token", self.__request_token)
             self.__token_dict = self.__pm.generate_session(self.__request_token)
             self.__access_token = self.__token_dict['access_token']

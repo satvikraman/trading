@@ -126,7 +126,7 @@ class persistence:
     
     def isInDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None):
         status = False
-        if(nseSym == None) or (strategy == None) or (date == None) or (time == None):
+        if(nseSym == None) and (strategy == None) and (date == None) and (time == None):
             return status
         dictsArr = self.getDb(nseSym, strategy, date, time, recStatus)
         # We expect only a single record for a given symbol in a given strategy
