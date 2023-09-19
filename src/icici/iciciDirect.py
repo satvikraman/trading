@@ -159,7 +159,7 @@ class iciciDirect():
         return rowDict
 
     def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols):
-        strategiesToInvest = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
+        strategiesToInvest = ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
         rowDict = None
         self.__logger.debug('==== Format Table Row To Dictionary ====')
         for i in range(9):
@@ -194,7 +194,7 @@ class iciciDirect():
             self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
             recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
             # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
-            recommendationType.select_by_value("MRGN")
+            recommendationType.select_by_value("ALL")
 
             # Click on view to see the results
             viewBtn = menu3.find_element_by_id("btnview")
