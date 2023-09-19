@@ -111,11 +111,82 @@ class app():
     
     def getHoldingsData(self):
         status, self.__holdings = self.__payTmMoney.getHoldingsData()
+        # Remove quantities we consider to be a part of the core portfolio so that 
+        # we don't need to repeatedly do this calculation. Hold - Core = Trade
+        for holding in self.__holdings:
+            for core in self.__core:
+                if holding['NSE_SYMBOL'] == core['NSE_SYMBOL']:
+                    holding['CORE_QTY'] = core['QTY']
+                    holding['TRADE_QTY'] = holding['HOLD_QTY'] - core['QTY']
+                    holding['IN_DB'] = False
+
         if not status:
             self.__logger.error("getHoldingsData function returned error")
 
 
-    def __addNewRec(self, recDict, holdQty, coreQty, posHoldStatus=None):
+    def __checkDbHoldingSynch(self):
+        status = True
+        dbHoldings = []
+        # Consolidate DB holdings. The same stock could be mentioned across strategies and dates
+        # Goal is to compare that total quantity of a stock matches actuals
+        dbDicts = self.__persistence.getDb(strategy='!MARGIN', posHoldStatus='!CLOSE')
+        for dbDict in dbDicts:
+            found = False
+            for dbHolding in dbHoldings:
+                if dbDict['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
+                    dbHolding['POS_HOLD_QTY'] += dbDict['POS_HOLD_QTY']
+                    found = True
+            if not found:
+                dbHolding = {'NSE_SYMBOL': dbDict['NSE_SYMBOL'], 'POS_HOLD_QTY': dbDict['POS_HOLD_QTY'], 'IN_HOLD': False}
+                dbHoldings.append(dbHolding)
+
+        # Check if all stocks in DB also find a mention in Holding for the same quantity.
+        for dbHolding in dbHoldings:
+            if not dbHolding['IN_HOLD'] and dbHolding['POS_HOLD_QTY'] > 0:
+                found = False
+                for holding in self.__holdings:
+                    if holding['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
+                        if holding['TRADE_QTY'] == dbHolding['POS_HOLD_QTY']:
+                            found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
+                        else:
+                            status = False
+                            self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] - coreQty[%d] => tradeQty[%d] != posHoldQty[%d]", 
+                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['TRADE_QTY'], dbHolding['POS_HOLD_QTY'])
+                if not found:
+                    status = False
+                    self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['NSE_SYMBOL'])
+
+        # Check if all stocks in holding that are not entirely in core also find a mention in Holding for the same quantity.
+        for holding in self.__holdings:
+            if not holding['IN_DB'] and holding['TRADE_QTY'] > 0:
+                found = False
+                for dbHolding in dbHoldings:
+                    if holding['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
+                        if holding['TRADE_QTY'] == dbHolding['POS_HOLD_QTY']:
+                            found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
+                        else:
+                            status = False
+                            self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] - coreQty[%d] => tradeQty[%d] != posHoldQty[%d]", 
+                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['TRADE_QTY'], dbHolding['POS_HOLD_QTY'])
+                if not found:
+                    status = False
+                    self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])        
+        return status
+    
+
+    def startupCheck(self):
+        # Transfer any position until yesterday to holding and set position to 0
+
+        # Check if all the holding stocks - core are in DB
+        # Check if all the DB stocks are in holding and in the same quantity
+        self.__checkDbHoldingSynch()
+
+
+
+
+
+
+    def __addNewRec(self, recDict, posHoldStatus=None):
         status = False
         # If square off time, stop accepting new orders
         if self.__squareOff == True and recDict['STRATEGY'] == 'MARGIN':
@@ -155,11 +226,11 @@ class app():
 
         # Security ID of the stock 
         securityId = self.__payTmMoney.findSecurityCode(recDict['NSE_SYMBOL'])
-        recDict['HOLD_QTY'] = holdQty
-        recDict['CORE_QTY'] = coreQty
-        recDict['POS_HOLD_QTY'] = holdQty - coreQty
+        recDict['POS_QTY'] = 0
+        recDict['HOLD_QTY'] = 0
+        recDict['POS_HOLD_QTY'] = 0
         recDict['POS_HOLD_STATUS'] = 'OPEN' if posHoldStatus == None else posHoldStatus
-        recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'POS_QTY': 0, 'MAX_AMOUNT': maxAmount, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
+        recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'MAX_AMOUNT': maxAmount, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
         self.__lock.acquire()
         res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
         if res > 0:
@@ -245,7 +316,7 @@ class app():
 
         # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
         if recDict['REC_DATE'].lower() == today:
-            status, dbDict = self.__updateRec(recDict, dbDict) if isInDb else self.__addNewRec(recDict, holdQty, coreQty)
+            status, dbDict = self.__updateRec(recDict, dbDict) if isInDb else self.__addNewRec(recDict)
         # else if in holdings (- any holding in the core portfolio), 
         elif inHolding:
         #   if in DB (Normal case) -> call updateRec
@@ -256,7 +327,7 @@ class app():
         #       if REC_STATUS == 'OPEN'             --> Add to DB, but set POS_HOLD_STATE = POSITION so that we dont buy any more stocks
         #       if REC_STATUS == 'PARTIAL_CLOSE'    --> Add to DB, so that the holdings can be closed
         #       if REC_STATUS == 'CLOSE'            --> Add to DB, so that the holdings can be closed
-                status, dbDict = self.__addNewRec(recDict, holdQty, coreQty, posHoldStatus='POSITION')
+                status, dbDict = self.__addNewRec(recDict, posHoldStatus='POSITION')
         # else i.e. old recommendation and not in holdings --> Do nothing. Send ACK anyways
         else:
             status = True
@@ -461,7 +532,7 @@ class app():
 
         posHoldQty= dbDict['POS_HOLD_QTY']
         if posHoldQty == 0:
-            self.__logger.warning("Nothing to be closed for %s. product = %s pos = %d holdQty = %d", dbDict['NSE_SYMBOL'], product, posQty, posHoldQty)
+            self.__logger.warning("Nothing to be closed for %s. product = %s posholdQty = %d", dbDict['NSE_SYMBOL'], product, posHoldQty)
             return True, dbDict, ''
 
         orderNum = ''
@@ -549,6 +620,7 @@ class app():
                                 if closeOrderDict['ORDER_NO'] == orderNum and closeOrderDict['ORDER_STATUS'] != 'CLOSE':
                                     closeOrderDict['ORDER_STATUS'] = 'CLOSE'
                                     closeOrderDict['TRADED_QTY'] = trdQty
+                                    self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
                         else:
                             break
                     else:
@@ -784,6 +856,7 @@ def payTmThread():
     marketCloseMinus1 = False
     marketOpen = False
 
+    trade.startupCheck()
     trade.startSelfHeal()
     trade.startPeriodicChecks()
 
