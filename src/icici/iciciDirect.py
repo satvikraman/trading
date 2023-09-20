@@ -159,6 +159,7 @@ class iciciDirect():
         return rowDict
 
     def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols):
+        #strategiesToInvest = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
         strategiesToInvest = ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
         rowDict = None
         self.__logger.debug('==== Format Table Row To Dictionary ====')

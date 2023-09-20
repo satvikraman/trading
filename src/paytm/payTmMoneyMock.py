@@ -88,7 +88,7 @@ class payTmMoneyMock:
         status = True
         resDictArr = []
         for dict in self.__stockDictArr:
-            resDict = {'NSE_SYMBOL': dict['NSE_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'QTY': dict['HOLD_QTY']}
+            resDict = {'NSE_SYMBOL': dict['NSE_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'HOLD_QTY': dict['ACT_HOLD_QTY']}
             resDictArr.append(resDict)
         return status, resDictArr
 
@@ -99,10 +99,18 @@ class payTmMoneyMock:
             if dict['SECURITY_ID'] == securityId:
                 status = True
                 for orderDict in dict['OPEN_ORDERS']:
-                    openQty += orderDict['TRADED_QTY']
+                    timeStr = orderDict['CREATE_TIME']
+                    if timeStr != '':
+                        orderTime = datetime.datetime.strptime(timeStr, '%d-%b-%Y %H:%M')
+                        if orderTime.date() == datetime.datetime.today().date():
+                            openQty += orderDict['TRADED_QTY']
 
                 for orderDict in dict['CLOSE_ORDERS']:
-                    closeQty += orderDict['TRADED_QTY']
+                    timeStr = orderDict['CREATE_TIME']
+                    if timeStr != '':
+                        orderTime = datetime.datetime.strptime(timeStr, '%d-%b-%Y %H:%M')
+                        if orderTime.date() == datetime.datetime.today().date():
+                            closeQty += orderDict['TRADED_QTY']
                 
                 pos = openQty - closeQty
                 dict['POS_HOLD_QTY'] = pos
@@ -166,7 +174,8 @@ class payTmMoneyMock:
     def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice):
         status = True
         prevOrdered = False
-        orderDict = {'ORDER_NO': '', 'ORDER_QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'CANCEL_ORDER_NUM': ''}
+        timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
+        orderDict = {'ORDER_NO': '', 'ORDER_QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'CREATE_TIME': timeStr, 'CANCEL_ORDER_NUM': ''}
         for dict in self.__stockDictArr:
             if dict['NSE_SYMBOL'] == nseSym and dict['PRODUCT'] == product:
                 prevOrdered = True
