@@ -129,32 +129,33 @@ class app():
         dbHoldings = []
         # Consolidate DB holdings. The same stock could be mentioned across strategies and dates
         # Goal is to compare that total quantity of a stock matches actuals
-        dbDicts = self.__persistence.getDb(strategy='!MARGIN', posHoldStatus='!CLOSE')
+        dbDicts = self.__persistence.getDb(strategy='!MARGIN')
         for dbDict in dbDicts:
-            found = False
-            for dbHolding in dbHoldings:
-                if dbDict['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
-                    dbHolding['POS_HOLD_QTY'] += dbDict['POS_HOLD_QTY']
-                    found = True
-            if not found:
-                dbHolding = {'NSE_SYMBOL': dbDict['NSE_SYMBOL'], 'POS_HOLD_QTY': dbDict['POS_HOLD_QTY'], 'IN_HOLD': False}
-                dbHoldings.append(dbHolding)
+            if dbDict['POS_QTY'] != 0 or dbDict['POS_HOLD_QTY'] != 0:
+                found = False
+                for dbHolding in dbHoldings:
+                    if dbDict['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
+                        dbHolding['HOLD_QTY'] += dbDict['POS_HOLD_QTY'] - dbDict['POS_QTY']
+                        found = True
+                if not found:
+                    dbHolding = {'NSE_SYMBOL': dbDict['NSE_SYMBOL'], 'HOLD_QTY': dbDict['POS_HOLD_QTY'] - dbDict['POS_QTY'], 'IN_HOLD': False}
+                    dbHoldings.append(dbHolding)
 
         for holding in self.__holdings:
             holding['IN_DB'] = False
 
         # Check if all stocks in DB also find a mention in Holding for the same quantity.
         for dbHolding in dbHoldings:
-            if not dbHolding['IN_HOLD'] and dbHolding['POS_HOLD_QTY'] > 0:
+            if not dbHolding['IN_HOLD'] and dbHolding['HOLD_QTY'] > 0:
                 found = False
                 for holding in self.__holdings:
                     if holding['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
-                        if holding['HOLD_QTY'] == dbHolding['POS_HOLD_QTY']:
+                        if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
                             status = False
                             self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] - coreQty[%d] => tradeQty[%d] != posHoldQty[%d]", 
-                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['HOLD_QTY'], dbHolding['POS_HOLD_QTY'])
+                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
                     self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['NSE_SYMBOL'])
@@ -165,26 +166,28 @@ class app():
                 found = False
                 for dbHolding in dbHoldings:
                     if holding['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
-                        if holding['HOLD_QTY'] == dbHolding['POS_HOLD_QTY']:
+                        if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
                             status = False
                             self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] - coreQty[%d] => tradeQty[%d] != posHoldQty[%d]", 
-                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['HOLD_QTY'], dbHolding['POS_HOLD_QTY'])
+                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
+                    status = False
                     self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])        
         return status
     
 
     def __moveOldPosToHolding(self):
-        dbDicts = self.__persistence.getDb(strategy='!MARGIN', posHoldStatus='!CLOSE')
+        dbDicts = self.__persistence.getDb(strategy='!MARGIN')
         for dbDict in dbDicts:
-            posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
-            if dbDict['POS_QTY'] > 0 and posDate < self.__today.date():
-                dbDict['HOLD_QTY'] += dbDict['POS_QTY']
-                dbDict['POS_QTY'] = 0
-                dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
-                res = self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_DATE'])
+            if dbDict['POS_QTY'] != 0:
+                posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
+                if dbDict['POS_QTY'] > 0 and posDate < self.__today.date():
+                    dbDict['HOLD_QTY'] += dbDict['POS_QTY']
+                    dbDict['POS_QTY'] = 0
+                    dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
+                    res = self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_DATE'])
 
 
     def startupCheck(self):
@@ -872,10 +875,10 @@ def payTmThread():
     marketCloseMinus1 = False
     marketOpen = False
 
-    #status = trade.startupCheck()
-    #if not status:
-    #    print('Startup check failed. Exiting')
-    #    return
+    status = trade.startupCheck()
+    if not status:
+        print('Startup check failed. Exiting')
+        return
 
     trade.startSelfHeal()
     trade.startPeriodicChecks()
@@ -923,7 +926,7 @@ if __name__ == '__main__':
     
     # Start the threads
     paytmThr.start()
-    flaskThr.start()
+    #flaskThr.start()
 
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
