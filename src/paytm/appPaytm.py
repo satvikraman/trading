@@ -154,8 +154,8 @@ class app():
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
                             status = False
-                            self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] - coreQty[%d] => tradeQty[%d] != posHoldQty[%d]", 
-                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
+                            self.__logger.critical("For stock %s, quantities don't match. actHoldQty[%d] != dbHoldQty[%d]", 
+                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
                     self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['NSE_SYMBOL'])
@@ -183,11 +183,11 @@ class app():
         for dbDict in dbDicts:
             if dbDict['POS_QTY'] != 0:
                 posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
-                if dbDict['POS_QTY'] > 0 and posDate < self.__today.date():
+                if posDate < self.__today.date():
                     dbDict['HOLD_QTY'] += dbDict['POS_QTY']
                     dbDict['POS_QTY'] = 0
                     dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
-                    res = self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_DATE'])
+                    res = self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
 
 
     def startupCheck(self):
@@ -276,7 +276,8 @@ class app():
             dbDictTime = dbDict['REC_TIME']
             keys = ['STOP_LOSS', 'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
             for key in keys:
-                dbDict[key] = float(recDict[key])
+                if recDict[key] != '':
+                    dbDict[key] = float(recDict[key])
 
             keys = ['REC_TIME', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
             # Offline non-margin entries wont have the correct time. Hence use this to query the DB but also update the REC_TIME with the correct time in the loop below
@@ -854,17 +855,19 @@ class app():
 
 
     def __runPeriodicChecks(self):
-        if not self.__marketClose:
-            if self.__squareOff:
+        while not self.__marketClose:
+            if not self.__marketClose:
+                if self.__squareOff:
+                    self.__updateOpenOrderStatus()
+                    self.__closeAllOpenIntraDayPositions()
+                    
+                # All data is now in DB. Reconcile recommendation and order status
                 self.__updateOpenOrderStatus()
-                self.__closeAllOpenIntraDayPositions()
-                
-            # All data is now in DB. Reconcile recommendation and order status
-            self.__updateOpenOrderStatus()
-            self.__reconcileRecs(self.__marketClose)
-        else:
-            self.__closeAllExpiredOrders()
-            self.__closeAllOpenDeliveryOrders()
+                self.__reconcileRecs(self.__marketClose)
+            else:
+                self.__closeAllExpiredOrders()
+                self.__closeAllOpenDeliveryOrders()
+            time.sleep(15)
 
 
 trade = app('./payTmMoney.ini', dryRun=False)
@@ -890,7 +893,7 @@ def payTmThread():
             squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
             marketCloseMinus1 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=25) 
             trade.setMarketTimer(squareOffMinus15, marketCloseMinus1)
-        time.sleep(60)
+        time.sleep(15)
 
     trade._app__logger.info("Markets have closed. Exiting gracefully")
 
@@ -926,7 +929,7 @@ if __name__ == '__main__':
     
     # Start the threads
     paytmThr.start()
-    #flaskThr.start()
+    flaskThr.start()
 
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
