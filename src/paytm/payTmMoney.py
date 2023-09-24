@@ -101,7 +101,7 @@ class payTmMoney:
         while not status and retries >= 0:
             try:
                 res = self.__pm.get_live_market_data('LTP', pref)
-                if len(res['data']) > 0:
+                if len(res['data']) > 0 and res['data'][0]['found']:
                     status = True
                     ltp = res['data'][0]['last_price']
                 else:

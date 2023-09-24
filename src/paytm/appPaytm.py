@@ -162,8 +162,8 @@ class app():
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
                             status = False
-                            self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] - coreQty[%d] => tradeQty[%d] != posHoldQty[%d]", 
-                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
+                            self.__logger.critical("For stock %s, quantities don't match. actHoldQty[%d] != dbHoldQty[%d]", 
+                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
                     self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['NSE_SYMBOL'])
@@ -191,7 +191,7 @@ class app():
         for dbDict in dbDicts:
             if dbDict['POS_QTY'] != 0:
                 posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
-                if dbDict['POS_QTY'] > 0 and posDate < self.__today.date():
+                if posDate < self.__today.date():
                     dbDict['HOLD_QTY'] += dbDict['POS_QTY']
                     dbDict['POS_QTY'] = 0
                     dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
@@ -892,17 +892,19 @@ class app():
 
 
     def __runPeriodicChecks(self):
-        if not self.__marketClose:
-            if self.__squareOff:
+        while not self.__marketClose:
+            if not self.__marketClose:
+                if self.__squareOff:
+                    self.__updateOpenOrderStatus()
+                    self.__closeAllOpenIntraDayPositions()
+                    
+                # All data is now in DB. Reconcile recommendation and order status
                 self.__updateOpenOrderStatus()
-                self.__closeAllOpenIntraDayPositions()
-                
-            # All data is now in DB. Reconcile recommendation and order status
-            self.__updateOpenOrderStatus()
-            self.__reconcileRecs(self.__marketClose)
-        else:
-            self.__closeAllExpiredOrders()
-            self.__closeAllOpenDeliveryOrders()
+                self.__reconcileRecs(self.__marketClose)
+            else:
+                self.__closeAllExpiredOrders()
+                self.__closeAllOpenDeliveryOrders()
+            time.sleep(15)
 
 
 trade = app('./payTmMoney.ini', dryRun=False)
@@ -918,17 +920,20 @@ def payTmThread():
         print('Startup check failed. Exiting')
         return
 
+    while not marketOpen:
+        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
+        time.sleep(15)
+    
     trade.startSelfHeal()
     trade.startPeriodicChecks()
 
     while not marketCloseMinus1:
-        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
         if marketOpen:
             # Start closing all positions as soon as it is 3:00PM
             squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
             marketCloseMinus1 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=25) 
             trade.setMarketTimer(squareOffMinus15, marketCloseMinus1)
-        time.sleep(60)
+        time.sleep(15)
 
     trade._app__logger.info("Markets have closed. Exiting gracefully")
 
