@@ -92,18 +92,24 @@ class payTmMoney:
         res = self.__pm.status(requestId)
         print(res)
 
+
     def getLastTradedPrice(self, securityId, exchange='NSE'):
         pref = [exchange, str(securityId),'EQUITY']
         ltp = None
         status = False
         retries = self.__retries
         while not status and retries >= 0:
-            res = self.__pm.get_live_market_data('LTP', pref)
-            if len(res['data']) > 0:
-                status = True
-                ltp = res['data'][0]['last_price']
-            else:
+            try:
+                res = self.__pm.get_live_market_data('LTP', pref)
+                if len(res['data']) > 0:
+                    status = True
+                    ltp = res['data'][0]['last_price']
+                else:
+                    retries -= 1
+                    time.sleep(1)
+            except Exception as e:
                 retries -= 1
+                self.__logger.error("Error: {}".format(e))
                 time.sleep(1)
         return status, ltp
 
@@ -113,21 +119,26 @@ class payTmMoney:
         status = False
         retries = self.__retries
         while not status and retries >= 0:
-            res = self.__pm.user_holdings_data()
-            if len(res['data']['results']) > 0:
-                status = True
-                for holding in res['data']['results']:
-                    found = False
-                    for resDict in resDictArr:
-                        if resDict['NSE_SYMBOL'] == holding['nse_symbol']:
-                            found = True
-                            resDict['HOLD_QTY'] += int(holding['quantity'])
-                    if not found:
-                        resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'ISIN_CODE': holding['isin_code'], 'HOLD_QTY': int(holding['quantity'])}
-                        resDictArr.append(resDict)
-            else:
+            try:
+                res = self.__pm.user_holdings_data()
+                if len(res['data']['results']) > 0:
+                    status = True
+                    for holding in res['data']['results']:
+                        found = False
+                        for resDict in resDictArr:
+                            if resDict['NSE_SYMBOL'] == holding['nse_symbol']:
+                                found = True
+                                resDict['HOLD_QTY'] += int(holding['quantity'])
+                        if not found:
+                            resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'ISIN_CODE': holding['isin_code'], 'HOLD_QTY': int(holding['quantity'])}
+                            resDictArr.append(resDict)
+                else:
+                    retries -= 1
+                    time.sleep(1)
+            except Exception as e:
                 retries -= 1
-                time.sleep(1)
+                self.__logger.error("Error : {}".format(e))
+                time.sleep(1)            
 
         return status, resDictArr
 
@@ -138,19 +149,24 @@ class payTmMoney:
         pos = buyQty = sellQty = 0
         retries = self.__retries
         while not status and retries >= 0:
-            res = self.__pm.position_details(securityId, product, exchange)
-            if res['status'] == 'success':
-                if len(res['data']) > 0:
-                    for dataDict in res['data']:
-                        if dataDict['txn_type'] == 'B':
-                            buyQty += dataDict['traded_qty']
-                        else:
-                            sellQty += dataDict['traded_qty']
-                status = True
-            else:
+            try:
+                res = self.__pm.position_details(securityId, product, exchange)
+                if res['status'] == 'success':
+                    if len(res['data']) > 0:
+                        for dataDict in res['data']:
+                            if dataDict['txn_type'] == 'B':
+                                buyQty += dataDict['traded_qty']
+                            else:
+                                sellQty += dataDict['traded_qty']
+                    status = True
+                else:
+                    retries -= 1
+                    time.sleep(1)
+            except Exception as e:
                 retries -= 1
+                self.__logger.error("Error : {}".format(e))
                 time.sleep(1)
-        
+
         if openOrderType == 'BUY':
            openQty = buyQty
            closeQty = sellQty
@@ -163,6 +179,7 @@ class payTmMoney:
         
         return status, openQty, closeQty, pos
 
+
     def findOrderStatusAndQtyInfo(self, orderNo):
         status = False
         qty = trdQty = None
@@ -173,6 +190,7 @@ class payTmMoney:
                 trdQty = resOrder['traded_qty']
                 break
         return status, qty, trdQty
+
 
     def getOrderBookUpdate(self):
         status = False
@@ -187,6 +205,7 @@ class payTmMoney:
                 self.__logger.error("Error : {}".format(e))
                 time.sleep(1)
         return status
+
 
     def cancelOrder(self, orderNo, offline=False):
         status = False
@@ -213,6 +232,7 @@ class payTmMoney:
                         self.__logger.error("Error : {}".format(e))
                         time.sleep(1)
         return status, message, orderNum
+
 
     def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice, offline=False):
         product = 'I' if product == 'INTRADAY' else 'C'

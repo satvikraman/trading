@@ -17,6 +17,7 @@ class payTmMoneyMock:
             self.__orderNum = 1000
             self.__cancelOrderNum = 2000
             self.__stockDictArr = []
+            self.__cmpDictArr = []
 
             if(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
@@ -47,16 +48,29 @@ class payTmMoneyMock:
             if dict['NSE_SYMBOL'] == nseSym:
                 status = True
                 dict['CMP'] = cmp
+        if not status:
+            for dict in self.__cmpDictArr:
+                if dict['NSE_SYMBOL'] == nseSym:
+                    status = True
+                    dict['CMP'] = cmp
+            if not status:
+                status = True
+                securityId = self.findSecurityCode(nseSym)
+                self.__cmpDictArr.append({'NSE_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'CMP': cmp}) 
+
         return status, cmp
 
     def cheatAddStockDictArr(self, recDict):
-        removeDict = None
-        for stockDict in self.__stockDictArr:
-            if stockDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and stockDict['STRATEGY'] == recDict['STRATEGY'] and stockDict['REC_DATE'] == recDict['REC_DATE']:
-                removeDict = stockDict
-        if removeDict != None:
-            self.__stockDictArr.remove(removeDict)
-        self.__stockDictArr.append(recDict)
+        if recDict == None:
+            self.__stockDictArr = []
+        else:
+            removeDict = None
+            for stockDict in self.__stockDictArr:
+                if stockDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and stockDict['STRATEGY'] == recDict['STRATEGY'] and stockDict['REC_DATE'] == recDict['REC_DATE']:
+                    removeDict = stockDict
+            if removeDict != None:
+                self.__stockDictArr.remove(removeDict)
+            self.__stockDictArr.append(recDict)
 
     def findSecurityCode(self, nseSym):
         securityID = None
@@ -82,6 +96,12 @@ class payTmMoneyMock:
             if dict['SECURITY_ID'] == securityId:
                 status = True
                 ltp = dict['CMP']
+        if not status:
+            for dict in self.__cmpDictArr:
+                if dict['SECURITY_ID'] == securityId:
+                    status = True
+                    ltp = dict['CMP']
+
         return status, ltp
  
     def getHoldingsData(self):

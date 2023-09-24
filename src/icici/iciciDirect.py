@@ -83,18 +83,37 @@ class iciciDirect():
         return status
     
 
+    def __suggestInvPeriod(self, strategy):
+        invPeriod = ''
+        if strategy == 'MARGIN':
+            invPeriod = '0 DAYS'
+        elif strategy == 'MOMENTUM PICK':
+            invPeriod = '14 DAYS'
+        elif strategy == 'QUANT_PICKS':
+            invPeriod = '30 DAYS'
+        elif strategy == 'GLADIATOR STOCKS':
+            invPeriod = '3 MONTHS'
+        else:
+            invPeriod = '14 DAYS'
+            self.__logger.error("Handle suggestion of investment period for this strategy %s", strategy)
+        return invPeriod
+
     def prepareRecDict(self, rowDict):
         mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
+        importantKeys = ['INV_PERIOD']
         priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
         otherkeys = ['REC_TIME', 'INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
         recDict = {}
-        for key in mandatoryKeys + mandatoryPriceKeys + priceKeys + otherkeys:
+        for key in mandatoryKeys + mandatoryPriceKeys + importantKeys + priceKeys + otherkeys:
             if key in rowDict:
                 recDict[key] = rowDict[key]
             elif key in mandatoryKeys or key in mandatoryPriceKeys:
                 self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
                 return {}
+            elif key in importantKeys:
+                if key == 'INV_PERIOD':
+                    rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
             elif key in priceKeys:
                 recDict[key] = 0
             elif key in otherkeys:
@@ -222,17 +241,17 @@ class iciciDirect():
         if re.match("Book 50%", cell):
             # Extract part profit price & %
             resDict['REC_STATUS'] = 'PARTIAL_CLOSE'
-            stopLoss = re.match('^.*trail\D*(\d+)\D*', cell)
+            stopLoss = re.match(r'^.*trail\D*(\d+)\D*', cell)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])
         elif re.match("Book profit", cell) or re.match('Target 1', cell):
             resDict['REC_STATUS'] = 'CLOSE'
             if re.match("Book profit", cell):
-                finalProfit = re.match("\D+(\d+)", cell)
+                finalProfit = re.match(r'\D+(\d+)', cell)
                 if finalProfit != None:
                     resDict['FINAL_PROFIT_PRICE'] = self.__convPriceToFloat(finalProfit.groups()[0])
         elif re.match('.*revised stoploss', cell):
-            stopLoss = re.match('.*revised stoploss\D*(\d+)', cell)
+            stopLoss = re.match(r'.*revised stoploss\D*(\d+)', cell)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])
         elif re.match('Others', cell) or re.match('', cell):

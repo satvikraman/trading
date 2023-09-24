@@ -2,6 +2,8 @@ from typing import Any
 import dotenv
 import logging
 import os
+import re
+import shutil
 import sys
 import datetime
 from dateutil.relativedelta import relativedelta
@@ -25,14 +27,36 @@ class app():
             self.__config.read(configFile)
             self.__today = datetime.datetime.today()
 
+            if(self.__config['APP']['LOG_LEVEL'] == 'DEBUG'):
+                level = logging.DEBUG
+            elif(self.__config['APP']['LOG_LEVEL'] == 'INFO'):
+                level = logging.INFO
+            elif(self.__config['APP']['LOG_LEVEL'] == 'WARNING'):
+                level = logging.WARNING
+            elif(self.__config['APP']['LOG_LEVEL'] == 'ERROR'):
+                level = logging.ERROR
+            elif(self.__config['APP']['LOG_LEVEL'] == 'CRITICAL'):
+                level = logging.CRITICAL
+            self.__logger = logging.getLogger(__name__)
+            self.__logger.setLevel(level)
+    
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'], mode='w')
+            consoleHandler = logging.StreamHandler()
+            fileHandler.setFormatter(formatter)
+            consoleHandler.setFormatter(formatter)
+            logging.getLogger('').addHandler(consoleHandler)
+            logging.getLogger('').addHandler(fileHandler)
+
+            self.__lock = threading.Lock()
             if db == None:
                 db = self.__config['DATABASE']['DB']
+            self.__backupDb(db)
+            self.__persistence = persistence(configFile, db)
 
             dotenv.load_dotenv('./.env')
             self.__amountPerOrder = int(os.environ.get('max_amount_per_order', '5000'))
-
-            self.__lock = threading.Lock()
-            self.__persistence = persistence(configFile, db)
+            self.__logger.info('Max Amount Per Order %d', self.__amountPerOrder)
 
             self.__dryRun = dryRun
             if dryRun:
@@ -70,29 +94,13 @@ class app():
                             {'NSE_SYMBOL': 'SOLARINDS', 'SECURITY_ID': '13332', 'QTY': 7}, 
                             {'NSE_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
                             {'NSE_SYMBOL': 'TITAN', 'SECURITY_ID': '3506', 'QTY': 19}, 
-                            {'NSE_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]
-            
-            if(self.__config['APP']['LOG_LEVEL'] == 'DEBUG'):
-                level = logging.DEBUG
-            elif(self.__config['APP']['LOG_LEVEL'] == 'INFO'):
-                level = logging.INFO
-            elif(self.__config['APP']['LOG_LEVEL'] == 'WARNING'):
-                level = logging.WARNING
-            elif(self.__config['APP']['LOG_LEVEL'] == 'ERROR'):
-                level = logging.ERROR
-            elif(self.__config['APP']['LOG_LEVEL'] == 'CRITICAL'):
-                level = logging.CRITICAL
-            self.__logger = logging.getLogger(__name__)
-            self.__logger.setLevel(level)
-    
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'], mode='w')
-            consoleHandler = logging.StreamHandler()
-            fileHandler.setFormatter(formatter)
-            consoleHandler.setFormatter(formatter)
-            logging.getLogger('').addHandler(consoleHandler)
-            logging.getLogger('').addHandler(fileHandler)
-            self.__logger.info('Max Amount Per Order %d', self.__amountPerOrder)
+                            {'NSE_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
+
+
+    def __backupDb(self, db):
+        backupDb = db + '-APP-' + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S")
+        self.__logger.info("Backing up DB as %s", backupDb)
+        shutil.copyfile(db, backupDb)
 
 
     def setAmountPerOrder(self, maxAmount):
@@ -129,7 +137,7 @@ class app():
         dbHoldings = []
         # Consolidate DB holdings. The same stock could be mentioned across strategies and dates
         # Goal is to compare that total quantity of a stock matches actuals
-        dbDicts = self.__persistence.getDb(strategy='!MARGIN')
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN']])
         for dbDict in dbDicts:
             if dbDict['POS_QTY'] != 0 or dbDict['POS_HOLD_QTY'] != 0:
                 found = False
@@ -179,7 +187,7 @@ class app():
     
 
     def __moveOldPosToHolding(self):
-        dbDicts = self.__persistence.getDb(strategy='!MARGIN')
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN']])
         for dbDict in dbDicts:
             if dbDict['POS_QTY'] != 0:
                 posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
@@ -187,7 +195,7 @@ class app():
                     dbDict['HOLD_QTY'] += dbDict['POS_QTY']
                     dbDict['POS_QTY'] = 0
                     dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
-                    res = self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_DATE'])
+                    res = self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_DATE']]])
 
 
     def startupCheck(self):
@@ -198,6 +206,37 @@ class app():
         # Check if all the DB stocks are in holding and in the same quantity
         status = self.__checkDbHoldingSynch()
         return status
+
+
+    def __computeExpDate(self, recDict, dbDict):
+        status = False
+        invDays = invMonths = 0
+        invPeriod = dbDict['INV_PERIOD']
+        if invPeriod == '':
+            if recDict['INV_PERIOD'] != '':
+                status = True
+                invPeriod = recDict['INV_PERIOD']
+            else:
+                if recDict['STRATEGY'] == 'MARGIN':
+                    invPeriod = '0 DAYS'
+                elif recDict['STRATEGY'] == 'MOMENTUM PICK':
+                    invPeriod = '14 DAYS'
+                elif recDict['STRATEGY'] == 'QUANT PICKS':
+                    invPeriod = '30 DAYS'
+                elif recDict['STRATEGY'] == 'GLADIATOR STOCKS':
+                    invPeriod = '3 MONTHS'
+                else:
+                    invPeriod = '12 MONTHS'
+
+        if 'MONTHS'.lower() in invPeriod.lower():
+            invMonths = re.match(r'\d+', invPeriod)
+            invMonths = int(invMonths.group(0))
+        elif 'DAYS'.lower() in invPeriod.lower():
+            invDays = re.match(r'\d+', invPeriod)
+            invDays = int(invDays.group(0))
+
+        expDate = datetime.datetime.strftime(datetime.datetime.strptime(recDict['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
+        return status, invPeriod, expDate
 
 
     def __addNewRec(self, recDict, holdQty=0, posHoldStatus=None):
@@ -217,26 +256,18 @@ class app():
         recDict['STOP_LOSS'] = float(recDict['STOP_LOSS'])
 
         # Qty of stock that can be bought
-        invDays = invMonths = 0
         if recDict['STRATEGY'] == 'MARGIN':
             maxAmount = self.__amountPerOrder / 4
             margin = self.__timesMargin
-            invDays = 1
         else:
             maxAmount = self.__amountPerOrder
             margin = 1
-            if recDict['STRATEGY'] == 'MOMENTUM PICK':
-                invDays = 14
-            elif recDict['STRATEGY'] == 'GLADIATOR STOCKS':
-                invMonths = 6
-            else:
-                invMonths = 12
 
         avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
         qty = max(int(maxAmount / avgPrice), 1)
         qty = qty * margin
 
-        recDict['EXP_DATE'] = datetime.datetime.strftime(datetime.datetime.strptime(recDict['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
+        status, recDict['INV_PERIOD'], recDict['EXP_DATE'] = self.__computeExpDate(recDict, recDict)
 
         # Security ID of the stock 
         securityId = self.__payTmMoney.findSecurityCode(recDict['NSE_SYMBOL'])
@@ -247,7 +278,7 @@ class app():
         recDict['POS_HOLD_STATUS'] = 'OPEN' if posHoldStatus == None else posHoldStatus
         recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'MAX_AMOUNT': maxAmount, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
         self.__lock.acquire()
-        res = self.__persistence.insertDb(recDict, nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+        res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
         if res > 0:
             self.__followOrders(recDict)
             status = True
@@ -258,6 +289,19 @@ class app():
     
 
     def __updateRec(self, recDict, dbDict):
+        status, dbDict['INV_PERIOD'], dbDict['EXP_DATE'] = self.__computeExpDate(recDict, dbDict)
+
+        # Copy values from the input dict to the DB dict and then update the DB
+        keys = ['STOP_LOSS', 'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
+        for key in keys:
+            dbDict[key] = recDict[key]
+
+        dbDictTime = dbDict['REC_TIME']
+        keys = ['REC_TIME', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        # Offline non-margin entries wont have the correct time. Hence use this to query the DB but also update the REC_TIME with the correct time in the loop below
+        for key in keys:
+            dbDict[key] = recDict[key]
+
         # Recommendation status can only move along the path mentioned in the state transition diagram
         # Recommendation status is also getting updated as part of the periodic check, after LTP is fetched
         # and hence we need to ensure that the state transition happens correctly
@@ -270,29 +314,17 @@ class app():
             dbDict[key] = recDict[key]
             hasChanged = True
         #elif recDict[key] == 'OPEN' --> Don't update.
-
-        if hasChanged:
-            # Copy values from the input dict to the DB dict and then update the DB
-            dbDictTime = dbDict['REC_TIME']
-            keys = ['STOP_LOSS', 'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
-            for key in keys:
-                dbDict[key] = float(recDict[key])
-
-            keys = ['REC_TIME', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
-            # Offline non-margin entries wont have the correct time. Hence use this to query the DB but also update the REC_TIME with the correct time in the loop below
-            for key in keys:
-                dbDict[key] = recDict[key]
-            
-            self.__lock.acquire()
-            res = self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDictTime)
-            if res:
-                self.__followOrders(dbDict)
-                status = True
-            else:
-                status = False
-            self.__lock.release()
-        else:
+        
+        self.__lock.acquire()
+        res = self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDictTime]])
+        if res:
             status = True
+            if hasChanged:
+                self.__followOrders(dbDict)
+        else:
+            status = False
+        self.__lock.release()
+
         return status, dbDict
 
 
@@ -312,37 +344,38 @@ class app():
         return status, holdQty
 
 
+    def __isInvPeriodLeft(self, recDict):
+        recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
+        todaysDate = self.__today
+        _, _, expDate = self.__computeExpDate(recDict, recDict)
+        expDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
+        expDays = abs((todaysDate - recDate).days) * 100 / abs((expDate - recDate).days)
+        status = True if expDays <= 10 else False
+        return status
+        
+
     def handleRec(self, recDict):
         if self.__squareOff and recDict['STRATEGY'] == 'MARGIN':
             return True
         
         today = self.__today.strftime("%d-%b-%Y").lower()
-        isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'], time=recDict['REC_TIME'])
+        isInDb, dbDict = self.__persistence.isInDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
         # If rec not in DB, check without the time criteria once. Offline recommendations (which are all non-margin) don't have correct timestamps
         if not isInDb and recDict['STRATEGY'] != 'MARGIN':
-            isInDb, dbDict = self.__persistence.isInDb(nseSym=recDict['NSE_SYMBOL'], strategy=recDict['STRATEGY'], date=recDict['REC_DATE'])
+            isInDb, dbDict = self.__persistence.isInDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
         
-        if recDict['STRATEGY'] == 'MARGIN':
-            inHolding = False
-            holdQty = coreQty = 0
-        else:
-            inHolding, holdQty = self.__inHoldings(recDict['NSE_SYMBOL'])
-
         # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
         if recDict['REC_DATE'].lower() == today:
             status, dbDict = self.__updateRec(recDict, dbDict) if isInDb else self.__addNewRec(recDict)
         # else if in holdings (- any holding in the core portfolio), 
-        elif inHolding:
-        #   if in DB (Normal case) -> call updateRec
-            if isInDb:
-                status, dbDict = self.__updateRec(recDict, dbDict)
-        #   else not in DB (Manual investment)
-            else:
-        #       if REC_STATUS == 'OPEN'             --> Add to DB, but set POS_HOLD_STATE = POSITION so that we dont buy any more stocks
-        #       if REC_STATUS == 'PARTIAL_CLOSE'    --> Add to DB, so that the holdings can be closed
-        #       if REC_STATUS == 'CLOSE'            --> Add to DB, so that the holdings can be closed
+        elif isInDb:
+            status, dbDict = self.__updateRec(recDict, dbDict)
+        # else i.e. old recommendation i.e. not in DB --> if >= 90% investment period left then investment else send ACK anyways
+        elif recDict['REC_STATUS'] == 'OPEN':
+            if self.__isInvPeriodLeft(recDict):
                 status, dbDict = self.__addNewRec(recDict)
-        # else i.e. old recommendation and not in holdings --> Do nothing. Send ACK anyways
+            else:
+                status = True
         else:
             status = True
 
@@ -358,7 +391,7 @@ class app():
             else:
                 if ltp <= dbDict['TARGET'] or ltp >= dbDict['STOP_LOSS']:
                     dbDict['REC_STATUS'] = 'CLOSE'
-            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         return status, dbDict
 
     def __distributePosAmongSameSockRecs(self, dbDict):
@@ -372,9 +405,9 @@ class app():
                 # Remember we are talking about positions and not holdings so we need to only considers orders traded today.
                 # To reduce the field, for MARGIN it necessarily means recommendations given today, but for others it means any recommendations that were traded today
                 if dbDict['STRATEGY'] == 'MARGIN':
-                    sameStkDicts = self.__persistence.getDb(nseSym=dbDict['NSE_SYMBOL'], strategy='MARGIN', date=dbDict['REC_DATE'], posHoldStatus='!CLOSE')
+                    sameStkDicts = self.__persistence.getDb([['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', 'MARGIN'], ['REC_DATE', dbDict['REC_DATE']], ['POS_HOLD_STATUS', '!CLOSE']])
                 else:
-                    sameStkDicts = self.__persistence.getDb(nseSym=dbDict['NSE_SYMBOL'], strategy='!MARGIN', posHoldStatus='!CLOSE')
+                    sameStkDicts = self.__persistence.getDb([['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
 
                 totalStkPosQty = 0
                 openOrdersStateOpen = closeOrdersStateOpen = False
@@ -409,8 +442,8 @@ class app():
                 if totalStkPosQty == posQty:
                     matchPosition = True
                     for sameStkDict in sameStkDicts:
-                        self.__persistence.updateDb(sameStkDict, nseSym=sameStkDict['NSE_SYMBOL'], strategy=sameStkDict['STRATEGY'], date=sameStkDict['REC_DATE'], 
-                                                    time=sameStkDict['REC_TIME'])
+                        self.__persistence.updateDb(sameStkDict, [['NSE_SYMBOL', sameStkDict['NSE_SYMBOL']], ['STRATEGY', sameStkDict['STRATEGY']], ['REC_DATE', sameStkDict['REC_DATE']], 
+                                                    ['REC_TIME', sameStkDict['REC_TIME']]])
                 else:
                     if not openOrdersStateOpen and not closeOrdersStateOpen:
                         self.__logger.critical("DB not in sync with actuals. Something seriously has gone wrong")
@@ -421,7 +454,7 @@ class app():
             else:
                 time.sleep(1)
         
-        dbDict = self.__persistence.getDb(nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+        dbDict = self.__persistence.getDb([['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         return status, dbDict[0]
 
 
@@ -444,7 +477,7 @@ class app():
             posHoldStatus = 'OPEN'
         
         dbDict['POS_HOLD_STATUS'] = posHoldStatus
-        self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+        self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
         return status, dbDict
 
@@ -459,7 +492,7 @@ class app():
                     timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
                     orderDict['ORDER_STATUS'] = 'CLOSE'
                     orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': orderStatus, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
-                    self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+                    self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         return status, dbDict
 
 
@@ -487,13 +520,16 @@ class app():
             self.__logger.critical("Stock: %s totalQty %d is < 0", dbDict['NSE_SYMBOL'], totalQty)
             return False, dbDict
         
+        product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
+
         # First  order is a 'MKT' order
         qty = 0
         invPerc = posHoldQty * 100 / totalQty
-        #if invPerc == 0:
-        #    qty = max(int(totalQty * 10 / 100) - posHoldQty, 1)
-        #    orderType = 'MKT'
-        #    limitPrice = 0 if not self.__dryRun else dbDict['CMP']
+        if invPerc == 0 and product == 'DELIVERY':
+            qty = int(totalQty * 12.5 / 100) - posHoldQty
+            orderType = 'LMT'
+            limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 10
+            limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
         if invPerc == 0 and qty == 0:
             qty = int(totalQty * 25 / 100) - posHoldQty
             orderType = 'LMT'
@@ -523,7 +559,6 @@ class app():
                 return False, dbDict
         
         trigger = 0
-        product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
 
         # If the order fails -> status will be False. Retry the order
         self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, product=%s, orderType=%s, limit=%.2f", 
@@ -538,7 +573,7 @@ class app():
             orderDict = {'BUY_SELL': dbDict['BUY_SELL'], 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': qty, 'TRADED_QTY': 0, 
                         'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
             dbDict['OPEN_ORDERS'].append(orderDict)
-            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
             return True, dbDict
         else:
             return False, dbDict
@@ -547,6 +582,9 @@ class app():
     def __closePosition(self, dbDict, partial=False):
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
         status, dbDict = self.__getPosStatus(dbDict)
+
+        if dbDict['POS_HOLD_STATUS'] == 'CLOSE':
+            return True, dbDict, ''
 
         posHoldQty= dbDict['POS_HOLD_QTY']
         if posHoldQty == 0:
@@ -580,7 +618,7 @@ class app():
             orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': closeQty, 'TRADED_QTY': 0, 
                          'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
             dbDict['CLOSE_ORDERS'].append(orderDict)
-            self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         else:
             self.__logger.critical("Unable to find order %s", dbDict['order_no'])
         
@@ -597,7 +635,7 @@ class app():
             self.__lock.acquire()
             # Get all recommendations from DB where the POS_HOLD_STATUS is 'OPEN'. This implies there may be an order thats being executed
             # Check if we can update any order status based on the order book details from above
-            dbDicts = self.__persistence.getDb(posHoldStatus='!CLOSE')
+            dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             self.__logger.debug("Num record = %d dbDicts = %s", len(dbDicts), dbDicts)
 
             # Loop through all recommendations and update order status
@@ -612,7 +650,7 @@ class app():
                         else:
                             self.__logger.critical("Unable to find order info %s", dbDict['order_no'])
                     
-                self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+                self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
             self.__lock.release()
 
 
@@ -638,7 +676,7 @@ class app():
                                 if closeOrderDict['ORDER_NO'] == orderNum and closeOrderDict['ORDER_STATUS'] != 'CLOSE':
                                     closeOrderDict['ORDER_STATUS'] = 'CLOSE'
                                     closeOrderDict['TRADED_QTY'] = trdQty
-                                    self.__persistence.updateDb(dbDict, nseSym=dbDict['NSE_SYMBOL'], strategy=dbDict['STRATEGY'], date=dbDict['REC_DATE'], time=dbDict['REC_TIME'])
+                                    self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                         else:
                             break
                     else:
@@ -696,7 +734,7 @@ class app():
     def __reconcileRecs(self, marketClose):
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(recStatus='!CLOSE')
+        dbDicts = self.__persistence.getDb([['REC_STATUS', '!CLOSE']])
         for dbDict in dbDicts:
             self.__getCMPUpdateRecStatus(dbDict)
             time.sleep(0.10)
@@ -705,7 +743,7 @@ class app():
         # If recommendation (margin or otherwise) == 'OPEN' and order == 'OPEN'
         # Check if more positions can be opened based on the CMP found above
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(recStatus='OPEN', posHoldStatus='OPEN')
+        dbDicts = self.__persistence.getDb([['REC_STATUS', 'OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
         for dbDict in dbDicts:
             self.__openPosition(dbDict)
             time.sleep(0.10)
@@ -723,14 +761,14 @@ class app():
         # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
         # Cancel open orders. Exit open (partial) position immediately
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(recStatus='!OPEN', posHoldStatus='OPEN')
+        dbDicts = self.__persistence.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
         self.__executeClosureSeq(dbDicts, cancelOrder=True, forceCloseRec=False)
         self.__lock.release()
 
         # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
         # Exit (partial) position immediately
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(recStatus='!OPEN', posHoldStatus='POSITION')
+        dbDicts = self.__persistence.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'POSITION']])
         self.__executeClosureSeq(dbDicts, cancelOrder=False, forceCloseRec=False)
         self.__lock.release()
 
@@ -743,7 +781,7 @@ class app():
         # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
         # Exit positions immediately
         self.__lock.acquire()
-        dbDicts = self.__persistence.getDb(recStatus='CLOSE', posHoldStatus='PARTIAL_CLOSE')
+        dbDicts = self.__persistence.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'PARTIAL_CLOSE']])
         self.__executeClosureSeq(dbDicts, cancelOrder=False, forceCloseRec=False)
         self.__lock.release()
 
@@ -777,7 +815,7 @@ class app():
             # If recommendation == 'CLOSE' and order == 'CLOSE'
             # Check if this is indeed true. Being checked above
             self.__lock.acquire()
-            dbDicts = self.__persistence.getDb(strategy='MARGIN', posHoldStatus='CLOSE')
+            dbDicts = self.__persistence.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', 'CLOSE']])
             self.__selfHealChecksMargin(dbDicts)
             self.__lock.release()
 
@@ -813,7 +851,7 @@ class app():
         # Check for all orders in 'OPEN' state
         self.__lock.acquire()
         # Some orders may be still open --> cancel them and close position
-        dbDicts = self.__persistence.getDb(strategy= 'MARGIN', posHoldStatus='!CLOSE')
+        dbDicts = self.__persistence.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
         self.__executeClosureSeq(dbDicts, cancelOrder=True, forceCloseRec=True)
         self.__lock.release()
 
@@ -828,7 +866,7 @@ class app():
         # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
         self.__lock.acquire()
         # Some orders may be still open --> cancel them and close position
-        dbDicts = self.__persistence.getDb(strategy= '!MARGIN', posHoldStatus='!CLOSE')
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
         expDbDicts = []
         for dbDict in dbDicts:
             expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
@@ -846,7 +884,7 @@ class app():
         # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
         self.__lock.acquire()
         # Some orders are still open --> cancel them and close position
-        dbDicts = self.__persistence.getDb(strategy= '!MARGIN', posHoldStatus='!CLOSE')
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATYS', '!CLOSE']])
         # Cancel open order & Get final position
         if len(dbDicts) > 0:
             self.__executeEOMSeq(dbDicts)
@@ -867,7 +905,7 @@ class app():
             self.__closeAllOpenDeliveryOrders()
 
 
-trade = app('./payTmMoney.ini', dryRun=False)
+trade = app('./payTmMoney.ini', dryRun=True)
 
 
 def payTmThread():
@@ -926,7 +964,7 @@ if __name__ == '__main__':
     
     # Start the threads
     paytmThr.start()
-    #flaskThr.start()
+    flaskThr.start()
 
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
@@ -964,7 +1002,10 @@ if __name__ == '__main__':
 #
 # REST API reaction
 # + When a new recommendation comes or an old one changes, act on that 1 recommendation instantaneously
-# + Buy 25% at high
+# + Buy 12.5% giving away 10% of the margin between the high and the target
+# + Buy 25% by high
+# + Buy 50% by mid point
+# + Buy 100% by low point
 # + If recommendation says to sell partly, do so. Else don't
 #
 # Periodic Thread - 1

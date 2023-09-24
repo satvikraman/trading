@@ -240,7 +240,7 @@ class app():
         # Scrape recommendations from iClick2Gain
         actionableKeys = ['LOW_REC_PRICE']
         otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
-                     'REC_TIME', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+                     'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
         gainRecDicts = self.__iciciDirect.scrapeiClick2Gain()         
         self.__mergeNonMarginRecsToDb(gainRecDicts, actionableKeys, otherKeys)
 

@@ -66,7 +66,6 @@ def test_appIcici_1(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests)
     assert dbDicts[0]['REC_STATUS'] == 'OPEN'
     assert dbDicts[0]['INV_PERIOD'] == invScrapeDict1['INV_PERIOD']
     assert dbDicts[0]['LOW_REC_PRICE'] == gainScrapeDict1['LOW_REC_PRICE']
-    assert dbDicts[0]['REC_TIME'] == gainScrapeDict1['REC_TIME']
     assert dbDicts[0]['STOP_LOSS'] == max(gainScrapeDict1['STOP_LOSS'], invScrapeDict1['STOP_LOSS'])
     jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
     putcalls.append(call('http://127.0.0.1:5001/v1/rec', json=jsonBody))
@@ -90,7 +89,6 @@ def test_appIcici_1(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests)
     assert dbDicts[0]['REC_STATUS'] == 'OPEN'
     assert dbDicts[0]['INV_PERIOD'] == invScrapeDict1['INV_PERIOD']
     assert dbDicts[0]['LOW_REC_PRICE'] == gainScrapeDict1['LOW_REC_PRICE']
-    assert dbDicts[0]['REC_TIME'] == gainScrapeDict1['REC_TIME']
     assert dbDicts[0]['STOP_LOSS'] == max(gainScrapeDict1['STOP_LOSS'], invScrapeDict1['STOP_LOSS'])
 
 
