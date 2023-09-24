@@ -178,8 +178,8 @@ class app():
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
                             status = False
-                            self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] - coreQty[%d] => tradeQty[%d] != posHoldQty[%d]", 
-                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], holding['CORE_QTY'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
+                            self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] != dbHoldQty[%d]", 
+                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
                     self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])        
@@ -195,7 +195,7 @@ class app():
                     dbDict['HOLD_QTY'] += dbDict['POS_QTY']
                     dbDict['POS_QTY'] = 0
                     dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
-                    res = self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_DATE']]])
+                    res = self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
     def startupCheck(self):
@@ -921,7 +921,7 @@ def payTmThread():
         return
 
     while not marketOpen:
-        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
+        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=30)
         time.sleep(15)
     
     trade.startSelfHeal()

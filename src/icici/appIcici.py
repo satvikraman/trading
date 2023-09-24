@@ -1,6 +1,7 @@
 import logging
 import os
 import datetime
+import shutil
 import sys
 import time
 import configparser
@@ -18,15 +19,6 @@ class app():
         if(os.path.isfile(configFile)):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
-
-            if db == None:
-                db = self.__config['DATABASE']['DB']
-
-            self.__persistence = persistence(configFile, db)
-            self.__iciciDirect = iciciDirect(configFile)
-            self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
-            self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
-            
             if(self.__config['APP']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
             elif(self.__config['APP']['LOG_LEVEL'] == 'INFO'):
@@ -47,6 +39,21 @@ class app():
             consoleHandler.setFormatter(formatter)
             logging.getLogger('').addHandler(consoleHandler)
             logging.getLogger('').addHandler(fileHandler)
+
+            if db == None:
+                db = self.__config['DATABASE']['DB']
+            self.__backupDb(db)                
+
+            self.__persistence = persistence(configFile, db)
+            self.__iciciDirect = iciciDirect(configFile)
+            self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
+            self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
+            
+
+    def __backupDb(self, db):
+        backupDb = db + '-APP-' + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S")
+        self.__logger.info("Backing up DB as %s", backupDb)
+        shutil.copyfile(db, backupDb)
 
 
     def __send2PayTm(self, endPoint, recDict):
