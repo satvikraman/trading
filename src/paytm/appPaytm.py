@@ -883,11 +883,14 @@ def payTmThread():
         print('Startup check failed. Exiting')
         return
 
+    while not marketOpen:
+        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
+        time.sleep(15)
+    
     trade.startSelfHeal()
     trade.startPeriodicChecks()
 
     while not marketCloseMinus1:
-        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15)
         if marketOpen:
             # Start closing all positions as soon as it is 3:00PM
             squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
