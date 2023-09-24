@@ -905,7 +905,7 @@ class app():
             self.__closeAllOpenDeliveryOrders()
 
 
-trade = app('./payTmMoney.ini', dryRun=True)
+trade = app('./payTmMoney.ini', dryRun=False)
 
 
 def payTmThread():
