@@ -28,13 +28,16 @@ class persistence:
             self.__db = TinyDB(db)
             self.__query = Query()
 
+
     def __acquireLock(self):
         if(self.__lock != None):
             self.__lock.acquire()
 
+
     def __releaseLock(self):
         if(self.__lock != None):
             self.__lock.release()
+
 
     def __formSubQuery(self, keyword, val):
         inverse = False
@@ -59,42 +62,28 @@ class persistence:
             
         return query
 
-    def __formQuery(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None, ack=None):
+
+    def __formQuery(self, queryParamVals):
         query = self.__query.noop()
-        if(nseSym != None):
-            #query = (where('NSE_SYMBOL') == nseSym)
-            query = query & self.__formSubQuery('NSE_SYMBOL', nseSym)
-        if(strategy != None):
-            #query = query & (where('STRATEGY') == strategy)
-            query = query & self.__formSubQuery('STRATEGY', strategy)
-        if(date != None):
-            #query = query & (where('REC_DATE') == date)
-            query = query & self.__formSubQuery('REC_DATE', date)
-        if(time != None):
-            #query = query & (where('REC_TIME') == time)
-            query = query & self.__formSubQuery('REC_TIME', time)
-        if(recStatus != None):
-            #query = query & (where('REC_STATUS') == recStatus)
-            query = query & self.__formSubQuery('REC_STATUS', recStatus)
-        if(posHoldStatus != None):
-            #query = query & (where('POS_HOLD_STATUS') == posHoldStatus)
-            query = query & self.__formSubQuery('POS_HOLD_STATUS', posHoldStatus)
-        if(ack != None):
-            query = query & self.__formSubQuery('ACK', ack)
+        for queryParamVal in queryParamVals:
+            query = query & self.__formSubQuery(queryParamVal[0], queryParamVal[1])
+
         return query
 
-    def getDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None, posHoldStatus=None, ack=None):
+
+    def getDb(self, queryParamVals):
         dictArr = [{}]
-        query = self.__formQuery(nseSym, strategy, date, time, recStatus, posHoldStatus, ack)
+        query = self.__formQuery(queryParamVals)
         if(query != None):
             self.__acquireLock()
             dictArr = self.__db.search(query)
             self.__releaseLock()
             return dictArr
 
-    def insertDb(self, dict, nseSym=None, strategy=None, date=None, time=None):
+
+    def insertDb(self, dict, queryParamVals):
         status = False
-        found, _ = self.isInDb(nseSym, strategy, date, time)
+        found, _ = self.isInDb(queryParamVals)
         if(not found and dict):
             self.__acquireLock()
             res = self.__db.insert(dict)
@@ -107,9 +96,10 @@ class persistence:
             self.__logger.error("Record already in DB. Can't insert: %s", dict)
         return status
         
-    def updateDb(self, dict, nseSym=None, strategy=None, date=None, time=None, recStatus=None):
+
+    def updateDb(self, dict, queryParamVals):
         status = False
-        query = self.__formQuery(nseSym, strategy, date, time, recStatus)
+        query = self.__formQuery(queryParamVals)
         if(query != None):
             self.__acquireLock()
             res = self.__db.update(dict, query)
@@ -117,18 +107,18 @@ class persistence:
             status = True if len(res) > 0 else False
         return status
     
-    def removeFromDb(self, nseSym=None, strategy=None, date=None, time=None):
-        query = self.__formQuery(nseSym, strategy, date, time, recStatus=None)
+
+    def removeFromDb(self, queryParamVals):
+        query = self.__formQuery(queryParamVals)
         if(query != None):
             self.__acquireLock()
             self.__db.remove(query)
             self.__releaseLock()
     
-    def isInDb(self, nseSym=None, strategy=None, date=None, time=None, recStatus=None):
+
+    def isInDb(self, queryParamVals):
         status = False
-        if(nseSym == None) and (strategy == None) and (date == None) and (time == None):
-            return status
-        dictsArr = self.getDb(nseSym, strategy, date, time, recStatus)
+        dictsArr = self.getDb(queryParamVals)
         # We expect only a single record for a given symbol in a given strategy
         if(len(dictsArr) == 1):
             status = True
@@ -136,6 +126,7 @@ class persistence:
         else:
             retDict = {}
         return status, retDict
+
 
     def removeAll(self):
         self.__acquireLock()

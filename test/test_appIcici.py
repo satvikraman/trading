@@ -7,7 +7,7 @@ import logging
 import pytest
 
 from appIcici import app
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch, call
 
 configFile = './application.ini'
 if(os.path.isfile(configFile)):
@@ -24,217 +24,349 @@ if(os.path.isfile(configFile)):
 
 
 @patch('appIcici.requests')
-@patch('appIcici.iciciDirect')
-def test_appIcici_1(mock_iciciDirect, mock_requests):
+@patch('appIcici.iciciDirect.scrapeiClick2Invest')
+@patch('appIcici.iciciDirect.scrapeiClick2Gain')
+def test_appIcici_1(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests):
     mock_response = Mock()
     mock_response.status_code = 200
     mock_requests.post.return_value = mock_response
     mock_requests.put.return_value = mock_response
 
-    mock_icici = Mock()
-    mock_iciciDirect.return_value = mock_icici
+    trade = app('./iciciDirect.ini', './test/testTrade.json')
+    trade._app__persistence.removeAll()
+
+    gainScrapeDict1 = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00, "STOP_LOSS": 5435.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    gainScrapeDict2 = {"STOCK": "ITC LIMITED",     "ICICI_SYMBOL": "ITC",    "NSE_SYMBOL": "ITC",     "STRATEGY": "MARGIN",           "BUY_SELL": "SELL", "CMP": 436.85,  "LOW_REC_PRICE": 437.50,  "HIGH_REC_PRICE": 438.00,  "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": 432.40,  "STOP_LOSS": 439.90,  "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    invScrapeDict1  = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5450.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "xx:xx", "TARGET": 5498.00, "STOP_LOSS": 5434.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-INVEST", "INV_PERIOD": "3 MONTHS"}
+                                                                                                                                                                                                                                                                                                                            
+    mock_iciciDirectGain.return_value   = [gainScrapeDict1]
+    mock_iciciDirectInvest.return_value = [invScrapeDict1]
+    
+    # Tests __closeMarginRecsNotUpdated
+    mock_requests.reset_mock()
+    # Assume ITC was acknowledged previously but is no longer available in scraping data, even though it is not empty. The recommendation should be closed
+    recDict = trade._app__iciciDirect.prepareRecDict(gainScrapeDict2)
+    recDict['ACK'] = 'ACK'
+    recDict['REC_DATE'] = datetime.datetime.now().strftime("%d-%b-%Y")
+    trade._app__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+
+    # When the runPeriodicChecks function is called next, the ITC recommendation should get closed,
+    # because it is no longer visible on the web page
+    trade.runPeriodicChecks()
+    
+    putcalls = []
+    dbDicts = trade._app__persistence.getDb([['REC_STATUS', 'CLOSE']])
+    assert dbDicts[0]['NSE_SYMBOL'] == 'ITC'
+    assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls.append(call('http://127.0.0.1:5001/v1/rec', json=jsonBody))
+
+    dbDicts = trade._app__persistence.getDb([['REC_STATUS', 'OPEN']])
+    assert dbDicts[0]['NSE_SYMBOL'] == 'COFORGE'
+    assert dbDicts[0]['REC_STATUS'] == 'OPEN'
+    assert dbDicts[0]['INV_PERIOD'] == invScrapeDict1['INV_PERIOD']
+    assert dbDicts[0]['LOW_REC_PRICE'] == gainScrapeDict1['LOW_REC_PRICE']
+    assert dbDicts[0]['REC_TIME'] == gainScrapeDict1['REC_TIME']
+    assert dbDicts[0]['STOP_LOSS'] == max(gainScrapeDict1['STOP_LOSS'], invScrapeDict1['STOP_LOSS'])
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls.append(call('http://127.0.0.1:5001/v1/rec', json=jsonBody))
+    mock_requests.put.has_calls(putcalls)
+    assert mock_requests.put.call_count == 2
+
+    # Also since another recommendation COFORGE is available, it should be inserted in DB and sent to PayTm
+    # Since the recommendation is available both in iCLICK-2-INVEST and iCLICK-2-GAIN it will get sent twice to PayTm
+    jsonBody = trade._app__iciciDirect.prepareRecDict(invScrapeDict1)
+    postcalls = [call('http://127.0.0.1:5001/v1/rec', json=jsonBody)]
+    mock_requests.post.has_calls(postcalls)
+    assert mock_requests.post.call_count == 1
+
+    # If runPeriodicChecks is called again, no more action occurs, either to the DB or via REST APIs
+    mock_requests.reset_mock()
+    trade.runPeriodicChecks()
+    assert mock_requests.put.call_count == 0
+    assert mock_requests.post.call_count == 0
+    dbDicts = trade._app__persistence.getDb([['REC_STATUS', 'OPEN']])
+    assert dbDicts[0]['NSE_SYMBOL'] == 'COFORGE'
+    assert dbDicts[0]['REC_STATUS'] == 'OPEN'
+    assert dbDicts[0]['INV_PERIOD'] == invScrapeDict1['INV_PERIOD']
+    assert dbDicts[0]['LOW_REC_PRICE'] == gainScrapeDict1['LOW_REC_PRICE']
+    assert dbDicts[0]['REC_TIME'] == gainScrapeDict1['REC_TIME']
+    assert dbDicts[0]['STOP_LOSS'] == max(gainScrapeDict1['STOP_LOSS'], invScrapeDict1['STOP_LOSS'])
+
+
+@patch('appIcici.requests')
+@patch('appIcici.iciciDirect.scrapeiClick2Invest')
+@patch('appIcici.iciciDirect.scrapeiClick2Gain')
+def test_appIcici_2(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_requests.post.return_value = mock_response
+    mock_requests.put.return_value = mock_response
 
     trade = app('./iciciDirect.ini', './test/testTrade.json')
     trade._app__persistence.removeAll()
 
-    recDicts = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                {"STOCK": "ITC LIMITED", "ICICI_SYMBOL": "ITC", "NSE_SYMBOL": "ITC", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "437.50", "HIGH_REC_PRICE": "438.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": "432.40", "STOP_LOSS": "439.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", 'ACK': 'OK'}]
-    scrapeDicts = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
-    mock_icici.scrapeMarginData.return_value = scrapeDicts
+    gainScrapeDict1 = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00, "STOP_LOSS": 5435.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    invScrapeDict1  = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5450.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "xx:xx", "TARGET": 5498.00, "STOP_LOSS": 5434.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-INVEST", "INV_PERIOD": "3 MONTHS"}
+                                                                                                                                                                                                                                                                                                                            
+    mock_iciciDirectGain.return_value   = [gainScrapeDict1]
+    mock_iciciDirectInvest.return_value = [invScrapeDict1]
     
     # Tests __closeMarginRecsNotUpdated
     mock_requests.reset_mock()
-    # Assume ITC was acknowledged previously
-    recDicts[1]['ACK'] = 'OK'
-    recDicts[1]['REC_DATE'] = datetime.datetime.now().strftime("%d-%b-%Y")
-    trade._app__persistence.insertDb(recDicts[1], recDicts[1]['NSE_SYMBOL'], recDicts[1]['STRATEGY'], recDicts[1]['REC_DATE'], recDicts[1]['REC_TIME'])
-    trade.runPeriodicChecks()
-    dbDicts = trade._app__persistence.getDb(recStatus='CLOSE')
-    assert dbDicts[0]['NSE_SYMBOL'] == 'ITC'
-    mock_requests.put.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=dbDicts[0])
-    # Tests __updateRecStatus: COFORGE not in DB. Will get inserted in DB
-    dbDicts = trade._app__persistence.getDb(recStatus='OPEN')
-    assert dbDicts[0]['NSE_SYMBOL'] == 'COFORGE'
-    assert dbDicts[0]['ACK'] == 'OK'
-    mock_requests.post.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
 
-    # Tests - Change of recommendation - REST API is successful
-    mock_requests.reset_mock()
-    scrapeDicts[0]['PART_PROFIT_PRICE'] = 5500.00
-    scrapeDicts[0]['PART_PROFIT_PERC'] = 50.00
-    scrapeDicts[0]['UPDATE_ACTION_1'] = 'Book Partial Profit'
+    # When the runPeriodicChecks function is called next, the COFORGE recommendation should be sent to PayTm. 
+    # Tested already in test_appIcici_1
     trade.runPeriodicChecks()
-    dbDicts = trade._app__persistence.getDb(nseSym='COFORGE')
+    
+    # Tests - Change of recommendation - REST API is successful
+    # iCLICK-2-GAIN recommendation changed. iCLICK-2-INVEST didn't change. A put REST API call should be made
+    mock_requests.reset_mock()
+    gainScrapeDict1['REC_STATUS'] = 'PARTIAL_CLOSE'
+    gainScrapeDict1['PART_PROFIT_PRICE'] = 5500.00
+    gainScrapeDict1['PART_PROFIT_PERC'] = 50.00
+    gainScrapeDict1['UPDATE_ACTION_1'] = 'Book Partial Profit'
+    
+    trade.runPeriodicChecks()
+    
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
     assert dbDicts[0]['PART_PROFIT_PRICE'] == 5500.00
     assert dbDicts[0]['PART_PROFIT_PERC'] == 50.00
     assert dbDicts[0]['UPDATE_ACTION_1'] == 'Book Partial Profit'
-    assert dbDicts[0]['REC_STATUS'] == 'OPEN'
-    assert dbDicts[0]['ACK'] == 'OK'
-    mock_requests.put.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
+    assert dbDicts[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
+    assert dbDicts[0]['ACK'] == 'ACK'
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls = [call('http://127.0.0.1:5001/v1/rec', json=jsonBody)]
+    mock_requests.put.has_calls(putcalls)
+    assert mock_requests.put.call_count == 1
+
+
+@patch('appIcici.requests')
+@patch('appIcici.iciciDirect.scrapeiClick2Invest')
+@patch('appIcici.iciciDirect.scrapeiClick2Gain')
+def test_appIcici_3(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_requests.post.return_value = mock_response
+    mock_requests.put.return_value = mock_response
+
+    trade = app('./iciciDirect.ini', './test/testTrade.json')
+    trade._app__persistence.removeAll()
+
+    gainScrapeDict1 = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00, "STOP_LOSS": 5435.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    invScrapeDict1  = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5450.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "xx:xx", "TARGET": 5498.00, "STOP_LOSS": 5434.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-INVEST", "INV_PERIOD": "3 MONTHS"}
+                                                                                                                                                                                                                                                                                                                            
+    mock_iciciDirectGain.return_value   = [gainScrapeDict1]
+    mock_iciciDirectInvest.return_value = [invScrapeDict1]
     
-    # Tests - Change of recommendation - REST API is not successful initially
+    # Tests __closeMarginRecsNotUpdated
     mock_requests.reset_mock()
-    mock_response.status_code = 500
-    scrapeDicts[0]['FINAL_PROFIT_PRICE'] = 5500.00
-    scrapeDicts[0]['UPDATE_ACTION_2'] = 'Book Full Profit'
-    scrapeDicts[0]['REC_STATUS'] = 'CLOSE'
+
+    # When the runPeriodicChecks function is called next, the COFORGE recommendation should be sent to PayTm. 
+    # Tested already in test_appIcici_1
     trade.runPeriodicChecks()
-    dbDicts = trade._app__persistence.getDb(nseSym='COFORGE')
-    assert dbDicts[0]['FINAL_PROFIT_PRICE'] == 5500.00
-    assert dbDicts[0]['UPDATE_ACTION_2'] == 'Book Full Profit'
+    
+    # Tests - Change of recommendation - REST API is successful
+    # iCLICK-2-INVEST recommendation changed. iCLICK-2-GAIN didn't change. A put REST API call should be made
+    mock_requests.reset_mock()
+    invScrapeDict1['REC_STATUS'] = 'CLOSE'
+    
+    trade.runPeriodicChecks()
+    
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
     assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
-    assert dbDicts[0]['ACK'] == 'NOT_OK'
-    mock_requests.put.assert_called_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
+    assert dbDicts[0]['ACK'] == 'ACK'
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls = [call('http://127.0.0.1:5001/v1/rec', json=jsonBody)]
+    mock_requests.put.has_calls(putcalls)
+    assert mock_requests.put.call_count == 1
 
-    # Tests - Retry sending. REST API is successful this time
+
+@patch('appIcici.requests')
+@patch('appIcici.iciciDirect.scrapeiClick2Invest')
+@patch('appIcici.iciciDirect.scrapeiClick2Gain')
+def test_appIcici_3(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_requests.post.return_value = mock_response
+    mock_requests.put.return_value = mock_response
+
+    trade = app('./iciciDirect.ini', './test/testTrade.json')
+    trade._app__persistence.removeAll()
+
+    gainScrapeDict1 = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00, "STOP_LOSS": 5435.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    invScrapeDict1  = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5450.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "xx:xx", "TARGET": 5498.00, "STOP_LOSS": 5434.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-INVEST", "INV_PERIOD": "3 MONTHS"}
+                                                                                                                                                                                                                                                                                                                            
+    mock_iciciDirectGain.return_value   = [gainScrapeDict1]
+    mock_iciciDirectInvest.return_value = [invScrapeDict1]
+    
+    # Tests __closeMarginRecsNotUpdated
     mock_requests.reset_mock()
-    mock_response.status_code = 202
+
+    # When the runPeriodicChecks function is called next, the COFORGE recommendation should be sent to PayTm. 
+    # Tested already in test_appIcici_1
     trade.runPeriodicChecks()
-    dbDicts = trade._app__persistence.getDb(nseSym='COFORGE')
-    assert dbDicts[0]['ACK'] == 'OK'
-    mock_requests.put.assert_called_once_with('http://127.0.0.1:5000/v1/rec', json=scrapeDicts[0])
-
-
-    """
-    #                           REC_SATTUS = CLOSE      |       REC_STATUS = OPEN
-    # ORDER: NOT_PLACED         JAICORPLTD              |       COFORGE, HINDPETRO, ITC
-    # ORDER: OPEN               KABRAEXTRU              |       KABRAEXTRU
-    # ORDER: PART_POSITION      HINDPETRO               |       HINDPETRO, ITC
-    # ORDER: POSITION           COFORGE, ITC            |       COFORGE, ITC
-    # ORDER: CLOSE                                      |       -
-
-    # COFORGE   : REC:OPEN, ORDER: NOT_PLACED->OPEN
-    # HINDPETRO : REC:OPEN, ORDER: NOT_PLACED->OPEN
-    # ITC       : REC:OPEN, ORDER: NOT_PLACED->OPEN
-    # Test how the system would react at the start of the day when no orders have been placed yet
-    mock_icici.scrapeMarginData.return_value = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                                                {"STOCK": "HINDUSTAN PETROLEUM CORP", "ICICI_SYMBOL": "HINPET", "NSE_SYMBOL": "HINDPETRO", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "248.30", "LOW_REC_PRICE": "248.30", "HIGH_REC_PRICE": "248.50", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:06", "TARGET": "245.70", "STOP_LOSS": "250.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}, 
-                                                {"STOCK": "ITC LIMITED", "ICICI_SYMBOL": "ITC", "NSE_SYMBOL": "ITC", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "437.50", "HIGH_REC_PRICE": "438.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": "432.40", "STOP_LOSS": "439.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
-    mock_paytm.getOrderBookUpdate.return_value = {'status': 'success', 'message': '', 'data': [{}]}
-    mock_paytm.placeOrder.side_effect = retPlaceOrder
-
+    
+    # Tests - Change of recommendation - REST API is successful
+    # iCLICK-2-INVEST recommendation changed. iCLICK-2-GAIN didn't change. A put REST API call should be made
+    mock_requests.reset_mock()
+    invScrapeDict1['REC_STATUS'] = 'CLOSE'
+    
     trade.runPeriodicChecks()
+    
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
+    assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
+    assert dbDicts[0]['ACK'] == 'ACK'
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls = [call('http://127.0.0.1:5001/v1/rec', json=jsonBody)]
+    mock_requests.put.has_calls(putcalls)
+    assert mock_requests.put.call_count == 1
 
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN', orderStatus=None)
-    assert dbDict[0]['order_no'] == '212106222471'
-    assert dbDict[0]['ORDER_STATUS'] == 'OPEN'
 
-    dbDict = trade._app__persistence.getDb(nseSym='HINDPETRO', strategy='MARGIN', date='31-Aug-2023', time='14:06', recStatus='OPEN', orderStatus=None)
-    assert dbDict[0]['order_no'] == '212106222472'
-    assert dbDict[0]['ORDER_STATUS'] == 'OPEN'
+@patch('appIcici.requests')
+@patch('appIcici.iciciDirect.scrapeiClick2Invest')
+@patch('appIcici.iciciDirect.scrapeiClick2Gain')
+def test_appIcici_4(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_requests.post.return_value = mock_response
+    mock_requests.put.return_value = mock_response
 
-    dbDict = trade._app__persistence.getDb(nseSym='ITC', strategy='MARGIN', date='31-Aug-2023', time='14:33', recStatus='OPEN', orderStatus=None)
-    assert dbDict[0]['order_no'] == '212106222473'
-    assert dbDict[0]['ORDER_STATUS'] == 'OPEN'
+    trade = app('./iciciDirect.ini', './test/testTrade.json')
+    trade._app__persistence.removeAll()
 
-    # COFORGE   : REC:OPEN, ORDER: OPEN->POSITION
-    # HINDPETRO : REC:OPEN, ORDER: OPEN->PART_POSITION
-    # ITC       : REC:OPEN, ORDER: OPEN->PART_POSITION
-    # After some time some orders get executed, either fully or partially
-    mock_paytm.getOrderBookUpdate.return_value = True
-    mock_paytm.findOrderStatusAndQtyInfo.side_effect = retFindOrderStatusAndQtyInfo1
+    gainScrapeDict1 = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00, "STOP_LOSS": 5435.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    invScrapeDict1  = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5450.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "xx:xx", "TARGET": 5498.00, "STOP_LOSS": 5434.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-INVEST", "INV_PERIOD": "3 MONTHS"}
+                                                                                                                                                                                                                                                                                                                            
+    mock_iciciDirectGain.return_value   = [gainScrapeDict1]
+    mock_iciciDirectInvest.return_value = []
 
+    # Tests __closeMarginRecsNotUpdated
+    mock_requests.reset_mock()
+
+    # When the runPeriodicChecks function is called next, the COFORGE recommendation should be sent to PayTm. 
+    # Tested already in test_appIcici_1
     trade.runPeriodicChecks()
-    # Check Coforge's order status should have gone to POSITION while the other two should be in PART_POSITION
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', date='31-Aug-2023', time='14:04', recStatus='OPEN', orderStatus=None)
-    assert dbDict[0]['order_no'] == '212106222471'
-    assert dbDict[0]['ORDER_STATUS'] == 'POSITION'
-
-    dbDict = trade._app__persistence.getDb(nseSym='HINDPETRO', strategy='MARGIN', date='31-Aug-2023', time='14:06', recStatus='OPEN', orderStatus=None)
-    assert dbDict[0]['order_no'] == '212106222472'
-    assert dbDict[0]['ORDER_STATUS'] == 'PART_POSITION'
-
-    dbDict = trade._app__persistence.getDb(nseSym='ITC', strategy='MARGIN', date='31-Aug-2023', time='14:33', recStatus='OPEN', orderStatus=None)
-    assert dbDict[0]['order_no'] == '212106222473'
-    assert dbDict[0]['ORDER_STATUS'] == 'PART_POSITION'
-
-    # COFORGE   : REC:OPEN->CLOSE, ORDER: POSITION->CLOSE
-    # HINDPETRO : REC:OPEN, ORDER: PART_POSITION
-    # ITC       : REC:OPEN, ORDER: PART_POSITION
-    # Let's now close the recommendation of Coforge. Positive case - order is already fully executed. Check that the Coforge order enters CLOSE state
-    # Other two orders should remain in PART_POSITION state
-    mock_icici.scrapeMarginData.return_value = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "HINDUSTAN PETROLEUM CORP", "ICICI_SYMBOL": "HINPET", "NSE_SYMBOL": "HINDPETRO", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "248.30", "LOW_REC_PRICE": "248.30", "HIGH_REC_PRICE": "248.50", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:06", "TARGET": "245.70", "STOP_LOSS": "250.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}, 
-                                                {"STOCK": "ITC LIMITED", "ICICI_SYMBOL": "ITC", "NSE_SYMBOL": "ITC", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "437.50", "HIGH_REC_PRICE": "438.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": "432.40", "STOP_LOSS": "439.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
+    
+    # Tests - Change of recommendation - REST API is successful
+    # iCLICK-2-GAIN recommendation changed. iCLICK-2-INVEST didn't change and/or perhaps is not even available. A put REST API call should be made
+    gainScrapeDict1['REC_STATUS'] = 'PARTIAL_CLOSE'
+    gainScrapeDict1['PART_PROFIT_PRICE'] = 5500.00
+    gainScrapeDict1['PART_PROFIT_PERC'] = 50.00
+    gainScrapeDict1['UPDATE_ACTION_1'] = 'Book Partial Profit'
 
     trade.runPeriodicChecks()
+    
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
+    assert dbDicts[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
+    assert dbDicts[0]['ACK'] == 'ACK'
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls = [call('http://127.0.0.1:5001/v1/rec', json=jsonBody)]
+    mock_requests.put.has_calls(putcalls)
+    assert mock_requests.put.call_count == 1
 
-    dbDict = trade._app__persistence.getDb(nseSym='COFORGE', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222471'
-    assert dbDict[0]['ORDER_STATUS'] == 'CLOSE'
+    mock_iciciDirectGain.return_value   = []
+    mock_iciciDirectInvest.return_value = [invScrapeDict1]
+    # Tests - Change of recommendation - REST API is successful
+    # iCLICK-2-INVEST recommendation changes. iCLICK-2-GAIN didn't change and/or perhaps is not even available. A put REST API call should be made
+    invScrapeDict1['REC_STATUS'] = 'CLOSE'
+    
+    trade.runPeriodicChecks()
+    
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
+    assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
+    assert dbDicts[0]['ACK'] == 'ACK'
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls = [call('http://127.0.0.1:5001/v1/rec', json=jsonBody)]
+    mock_requests.put.has_calls(putcalls)
+    assert mock_requests.put.call_count == 2
 
-    dbDict = trade._app__persistence.getDb(nseSym='HINDPETRO', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222472'
-    assert dbDict[0]['ORDER_STATUS'] == 'PART_POSITION'
+@patch('appIcici.requests')
+@patch('appIcici.iciciDirect.scrapeiClick2Invest')
+@patch('appIcici.iciciDirect.scrapeiClick2Gain')
+def test_appIcici_5(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests):
+    mock_response = Mock()
+    mock_response.status_code = 500
+    mock_requests.post.return_value = mock_response
+    mock_requests.put.return_value = mock_response
 
-    dbDict = trade._app__persistence.getDb(nseSym='ITC', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222473'
-    assert dbDict[0]['ORDER_STATUS'] == 'PART_POSITION'
+    trade = app('./iciciDirect.ini', './test/testTrade.json')
+    trade._app__persistence.removeAll()
 
-    # COFORGE   : REC:CLOSE, ORDER: POSITION
-    # HINDPETRO : REC:OPEN->CLOSE, ORDER: PART_POSITION -> CLOSE
-    # ITC       : REC:OPEN, ORDER: PART_POSITION
-    # Let's now close the recommendation of HINDPETRO while order is still in PART_POSITION state. 
-    # Logic should immediately close the Hindustan Petroleum order and exit the position
-    mock_icici.scrapeMarginData.return_value = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "HINDUSTAN PETROLEUM CORP", "ICICI_SYMBOL": "HINPET", "NSE_SYMBOL": "HINDPETRO", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "248.30", "LOW_REC_PRICE": "248.30", "HIGH_REC_PRICE": "248.50", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:06", "TARGET": "245.70", "STOP_LOSS": "250.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"}, 
-                                                {"STOCK": "ITC LIMITED", "ICICI_SYMBOL": "ITC", "NSE_SYMBOL": "ITC", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "437.50", "HIGH_REC_PRICE": "438.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": "432.40", "STOP_LOSS": "439.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
+    gainScrapeDict1 = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00, "STOP_LOSS": 5435.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    invScrapeDict1  = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5450.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "xx:xx", "TARGET": 5498.00, "STOP_LOSS": 5434.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-INVEST", "INV_PERIOD": "3 MONTHS"}
+                                                                                                                                                                                                                                                                                                                            
+    mock_iciciDirectGain.return_value   = [gainScrapeDict1]
+    mock_iciciDirectInvest.return_value = [invScrapeDict1]
+
+    # Tests __closeMarginRecsNotUpdated
+    mock_requests.reset_mock()
+
+    # When the runPeriodicChecks function is called next, the COFORGE recommendation should be sent to PayTm. 
+    # However the REST APIs will fail because the return code is 500
+    trade.runPeriodicChecks()
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
+    assert dbDicts[0]['ACK'] == 'NACK'
+    assert mock_requests.post.call_count == 2 # Because of retries beng set to 2
+    assert mock_requests.put.call_count == 2
+
+    mock_response.status_code = 200
+    # Now that the mock will return 200 OK, when the next runPeriodicChecks() function is called, a put API call will be made
+    trade.runPeriodicChecks()
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
+    assert dbDicts[0]['ACK'] == 'ACK'
+    assert mock_requests.put.call_count == 3
+
+
+@patch('appIcici.requests')
+@patch('appIcici.iciciDirect.scrapeiClick2Invest')
+@patch('appIcici.iciciDirect.scrapeiClick2Gain')
+def test_appIcici_6(mock_iciciDirectGain, mock_iciciDirectInvest, mock_requests):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_requests.post.return_value = mock_response
+    mock_requests.put.return_value = mock_response
+
+    trade = app('./iciciDirect.ini', './test/testTrade.json')
+    trade._app__persistence.removeAll()
+
+    gainScrapeDict1 = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00, "STOP_LOSS": 5435.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-GAIN", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": ""}
+    invScrapeDict1  = {"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "GLADIATOR STOCKS", "BUY_SELL": "BUY",  "CMP": 5465.30, "LOW_REC_PRICE": 5450.00, "HIGH_REC_PRICE": 5457.00, "REC_DATE": "31-Aug-2023", "REC_TIME": "xx:xx", "TARGET": 5498.00, "STOP_LOSS": 5434.00, "REC_STATUS": "OPEN", "SOURCE": "iCLICK-2-INVEST", "INV_PERIOD": "3 MONTHS"}
+                                                                                                                                                                                                                                                                                                                            
+    mock_iciciDirectGain.return_value   = [gainScrapeDict1]
+    mock_iciciDirectInvest.return_value = []
+
+    # Tests __closeMarginRecsNotUpdated
+    mock_requests.reset_mock()
+
+    # When the runPeriodicChecks function is called next, the COFORGE recommendation should be sent to PayTm. 
+    # Tested already in test_appIcici_1
+    trade.runPeriodicChecks()
+    
+    # Tests - Change of recommendation - REST API is successful and that recommendation follows the state transition diagram
+    # iCLICK-2-GAIN recommendation changed. iCLICK-2-INVEST didn't change and/or perhaps is not even available. A put REST API call should be made
+    gainScrapeDict1['REC_STATUS'] = 'CLOSE'
+    gainScrapeDict1['PART_PROFIT_PRICE'] = 5500.00
+    gainScrapeDict1['PART_PROFIT_PERC'] = 50.00
+    gainScrapeDict1['UPDATE_ACTION_1'] = 'Book Full Profit'
 
     trade.runPeriodicChecks()
+    
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
+    assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
+    assert dbDicts[0]['ACK'] == 'ACK'
+    jsonBody = trade._app__iciciDirect.prepareRecDict(dbDicts[0])
+    putcalls = [call('http://127.0.0.1:5001/v1/rec', json=jsonBody)]
+    mock_requests.put.has_calls(putcalls)
+    assert mock_requests.put.call_count == 1
 
-    dbDict = trade._app__persistence.getDb(nseSym='HINDPETRO', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222472'
-    assert dbDict[0]['ORDER_STATUS'] == 'CLOSE'
-
-    dbDict = trade._app__persistence.getDb(nseSym='ITC', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222473'
-    assert dbDict[0]['ORDER_STATUS'] == 'PART_POSITION'
-
-    # COFORGE   : REC:CLOSE, ORDER: POSITION
-    # HINDPETRO : REC:CLOSE, ORDER: PART_POSITION
-    # ITC       : REC:OPEN, ORDER: PART_POSITION->POSITION
-    # ITC now gets completely executed
-    mock_paytm.findOrderStatusAndQtyInfo.side_effect = retFindOrderStatusAndQtyInfo2
-
+    # Lets say for some weird reason iCLICK-2-INVEST continues to say the recommendation is open. Even then no put APIs should be sent towards PayTm
+    mock_iciciDirectGain.return_value   = []
+    mock_iciciDirectInvest.return_value = [invScrapeDict1]
+    
     trade.runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb(nseSym='ITC', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222473'
-    assert dbDict[0]['ORDER_STATUS'] == 'POSITION'
-
-    # COFORGE   : REC:CLOSE, ORDER: POSITION
-    # HINDPETRO : REC:CLOSE, ORDER: PART_POSITION
-    # ITC       : REC:OPEN->CLOSE, ORDER: PART_POSITION->CLOSE
-    # JAICORP   : REC:CLOSE, ORDER: NOT_PLACED
-    # KABRAEXTRU: REC:OPEN, ORDER: NOT_PLACED->OPEN
-    # Let's now close the recommendation of ITC 
-    # Also add a new recommendation (JAICORPLTD) which got opened and closed in between refresh windows
-    # Also add another new recommendation (KABRAEXTRU). For this the order will remain in the open state while the recommendation gets closed
-    mock_icici.scrapeMarginData.return_value = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "HINDUSTAN PETROLEUM CORP", "ICICI_SYMBOL": "HINPET", "NSE_SYMBOL": "HINDPETRO", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "248.30", "LOW_REC_PRICE": "248.30", "HIGH_REC_PRICE": "248.50", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:06", "TARGET": "245.70", "STOP_LOSS": "250.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"}, 
-                                                {"STOCK": "ITC LIMITED", "ICICI_SYMBOL": "ITC", "NSE_SYMBOL": "ITC", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "437.50", "HIGH_REC_PRICE": "438.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": "432.40", "STOP_LOSS": "439.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "Jai Corp", "ICICI_SYMBOL": "JAICOR", "NSE_SYMBOL": "JAICORPLTD", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "37.50", "HIGH_REC_PRICE": "38.50", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:45", "TARGET": "32.40", "STOP_LOSS": "39.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "Kabra Extrusion Technik", "ICICI_SYMBOL": "KABEXT", "NSE_SYMBOL": "KABRAEXTRU", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "15:00", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
-    mock_paytm.findOrderStatusAndQtyInfo.side_effect = retFindOrderStatusAndQtyInfo2
-
-    trade.runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb(nseSym='KABRAEXTRU', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222475'
-    assert dbDict[0]['ORDER_STATUS'] == 'OPEN'
-
-    # Now close the KABRAEXTRU recommendation as well
-    mock_icici.scrapeMarginData.return_value = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "HINDUSTAN PETROLEUM CORP", "ICICI_SYMBOL": "HINPET", "NSE_SYMBOL": "HINDPETRO", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "248.30", "LOW_REC_PRICE": "248.30", "HIGH_REC_PRICE": "248.50", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:06", "TARGET": "245.70", "STOP_LOSS": "250.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"}, 
-                                                {"STOCK": "ITC LIMITED", "ICICI_SYMBOL": "ITC", "NSE_SYMBOL": "ITC", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "437.50", "HIGH_REC_PRICE": "438.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": "432.40", "STOP_LOSS": "439.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "Jai Corp", "ICICI_SYMBOL": "JAICOR", "NSE_SYMBOL": "JAICORPLTD", "STRATEGY": "MARGIN", "BUY_SELL": "SELL", "CMP": "436.85", "LOW_REC_PRICE": "37.50", "HIGH_REC_PRICE": "38.50", "REC_DATE": "31-Aug-2023", "REC_TIME": "14:45", "TARGET": "32.40", "STOP_LOSS": "39.90", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},
-                                                {"STOCK": "Kabra Extrusion Technik", "ICICI_SYMBOL": "KABEXT", "NSE_SYMBOL": "KABRAEXTRU", "STRATEGY": "MARGIN", "BUY_SELL": "BUY", "CMP": "5465.30", "LOW_REC_PRICE": "5455.00", "HIGH_REC_PRICE": "5457.00", "REC_DATE": "31-Aug-2023", "REC_TIME": "15:00", "TARGET": "5498.00", "STOP_LOSS": "5434.00", "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "CLOSE"},]
-
-    trade.runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb(nseSym='KABRAEXTRU', strategy='MARGIN', recStatus=None)
-    assert dbDict[0]['order_no'] == '212106222475'
-    assert dbDict[0]['ORDER_STATUS'] == 'CLOSE'
-
-def test_getHoldingsData():
-    trade = app('./payTmMoney.ini', './test/testTrade.json')
-    trade.openPayTmMoneySession()
-    trade.getHoldingsData()
-    """
+    
+    dbDicts = trade._app__persistence.getDb([['NSE_SYMBOL', 'COFORGE']])
+    assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
+    assert dbDicts[0]['ACK'] == 'ACK'
+    assert mock_requests.put.call_count == 1

@@ -50,4 +50,21 @@ class mapIciciToNseStock():
                     rowDict['ICICI_SYMBOL'] = iciciRow[' "ShortName"']
                     break
         self.__logger.debug('Generated dictionary %s', rowDict)
-        return(rowDict)
+        return rowDict
+
+    def mapNameToICICNSESymbol(self, stkName, series):
+        status = False
+        rowDict = {'NAME': '', 'ICICI_SYMBOL': '', 'NSE_SYMBOL': ''}
+        with(open(self.__config['MAP-ICICI-2-NSE']['ICICI_DATASET'], 'r')) as icicicsv:
+            iciciReader = csv.DictReader(icicicsv)
+            for iciciRow in iciciReader:
+                if (iciciRow[' "CompanyName"'] != stkName or iciciRow[' "Series"'] != series):
+                    continue
+                else:
+                    status = True
+                    rowDict['NAME'] = stkName
+                    rowDict['ICICI_SYMBOL'] = iciciRow[' "ShortName"']
+                    rowDict['NSE_SYMBOL'] = iciciRow[' "ExchangeCode"']
+                    break
+        self.__logger.debug('Generated dictionary %s', rowDict)
+        return status, rowDict['ICICI_SYMBOL'], rowDict['NSE_SYMBOL']

@@ -347,3 +347,89 @@ def test_formatTblRowToDict(setup):
     assert cellDict['UPDATE_TIME_1'] == '08-Sep-2023 09:34'
     assert cellDict['UPDATE_ACTION_2'] == ''
     assert cellDict['UPDATE_TIME_2'] == ''
+
+def test_formatInvRemarkCell(setup):
+    iciciDirect, marginData = setup
+    remark = "Book 50% profit in DLF at 532and trail stoploss to 511 for remaining positions"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] == 511
+
+    remark = "Book 50% profits in the stock at current levels of 96.25 and trail stop loss to 90 for the remaining positions. (Return= 7%)"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  90
+
+    remark = "Book 50% profits in the stock at current levels of 4895 and trail stop loss to | 4400 for the remaining positions. (Return= 11.5%)"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  4400
+
+    remark = "Book 50% profit at 426.5 and trail stoploss for remaining position to 403"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  403
+
+    remark = "Book 50% profit at 1425 and trail stoploss for remaining position to 1350"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  1350
+    
+    remark = "Book 50% profit at Rs 5493.00 (Return: 6% ) and trail stoploss to Rs 5207.00 for remaining positions"	
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  5207
+    
+    remark = "Book 50% profit at Rs 147.50 (Return: 9%) and trail stoploss to Rs 136.00 for remaining positions"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  136
+    
+    remark = "Book 50% profit at Rs 2753.00 (Return: 7%) and trail stoploss to Rs 2564.00 for remaining positions"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  2564
+    
+    remark = "Book 50% profit at 372 and trail stoploss for remaining position to 356"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] ==  356
+    
+    remark = "Book profit at 505"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'CLOSE'
+    assert resDict['STOP_LOSS'] == 0
+    assert resDict['FINAL_PROFIT_PRICE'] == 505
+    
+    remark = "Target 1 Achieved"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'CLOSE'
+    assert resDict['STOP_LOSS'] == 0
+    assert resDict['FINAL_PROFIT_PRICE'] == 0
+    
+    remark = "We suggest to hold the long positions in the stock with revised stoploss of 1260."
+    breakpoint()
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == 'UPDATE_FIELDS'
+    assert resDict['STOP_LOSS'] == 1260
+    assert resDict['FINAL_PROFIT_PRICE'] == 0
+    
+    remark = "Others"
+    status, resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
+    assert status == True
+    assert resDict['STATUS'] == ''
+    assert resDict['STOP_LOSS'] == 0
+    assert resDict['FINAL_PROFIT_PRICE'] == 0
+    
