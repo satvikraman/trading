@@ -67,7 +67,7 @@ class app():
             self.__timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
             self.__LtpDisFactor = float(self.__config['APP']['LTP_DISTANCE_FACTOR'])
             self.__squareOff = False
-            self.__marketClose = False
+            self.__marketOpen = False
 
             self.__core = [ {'NSE_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
                             {'NSE_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
@@ -108,9 +108,9 @@ class app():
             dotenv.set_key('./.env', "max_amount_per_order", str(maxAmount))
 
 
-    def setMarketTimer(self, squareOff, marketClose):
+    def setMarketTimer(self, squareOff, marketOpen):
         self.__squareOff = squareOff
-        self.__marketClose = marketClose
+        self.__marketOpen = marketOpen
         return
 
 
@@ -211,7 +211,7 @@ class app():
     def __computeExpDate(self, recDict, dbDict):
         status = False
         invDays = invMonths = 0
-        invPeriod = dbDict['INV_PERIOD']
+        invPeriod = dbDict['INV_PERIOD'] if 'INV_PERIOD' in dbDict else ''
         if invPeriod == '':
             if recDict['INV_PERIOD'] != '':
                 status = True
@@ -228,10 +228,10 @@ class app():
                 else:
                     invPeriod = '12 MONTHS'
 
-        if 'MONTHS'.lower() in invPeriod.lower():
+        if 'MONTH'.lower() in invPeriod.lower():
             invMonths = re.match(r'\d+', invPeriod)
             invMonths = int(invMonths.group(0))
-        elif 'DAYS'.lower() in invPeriod.lower():
+        elif 'DAY'.lower() in invPeriod.lower():
             invDays = re.match(r'\d+', invPeriod)
             invDays = int(invDays.group(0))
 
@@ -243,10 +243,6 @@ class app():
         status = False
         # If square off time, stop accepting new orders
         if self.__squareOff == True and recDict['STRATEGY'] == 'MARGIN':
-            return status
-        
-        # Add no new recommendations after markets have closed
-        if self.__marketClose:
             return status
         
         recDict['CMP'] = float(recDict['CMP'])
@@ -530,7 +526,7 @@ class app():
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 10
             limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
-        if invPerc == 0 and qty == 0:
+        if invPerc <= 12.5 and qty == 0:
             qty = int(totalQty * 25 / 100) - posHoldQty
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
@@ -648,7 +644,7 @@ class app():
                             if trdQty == qty:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
                         else:
-                            self.__logger.critical("Unable to find order info %s", dbDict['order_no'])
+                            self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
                     
                 self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
             self.__lock.release()
@@ -723,6 +719,8 @@ class app():
 
 
     def __followOrders(self, dbDict):
+        if not self.__marketOpen:
+            return
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
             self.__getCMPUpdateRecStatus(dbDict)
             self.__openPosition(dbDict)
@@ -731,7 +729,7 @@ class app():
             self.__executeClosureSeq([dbDict], cancelOrder=cancelOrder, forceCloseRec=False)
 
 
-    def __reconcileRecs(self, marketClose):
+    def __reconcileRecs(self):
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
         self.__lock.acquire()
         dbDicts = self.__persistence.getDb([['REC_STATUS', '!CLOSE']])
@@ -870,7 +868,7 @@ class app():
         expDbDicts = []
         for dbDict in dbDicts:
             expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
-            if expDate >= self.__today.date():
+            if self.__today.date() >= expDate:
                 expDbDicts.append(dbDict)
 
         self.__executeClosureSeq(expDbDicts, cancelOrder=True, forceCloseRec=True)
@@ -892,19 +890,21 @@ class app():
 
 
     def __runPeriodicChecks(self):
-        while not self.__marketClose:
-            if not self.__marketClose:
-                if self.__squareOff:
-                    self.__updateOpenOrderStatus()
-                    self.__closeAllOpenIntraDayPositions()
-                    
-                # All data is now in DB. Reconcile recommendation and order status
+        while self.__marketOpen:
+            if self.__squareOff:
                 self.__updateOpenOrderStatus()
-                self.__reconcileRecs(self.__marketClose)
-            else:
-                self.__closeAllExpiredOrders()
-                self.__closeAllOpenDeliveryOrders()
-            time.sleep(15)
+                self.__closeAllOpenIntraDayPositions()
+                    
+            # All data is now in DB. Reconcile recommendation and order status
+            self.__updateOpenOrderStatus()
+            self.__reconcileRecs()
+            if not self.__dryRun:
+                time.sleep(15)
+            else: 
+                return
+
+        self.__closeAllExpiredOrders()
+        self.__closeAllOpenDeliveryOrders()
 
 
 trade = app('./payTmMoney.ini', dryRun=False)
@@ -912,7 +912,6 @@ trade = app('./payTmMoney.ini', dryRun=False)
 
 def payTmThread():
     squareOffMinus15 = False
-    marketCloseMinus1 = False
     marketOpen = False
 
     status = trade.startupCheck()
@@ -927,12 +926,11 @@ def payTmThread():
     trade.startSelfHeal()
     trade.startPeriodicChecks()
 
-    while not marketCloseMinus1:
-        if marketOpen:
-            # Start closing all positions as soon as it is 3:00PM
-            squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
-            marketCloseMinus1 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=25) 
-            trade.setMarketTimer(squareOffMinus15, marketCloseMinus1)
+    while marketOpen:
+        # Start closing all positions as soon as it is 3:00PM
+        squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
+        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25) 
+        trade.setMarketTimer(squareOffMinus15, marketOpen)
         time.sleep(15)
 
     trade._app__logger.info("Markets have closed. Exiting gracefully")

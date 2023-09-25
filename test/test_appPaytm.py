@@ -80,6 +80,7 @@ def test_Margin1():
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade.setMarketTimer(False, True)
     # If new recommendations have come in (True)
     # Place orders (1st - 25%)
     trade.handleRec(recDict)
@@ -143,7 +144,7 @@ def test_Margin1():
     trade._app__payTmMoney.setIncompleteOrders(True, 3)
 
     # Its 3:00PM and the 2nd order wouldn't have completed, a closing order should be placed
-    trade.setMarketTimer(True, False)
+    trade.setMarketTimer(True, True)
     trade._app__runPeriodicChecks()
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
@@ -190,6 +191,8 @@ def test_Margin2():
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade.setMarketTimer(False, True)
+
     # If new recommendations have come in (True) # Place orders (1st - 25%)
     trade.handleRec(recDict)
 
@@ -325,6 +328,8 @@ def test_Margin3():
 
     recDict = setTodaysDate(0)
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade.setMarketTimer(False, True)
+
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -382,6 +387,7 @@ def test_Margin4a():
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -434,6 +440,7 @@ def test_Margin4b():
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -486,6 +493,7 @@ def test_Margin5a():
     trade.getHoldingsData()
     recDict = setTodaysDate(1)
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -537,6 +545,7 @@ def test_Margin5b():
     trade.getHoldingsData()
     recDict = setTodaysDate(1)
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -601,6 +610,7 @@ def test_NonMargin1():
     # When runPeriodicCheck runs, more orders should be bought if possible
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['LOW_REC_PRICE'] + 1)
     # Run periodic check. Remaining 2 stocks should be bought
+    trade.setMarketTimer(False, True)
     trade._app__runPeriodicChecks()
 
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -714,7 +724,9 @@ def test_NonMargin2():
     trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'OPEN'
     trade._app__persistence.removeAll()
+    trade.setMarketTimer(False, True)
     trade.getHoldingsData()
+
     res = trade.handleRec(recDict)
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
@@ -810,6 +822,8 @@ def test_NonMargin3():
     # The momentum stock recommendation comes in next
     recDict2, mockDict2 = getOfflineRec(recDict, addDbDictKeys, idx=1, offline=False, changeDate=True)
     trade._app__payTmMoney.setCMP(recDict2['NSE_SYMBOL'], recDict2['HIGH_REC_PRICE'])
+    trade.setMarketTimer(False, True)
+
     res = trade.handleRec(recDict2)
     dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict2['NSE_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
     assert res == True
@@ -826,3 +840,23 @@ def test_NonMargin3():
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
+
+# Same stock in 2 different strategies
+def test_NonMargin4():
+    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
+    trade.setAmountPerOrder(15000)    
+    trade._app__persistence.removeAll()
+    recDict1, mockDict1 = getOfflineRec(idx=0, offline=True, changeDate=True, daysOffset=-365)
+    recDict2, mockDict2 = getOfflineRec(idx=1, offline=True, changeDate=True, daysOffset=0)
+    trade._app__payTmMoney.cheatAddStockDictArr(mockDict1)
+    trade._app__payTmMoney.cheatAddStockDictArr(mockDict2)
+    trade._app__persistence.insertDb(mockDict1, [['NSE_SYMBOL', recDict1['NSE_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
+    trade._app__persistence.insertDb(mockDict2, [['NSE_SYMBOL', recDict2['NSE_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
+    trade.getHoldingsData()
+
+    # recDict1 should have expired and closed (It was given an offset of -365 days)
+    trade._app__closeAllExpiredOrders()
+    # The only stock whose POS_HOLD_STATUS != 'CLOSE' should be recDict2
+    dbDicts = trade._app__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+    assert len(dbDicts) == 1
+    assert dbDicts[0]['NSE_SYMBOL'] == recDict2['NSE_SYMBOL']
