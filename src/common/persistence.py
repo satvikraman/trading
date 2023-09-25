@@ -2,8 +2,8 @@ import logging
 import os
 import re
 import configparser
-
 from tinydb import TinyDB, Query, where
+from tinydb.operations import delete
 
 class persistence:
     def __init__(self, configFile, db, lock=None):
@@ -107,6 +107,13 @@ class persistence:
             status = True if len(res) > 0 else False
         return status
     
+
+    def removeKeyFromDb(self, key, queryParamVals):
+        query = self.__formQuery(queryParamVals)
+        self.__acquireLock()
+        res = self.__db.update(delete(key), query)
+        self.__releaseLock()
+
 
     def removeFromDb(self, queryParamVals):
         query = self.__formQuery(queryParamVals)
