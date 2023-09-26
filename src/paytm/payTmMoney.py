@@ -198,7 +198,7 @@ class payTmMoney:
         while not status and retries >= 0:
             try:
                 res = self.__orderBook = self.__pm.order_book()
-                self.__logger.debug(self.__orderBook['message'])
+                self.__logger.debug(self.__orderBook['status'])
                 status = res['status'] == 'success'
             except Exception as e:
                 retries -= 1
@@ -225,7 +225,7 @@ class payTmMoney:
                             retries -= 1
                             time.sleep(1)
                         message = res['message']
-                        self.__logger.debug("Response : {}".format(res))
+                        self.__logger.info("Response : {}".format(res))
                     except Exception as e:
                         retries -= 1
                         message = e
@@ -270,7 +270,7 @@ class payTmMoney:
                     retries -= 1
                     time.sleep(1)
                 message = res['message']
-                self.__logger.debug("Response : {}".format(res))
+                self.__logger.info("Response : {}".format(res))
             except Exception as e:
                 retries -= 1
                 message = e
