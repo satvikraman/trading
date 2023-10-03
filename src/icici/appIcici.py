@@ -94,7 +94,7 @@ class app():
         # REC_STATUS
         # LOW_REC_PRICE, STOP_LOSS, PART_PROFIT_PRICE, PART_PROFIT_PERC, FINAL_PROFIT_PRICE, EXIT_PRICE
         # REC_TIME, UPDATE_ACTION_1, UPDATE_TIME_1, UPDATE_ACTION_2, UPDATE_TIME_2
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE']])
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN']])
 
         for recDict in recDicts:
             # This function is only for DELIVERY based recommendations
@@ -149,10 +149,13 @@ class app():
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
                     self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
             else:
+                # Check if we couldn't find the recommendation because its REC_STATUS was set to CLOSE?
                 if(recDict['REC_STATUS'] != 'CLOSE'):
                     apiDict = self.__iciciDirect.prepareRecDict(recDict)
                     status = self.__send2PayTm('NEW_REC', apiDict)
                     recDict['ACK'] = 'ACK' if status else 'NACK'
+                    # Sometime when the TARGET of a recommendation changes the code reaches this point. At this point insert will fail. 
+                    # So check if we need to do update instead?
                     res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
                     self.__logger.info('New Recommendation %s', recDict)
                 else:

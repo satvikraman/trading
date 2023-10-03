@@ -200,6 +200,9 @@ class payTmMoney:
                 res = self.__orderBook = self.__pm.order_book()
                 self.__logger.debug(self.__orderBook['status'])
                 status = res['status'] == 'success'
+                if not status:
+                    retries -= 1
+                    time.sleep(1)
             except Exception as e:
                 retries -= 1
                 self.__logger.error("Error : {}".format(e))

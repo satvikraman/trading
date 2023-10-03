@@ -50,7 +50,7 @@ class persistence:
             query = (where(keyword) == vals[0])
             for item in vals[1:]:
                 query = query | (where(keyword) == item)
-        elif '&' in val:
+        elif '&&' in val:
             vals = val.split('&')
             query = (where(keyword) == vals[0])
             for item in vals[1:]:
