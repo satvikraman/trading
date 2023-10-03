@@ -94,7 +94,7 @@ class app():
         # REC_STATUS
         # LOW_REC_PRICE, STOP_LOSS, PART_PROFIT_PRICE, PART_PROFIT_PERC, FINAL_PROFIT_PRICE, EXIT_PRICE
         # REC_TIME, UPDATE_ACTION_1, UPDATE_TIME_1, UPDATE_ACTION_2, UPDATE_TIME_2
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN']])
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE']])
 
         for recDict in recDicts:
             # This function is only for DELIVERY based recommendations
@@ -108,8 +108,13 @@ class app():
                 recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
                 dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
                 daysDiff = abs((dbDate - recDate).days)
-                if dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['TARGET'] == recDict['TARGET'] and daysDiff <= 7:
+
+                if dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['STRATEGY'] == recDict['STRATEGY'] and dbDict['REC_DATE'] == recDict['REC_DATE']:
                     found = True
+                elif dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['TARGET'] == recDict['TARGET'] and daysDiff <= 7:
+                    found = True
+                
+                if found:
                     # Check if value of keys has changed
                     for key in actionableKeys:
                         if key in dbDict:
@@ -149,19 +154,33 @@ class app():
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
                     self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
             else:
-                # Check if we couldn't find the recommendation because its REC_STATUS was set to CLOSE?
-                if(recDict['REC_STATUS'] != 'CLOSE'):
-                    apiDict = self.__iciciDirect.prepareRecDict(recDict)
-                    status = self.__send2PayTm('NEW_REC', apiDict)
-                    recDict['ACK'] = 'ACK' if status else 'NACK'
-                    # Sometime when the TARGET of a recommendation changes the code reaches this point. At this point insert will fail. 
-                    # So check if we need to do update instead?
-                    res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
-                    self.__logger.info('New Recommendation %s', recDict)
-                else:
-                    recDict['ACK'] = 'ACK'
-                    res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
-                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
+                # Check if we couldn't find the recommendation because its REC_STATUS was set to CLOSE? This could happen for example
+                # if the recommendation is closed in iCLICK-2-GAIN but open in iCLICk-2-INVEST. The iCLICK-2-INVEST recommendation will therefore come here. 
+                # However, since the recommendation is already closed there is nothing that needs to be done. If we find the recommendation among the closed 
+                # recommendations, no action will be taken
+                found2 = False
+                dbDicts2 = self.__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', '!MARGIN'], ['REC_STATUS', 'CLOSE']])
+                for dbDict2 in dbDicts2:
+                    dbDate = datetime.datetime.strptime(dbDict2['REC_DATE'], "%d-%b-%Y")
+                    daysDiff = abs((dbDate - recDate).days)
+                    if dbDict2['STRATEGY'] == recDict['STRATEGY'] and dbDict2['REC_DATE'] == recDict['REC_DATE']:
+                        found2 = True
+                    elif dbDict2['TARGET'] == recDict['TARGET'] and daysDiff <= 7:
+                        found2 = True
+
+                if not found2:
+                    if(recDict['REC_STATUS'] != 'CLOSE'):
+                        apiDict = self.__iciciDirect.prepareRecDict(recDict)
+                        status = self.__send2PayTm('NEW_REC', apiDict)
+                        recDict['ACK'] = 'ACK' if status else 'NACK'
+                        # Sometime when the TARGET of a recommendation changes the code reaches this point. At this point insert will fail. 
+                        # So check if we need to do update instead?
+                        res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+                        self.__logger.info('New Recommendation %s', recDict)
+                    else:
+                        recDict['ACK'] = 'ACK'
+                        res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+                        self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
 
 
     def __closeMarginRecsNotUpdated(self, recDicts):

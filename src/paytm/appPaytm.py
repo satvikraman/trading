@@ -182,7 +182,7 @@ class app():
                                                     holding['NSE_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
-                    self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])        
+                    self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])
         return status
     
 
@@ -636,8 +636,6 @@ class app():
         self.__logger.debug("PayTm API successful. Starting to update the order status")
 
         if status:
-            # From when you get data from DB and until you update it, acquire the lock
-            self.__lock.acquire()
             # Get all recommendations from DB where the POS_HOLD_STATUS is 'OPEN'. This implies there may be an order thats being executed
             # Check if we can update any order status based on the order book details from above
             dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
@@ -658,8 +656,7 @@ class app():
                             self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
                     
                 self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-            self.__lock.release()
-
+        self.__logger.debug("PayTm API successful. Finished updating the order status")
 
     def __waitForCloseOrdersToComplete(self, closeDbDictOrderNumArr):
         allCloseOrdersComplete = False
@@ -858,9 +855,13 @@ class app():
         # Get all open positions
         self.__logger.info("Closing all open positions")
 
-        # Check for all orders in 'OPEN' state
         self.__lock.acquire()
+        self.__updateOpenOrderStatus()
+        self.__lock.release()
+
+        # Check for all orders in 'OPEN' state
         # Some orders may be still open --> cancel them and close position
+        self.__lock.acquire()
         dbDicts = self.__persistence.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
         self.__executeClosureSeq(dbDicts, cancelOrder=True, forceCloseRec=True)
         self.__lock.release()
@@ -904,12 +905,8 @@ class app():
     def runPeriodicChecks(self):
         if self.__marketOpen:
             if self.__squareOff:
-                self.__updateOpenOrderStatus()
                 self.__closeAllOpenIntraDayPositions()
                     
-            # All data is now in DB. Reconcile recommendation and order status
-            self.__logger.debug("Updating order status")
-            self.__updateOpenOrderStatus()
             self.__logger.debug("Starting reconciliation")
             self.__reconcileRecs()
             if self.__dryRun:
