@@ -241,9 +241,6 @@ class app():
 
     def __addNewRec(self, recDict, holdQty=0, posHoldStatus=None):
         status = False
-        # If square off time, stop accepting new orders
-        if self.__squareOff == True and recDict['STRATEGY'] == 'MARGIN':
-            return status
         
         recDict['CMP'] = float(recDict['CMP'])
         recDict['HIGH_REC_PRICE'] = float(recDict['HIGH_REC_PRICE'])
@@ -932,7 +929,7 @@ def payTmThread():
         print('Startup check passed!!!')
 
     while not marketOpen:
-        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
+        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=29)
         time.sleep(15)
     
     #trade.startSelfHeal()
