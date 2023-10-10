@@ -72,7 +72,7 @@ class app():
             self.__core = [ {'NSE_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
                             {'NSE_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
                             {'NSE_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': 8}, 
-                            {'NSE_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY': 106}, 
+                            {'NSE_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY':127}, 
                             {'NSE_SYMBOL': 'CDSL', 'SECURITY_ID': '21174', 'QTY': 33}, 
                             {'NSE_SYMBOL': 'LALPATHLAB', 'SECURITY_ID': '11654', 'QTY': 31}, 
                             {'NSE_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 90}, 
@@ -208,25 +208,38 @@ class app():
         return status
 
 
+    def printMilestones(self):
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
+        # Stocks that will expire today
+        self.__logger.info("Following stocks will expire today")
+        for dbDict in dbDicts:
+            expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
+            if expDate <= self.__today.date():
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], 
+                                   dbDict['REC_DATE'], dbDict['EXP_DATE'], dbDict['CMP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                
+        perc = 1
+        self.__logger.info("Following stocks are trading %.1f%% away from their target price", perc)
+        # Stocks very close to target
+        for dbDict in dbDicts:
+            if dbDict['CMP'] * 1.01 >= dbDict['TARGET']:
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], 
+                                   dbDict['REC_DATE'], dbDict['EXP_DATE'], dbDict['CMP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+
+        self.__logger.info("Following stocks are trading %.1f%% away from their stop loss price", perc)
+        # Stocks very close to stop-loss
+        for dbDict in dbDicts:
+            if dbDict['STOP_LOSS'] * 1.01 >= dbDict['CMP']:
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], 
+                                   dbDict['REC_DATE'], dbDict['EXP_DATE'], dbDict['CMP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+
+
     def __computeExpDate(self, recDict, dbDict):
-        status = False
+        status = True
         invDays = invMonths = 0
-        invPeriod = dbDict['INV_PERIOD'] if 'INV_PERIOD' in dbDict else ''
-        if invPeriod == '':
-            if recDict['INV_PERIOD'] != '':
-                status = True
-                invPeriod = recDict['INV_PERIOD']
-            else:
-                if recDict['STRATEGY'] == 'MARGIN':
-                    invPeriod = '0 DAYS'
-                elif recDict['STRATEGY'] == 'MOMENTUM PICK':
-                    invPeriod = '14 DAYS'
-                elif recDict['STRATEGY'] == 'QUANT PICKS':
-                    invPeriod = '30 DAYS'
-                elif recDict['STRATEGY'] == 'GLADIATOR STOCKS':
-                    invPeriod = '3 MONTHS'
-                else:
-                    invPeriod = '12 MONTHS'
+        invPeriod = recDict['INV_PERIOD']
+        if '*' in invPeriod:
+            invPeriod = dbDict['INV_PERIOD'] if 'INV_PERIOD' in dbDict else invPeriod
 
         if 'MONTH'.lower() in invPeriod.lower():
             invMonths = re.match(r'\d+', invPeriod)
@@ -285,15 +298,17 @@ class app():
         status, dbDict['INV_PERIOD'], dbDict['EXP_DATE'] = self.__computeExpDate(recDict, dbDict)
 
         # Copy values from the input dict to the DB dict and then update the DB
-        keys = ['STOP_LOSS', 'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
+        keys = ['STOP_LOSS', 'TARGET', 'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
         for key in keys:
-            dbDict[key] = recDict[key]
+            if key in recDict:
+                dbDict[key] = recDict[key]
 
         dbDictTime = dbDict['REC_TIME']
         keys = ['REC_TIME', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
         # Offline non-margin entries wont have the correct time. Hence use this to query the DB but also update the REC_TIME with the correct time in the loop below
         for key in keys:
-            dbDict[key] = recDict[key]
+            if key in recDict:
+                dbDict[key] = recDict[key]
 
         # Recommendation status can only move along the path mentioned in the state transition diagram
         # Recommendation status is also getting updated as part of the periodic check, after LTP is fetched
@@ -495,6 +510,15 @@ class app():
         return status, dbDict
 
 
+    def __investTight(self, dbDict):
+        investTight = False
+        for strategy in ['Kavan Patel', 'Dhwani Patel']:
+            if dbDict['STRATEGY'].lower() == strategy.lower():
+                investTight = True
+                break
+        return investTight
+
+
     def __openPosition(self, dbDict):
         # Even before you check whether an order can be placed, lets first update the position-holding-status
         self.__logger.debug("Getting the position status")
@@ -526,7 +550,8 @@ class app():
         # First  order is a 'MKT' order
         qty = 0
         invPerc = posHoldQty * 100 / totalQty
-        if invPerc == 0 and product == 'DELIVERY':
+        investTight = self.__investTight(dbDict)
+        if invPerc == 0 and product == 'DELIVERY' and not investTight:
             qty = int(totalQty * 12.5 / 100) - posHoldQty
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 5
@@ -928,17 +953,15 @@ def payTmThread():
     else:
         print('Startup check passed!!!')
 
+    trade.printMilestones()
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=29)
         time.sleep(15)
     
-    #trade.startSelfHeal()
-    #trade.startPeriodicChecks()
-
     while marketOpen:
         # Start closing all positions as soon as it is 3:00PM
         squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
-        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25) 
+        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=29) 
         trade.setMarketTimer(squareOffMinus15, marketOpen)
         trade.runPeriodicChecks()
         time.sleep(15)
@@ -976,7 +999,6 @@ if __name__ == '__main__':
     flaskThr.daemon = True
     
     # Start the threads
-    #paytmThr.start()
     flaskThr.start()
     payTmThread()
 

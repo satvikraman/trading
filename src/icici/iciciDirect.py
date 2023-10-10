@@ -86,15 +86,15 @@ class iciciDirect():
     def __suggestInvPeriod(self, strategy):
         invPeriod = ''
         if strategy == 'MARGIN':
-            invPeriod = '0 DAYS'
+            invPeriod = '0 DAYS*'
         elif strategy == 'MOMENTUM PICK':
-            invPeriod = '14 DAYS'
+            invPeriod = '14 DAYS*'
         elif strategy == 'QUANT_PICKS':
-            invPeriod = '30 DAYS'
+            invPeriod = '30 DAYS*'
         elif strategy == 'GLADIATOR STOCKS':
-            invPeriod = '3 MONTHS'
+            invPeriod = '3 MONTHS*'
         else:
-            invPeriod = '14 DAYS'
+            invPeriod = '14 DAYS*'
             self.__logger.error("Handle suggestion of investment period for this strategy %s", strategy)
         return invPeriod
 

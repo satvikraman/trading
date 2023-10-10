@@ -78,8 +78,15 @@ class payTmMoney:
         self.__pm.set_access_token(self.__access_token)
         self.__pm.set_public_access_token(self.__public_access_token)
         self.__pm.set_read_access_token(self.__read_access_token)
-
-        print(self.__pm.get_user_details())
+        retries = self.__retries
+        while retries > 0:
+            try:
+                print(self.__pm.get_user_details())
+                retries = 0
+            except Exception as e:
+                retries -= 1
+                self.__logger.error("Error: {}".format(e))
+                time.sleep(1)
         return True
 
 
