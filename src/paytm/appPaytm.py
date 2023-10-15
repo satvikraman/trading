@@ -74,21 +74,17 @@ class app():
                             {'NSE_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': 8}, 
                             {'NSE_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY':127}, 
                             {'NSE_SYMBOL': 'CDSL', 'SECURITY_ID': '21174', 'QTY': 33}, 
-                            {'NSE_SYMBOL': 'LALPATHLAB', 'SECURITY_ID': '11654', 'QTY': 31}, 
                             {'NSE_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 90}, 
                             {'NSE_SYMBOL': 'HDFCBANK', 'SECURITY_ID': '1333', 'QTY': 91}, 
                             {'NSE_SYMBOL': 'HINDUNILVR', 'SECURITY_ID': '1394', 'QTY': 14}, 
-                            {'NSE_SYMBOL': 'ICICIGI', 'SECURITY_ID': '21770', 'QTY': 75}, 
                             {'NSE_SYMBOL': 'INFY', 'SECURITY_ID': '1594', 'QTY': 18}, 
                             {'NSE_SYMBOL': 'ITC', 'SECURITY_ID': '1660', 'QTY': 107}, 
                             {'NSE_SYMBOL': 'JIOFIN', 'SECURITY_ID': '18143', 'QTY': 12}, 
                             {'NSE_SYMBOL': 'MARICO', 'SECURITY_ID': '4067', 'QTY': 126}, 
-                            {'NSE_SYMBOL': 'MUTHOOTFIN', 'SECURITY_ID': '23650', 'QTY': 50}, 
                             {'NSE_SYMBOL': 'NESTLEIND', 'SECURITY_ID': '17963', 'QTY': 3}, 
                             {'NSE_SYMBOL': 'PGHH', 'SECURITY_ID': '2535', 'QTY': 4}, 
                             {'NSE_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
                             {'NSE_SYMBOL': 'POLYMED', 'SECURITY_ID': '25718', 'QTY': 63}, 
-                            {'NSE_SYMBOL': 'RELAXO', 'SECURITY_ID': '24225', 'QTY': 64}, 
                             {'NSE_SYMBOL': 'RELIANCE', 'SECURITY_ID': '2885', 'QTY': 12}, 
                             {'NSE_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
                             {'NSE_SYMBOL': 'SOLARINDS', 'SECURITY_ID': '13332', 'QTY': 7}, 
@@ -394,7 +390,10 @@ class app():
         if status:
             dbDict['CMP'] = ltp
             if dbDict['BUY_SELL'] == 'BUY':
-                if ltp >= dbDict['TARGET'] or ltp <= dbDict['STOP_LOSS']:
+                if (ltp >= dbDict['TARGET']):
+                    dbDict['REC_STATUS'] = 'CLOSE'
+                # Act on stop loss on closing basis or if during trading hours the price has significantly fallen below the original stop-loss
+                elif (not self.__marketOpen and ltp <= dbDict['STOP_LOSS']) or (ltp * 1.03 <= dbDict['STOP_LOSS']):
                     dbDict['REC_STATUS'] = 'CLOSE'
             else:
                 if ltp <= dbDict['TARGET'] or ltp >= dbDict['STOP_LOSS']:
@@ -435,7 +434,7 @@ class app():
                     for orderDict in sameStkDict['CLOSE_ORDERS']:
                         if orderDict['ORDER_STATUS'] == 'OPEN':
                             closeOrdersStateOpen = True
-                            closeDbDictOrderNumDictArr = {'DB_DICT': sameStkDict, 'ORDER_NO': orderDict['ORDER_NO']}
+                            closeDbDictOrderNumDictArr.append({'DB_DICT': sameStkDict, 'ORDER_NO': orderDict['ORDER_NO']})
                         timeStr = orderDict['CREATE_TIME']
                         if timeStr != '':
                             orderTime = datetime.datetime.strptime(timeStr, '%d-%b-%Y %H:%M')
@@ -512,7 +511,7 @@ class app():
 
     def __investTight(self, dbDict):
         investTight = False
-        for strategy in ['Kavan Patel', 'Dhwani Patel']:
+        for strategy in ['Kavan Patel', 'Dhwani Patel', 'Lotus Funds', 'Clovek Wealth']:
             if dbDict['STRATEGY'].lower() == strategy.lower():
                 investTight = True
                 break
@@ -935,6 +934,7 @@ class app():
                 return
 
         if not self.__marketOpen:
+            self.__reconcileRecs()
             self.__closeAllExpiredOrders()
             self.__closeAllOpenDeliveryOrders()
 
@@ -955,13 +955,13 @@ def payTmThread():
 
     trade.printMilestones()
     while not marketOpen:
-        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=29)
+        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
         time.sleep(15)
     
     while marketOpen:
         # Start closing all positions as soon as it is 3:00PM
         squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
-        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=29) 
+        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25) 
         trade.setMarketTimer(squareOffMinus15, marketOpen)
         trade.runPeriodicChecks()
         time.sleep(15)
