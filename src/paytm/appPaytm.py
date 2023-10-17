@@ -555,6 +555,11 @@ class app():
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 5
             limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
+        if qty == 0:
+            qty = remQty
+            orderType = 'LMT'
+            limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
+        """
         if invPerc <= 12.5 and qty == 0:
             qty = int(totalQty * 25 / 100) - posHoldQty
             orderType = 'LMT'
@@ -568,7 +573,7 @@ class app():
             qty = remQty
             orderType = 'LMT'
             limitPrice = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
-
+        """
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
             ltp = dbDict['CMP']

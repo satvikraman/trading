@@ -417,4 +417,9 @@ def test_formatInvRemarkCell(setup):
     remark = "Others"
     resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)
     assert resDict['REC_STATUS'] == 'OPEN'
+
+    remark = "Book 50% profit at 993 and trail stoploss for remaining position at 948"
+    resDict = iciciDirect._iciciDirect__formatInvRemarkCell(remark)    
+    assert resDict['REC_STATUS'] == 'PARTIAL_CLOSE'
+    assert resDict['STOP_LOSS'] == 948
     

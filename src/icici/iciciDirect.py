@@ -314,7 +314,7 @@ class iciciDirect():
 
     def browseICICIDirect(self):
         # Open ICICI Direct and let the user login
-        self.__browser = webdriver.Chrome(self.__config['DEFAULT']['CHROME_DRIVER'])
+        self.__browser = webdriver.Edge(r'D:/araman/utils/edgedriver/edgedriver_win64/msedgedriver.exe')
         self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
         input("Wait for the user to login...")
         self.__iclick2gainHdl = self.__browser.current_window_handle
@@ -393,47 +393,50 @@ class iciciDirect():
 
     def scrapeiClick2Invest(self):
         tblRowsArrOfDict = []
-        loadPgAttempts = 0
-        while loadPgAttempts < 3:
-            try:
-                self.__browser.switch_to.window(self.__iclick2investHdl)
-                # Select Margin as the recommendation type
-                menu3 = self.__browser.find_element_by_id("iclick_invest")
-                self.__browser.execute_script("document.getElementById('ddlinvestmenttype').style.display='inline-block';")
-                recommendationType = Select(menu3.find_element_by_id("ddlinvestmenttype"))
-                # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
-                recommendationType.select_by_value("ALL")
 
-                # Click on view to see the results
-                viewBtn = menu3.find_element_by_id("btnview")
-                viewBtn.send_keys(Keys.ENTER)
+        menuVals = ["Long Term", "Medium Term", "Short Term"]
+        #menuVals = ["ALL"]
+        for menuVal in menuVals:
+            loadPgAttempts = 0
+            while loadPgAttempts < 3:
+                try:
+                    self.__browser.switch_to.window(self.__iclick2investHdl)
+                    # Select Margin as the recommendation type
+                    menu3 = self.__browser.find_element_by_id("iclick_invest")
+                    self.__browser.execute_script("document.getElementById('ddlinvestmenttype').style.display='inline-block';")
+                    recommendationType = Select(menu3.find_element_by_id("ddlinvestmenttype"))
+                    # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
+                    recommendationType.select_by_value(menuVal)
 
-                # Scrape the data (header + body) from the webpage
-                loadTblAttempts = 0
-                while loadTblAttempts < 3:
-                    try:
-                        tbl = self.__browser.find_element_by_id("Pnlclckinvest")
-                        tblBody = tbl.find_element_by_tag_name("tbody")
-                        tblRows = tblBody.find_elements_by_tag_name("tr")
-                        tblRowsArrOfDict = []
-                        for tblRow in tblRows:
-                            tblRowCols = tblRow.find_elements_by_tag_name("td")
-                            # If we find a row with 8 entries
-                            if(len(tblRowCols) == 8):
-                                rowDict = {}
-                                rowDict = self.__formatiCLICK_2_INVESTTblRowToDict(tblRowCols)
-                                if rowDict != None:
-                                    rowDict['SOURCE'] = 'iCLICK-2-INVEST'
-                                    tblRowsArrOfDict.append(rowDict)
-                        break
-                    except Exception as e:
-                        loadTblAttempts += 1
-                        time.sleep(1)
-                break
-            except Exception as e:
-                self.__browser.refresh()
-                loadPgAttempts += 1
-                time.sleep(1)
+                    # Click on view to see the results
+                    viewBtn = menu3.find_element_by_id("btnview")
+                    viewBtn.send_keys(Keys.ENTER)
+
+                    # Scrape the data (header + body) from the webpage
+                    loadTblAttempts = 0
+                    while loadTblAttempts < 3:
+                        try:
+                            tbl = self.__browser.find_element_by_id("Pnlclckinvest")
+                            tblBody = tbl.find_element_by_tag_name("tbody")
+                            tblRows = tblBody.find_elements_by_tag_name("tr")
+                            for tblRow in tblRows:
+                                tblRowCols = tblRow.find_elements_by_tag_name("td")
+                                # If we find a row with 8 entries
+                                if(len(tblRowCols) == 8):
+                                    rowDict = {}
+                                    rowDict = self.__formatiCLICK_2_INVESTTblRowToDict(tblRowCols)
+                                    if rowDict != None:
+                                        rowDict['SOURCE'] = 'iCLICK-2-INVEST'
+                                        tblRowsArrOfDict.append(rowDict)
+                            break
+                        except Exception as e:
+                            loadTblAttempts += 1
+                            time.sleep(1)
+                    break
+                except Exception as e:
+                    self.__browser.refresh()
+                    loadPgAttempts += 1
+                    time.sleep(1)
         return tblRowsArrOfDict
 
 
