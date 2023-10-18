@@ -14,6 +14,9 @@ This file is used to map the NSE and the ICICI Direct stock codes offline. This 
 # PyTest
 To run all tests inside a particular directory run the following on the command line
 `pytest --rootdir=<Path to the test directory>`
+To run tests along with debugger in verbose mode, execute the following command
+pytest -s -v --pdb <pytest_file> -k <pytest_function>
+`pytest -s -v --pdb .\test\test_icicidirect.py -k test_formatInvRemarkCell`
 
 Example: `pytest --rootdir=./test`
 
@@ -21,3 +24,9 @@ To run a test capturing the log output run the following on the command line
 `pytest -s --capture=no --log-cli-level=DEBUG <Path to the test script>`
 
 Example: `pytest -s --capture=no --log-cli-level=DEBUG .\test\test_icicidirect.py`
+
+# Requirements
+To create the list of requirements enter the following command 
+conda list -e > requirements.txt
+To install the list of packages required enter the following command
+conda install --file requirements.txt

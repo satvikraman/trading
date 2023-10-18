@@ -66,6 +66,8 @@ class app():
             
             self.__timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
             self.__LtpDisFactor = float(self.__config['APP']['LTP_DISTANCE_FACTOR'])
+            self.__enableBuyAtHighRecPrice = True if self.__config['APP']['ENABLE_BUY_AT_HIGH_REC_PRICE'] == 'TRUE' else False
+
             self.__squareOff = False
             self.__marketOpen = False
 
@@ -391,9 +393,12 @@ class app():
             dbDict['CMP'] = ltp
             if dbDict['BUY_SELL'] == 'BUY':
                 if (ltp >= dbDict['TARGET']):
+                    self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['NSE_SYMBOL'], ltp, dbDict['TARGET'])
                     dbDict['REC_STATUS'] = 'CLOSE'
                 # Act on stop loss on closing basis or if during trading hours the price has significantly fallen below the original stop-loss
-                elif (not self.__marketOpen and ltp <= dbDict['STOP_LOSS']) or (ltp * 1.03 <= dbDict['STOP_LOSS']):
+                elif (not self.__marketOpen and ltp <= dbDict['STOP_LOSS']) or (self.__marketOpen and ltp * 1.03 <= dbDict['STOP_LOSS']):
+                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
+                                       ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
             else:
                 if ltp <= dbDict['TARGET'] or ltp >= dbDict['STOP_LOSS']:
@@ -555,25 +560,26 @@ class app():
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 5
             limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
-        if qty == 0:
-            qty = remQty
-            orderType = 'LMT'
-            limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-        """
-        if invPerc <= 12.5 and qty == 0:
-            qty = int(totalQty * 25 / 100) - posHoldQty
-            orderType = 'LMT'
-            limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-        if invPerc <= 25 and qty == 0:
-            qty = int(totalQty * 50 / 100) - posHoldQty
-            orderType = 'LMT'
-            limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-            limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
-        if qty == 0:
-            qty = remQty
-            orderType = 'LMT'
-            limitPrice = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
-        """
+        if self.__enableBuyAtHighRecPrice:
+            if qty == 0:
+                qty = remQty
+                orderType = 'LMT'
+                limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
+        else:
+            if invPerc <= 12.5 and qty == 0:
+                qty = int(totalQty * 25 / 100) - posHoldQty
+                orderType = 'LMT'
+                limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
+            if invPerc <= 25 and qty == 0:
+                qty = int(totalQty * 50 / 100) - posHoldQty
+                orderType = 'LMT'
+                limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
+                limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
+            if qty == 0:
+                qty = remQty
+                orderType = 'LMT'
+                limitPrice = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
+
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
             ltp = dbDict['CMP']
