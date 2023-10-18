@@ -32,7 +32,11 @@ class iciciDirect():
                 level = logging.CRITICAL
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
-
+            self.__browserEngine = self.__config['DEFAULT']['BROWSER']
+            if self.__browserEngine == 'CHROME':
+                self.__browserDriver = self.__config['DEFAULT']['CHROME_DRIVER']
+            elif self.__browserEngine == 'EDGE':
+                self.__browserDriver = self.__config['DEFAULT']['EDGE_DRIVER']
 
     def __browseResearchToClick_2_Gain(self):
         # Click on Research
@@ -314,7 +318,10 @@ class iciciDirect():
 
     def browseICICIDirect(self):
         # Open ICICI Direct and let the user login
-        self.__browser = webdriver.Edge(r'D:/araman/utils/edgedriver/edgedriver_win64/msedgedriver.exe')
+        if self.__browserEngine == 'CHROME':
+            self.__browser = webdriver.Chrome(self.__browserDriver)
+        else:
+            self.__browser = webdriver.Edge(self.__browserDriver)
         self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
         input("Wait for the user to login...")
         self.__iclick2gainHdl = self.__browser.current_window_handle
