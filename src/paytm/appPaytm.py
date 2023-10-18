@@ -405,6 +405,18 @@ class app():
                     dbDict['REC_STATUS'] = 'CLOSE'
             self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         return status, dbDict
+    
+    def __hasPendingOrders(self, dbDict):
+        openOrdersStateOpen = closeOrdersStateOpen = False
+        for orderDict in dbDict['OPEN_ORDERS']:
+            if orderDict['ORDER_STATUS'] == 'OPEN':
+                openOrdersStateOpen = True
+
+        for orderDict in dbDict['CLOSE_ORDERS']:
+            if orderDict['ORDER_STATUS'] == 'OPEN':
+                closeOrdersStateOpen = True
+        
+        return openOrdersStateOpen or closeOrdersStateOpen
 
     def __distributePosAmongSameStockRecs(self, dbDict):
         matchPosition = False
@@ -476,7 +488,9 @@ class app():
 
     # This function updates the position of a stock and finds its status
     def __getPosStatus(self, dbDict):
-        status, dbDict = self.__distributePosAmongSameStockRecs(dbDict)
+        status = True
+        if self.__hasPendingOrders(dbDict):
+            status, dbDict = self.__distributePosAmongSameStockRecs(dbDict)
         
         thisCloseQty = 0
         for closeOrders in dbDict['CLOSE_ORDERS']:
