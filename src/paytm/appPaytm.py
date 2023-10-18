@@ -65,7 +65,8 @@ class app():
                 self.__payTmMoney = payTmMoney(configFile)
             
             self.__timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
-            self.__LtpDisFactor = float(self.__config['APP']['LTP_DISTANCE_FACTOR'])
+            self.__createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
+            self.__deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
             self.__enableBuyAtHighRecPrice = True if self.__config['APP']['ENABLE_BUY_AT_HIGH_REC_PRICE'] == 'TRUE' else False
 
             self.__squareOff = False
@@ -387,6 +388,7 @@ class app():
 
         return status
 
+
     def __getCMPUpdateRecStatus(self, dbDict):
         status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
         if status:
@@ -405,7 +407,8 @@ class app():
                     dbDict['REC_STATUS'] = 'CLOSE'
             self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         return status, dbDict
-    
+
+
     def __hasPendingOrders(self, dbDict):
         openOrdersStateOpen = closeOrdersStateOpen = False
         for orderDict in dbDict['OPEN_ORDERS']:
@@ -417,6 +420,7 @@ class app():
                 closeOrdersStateOpen = True
         
         return openOrdersStateOpen or closeOrdersStateOpen
+
 
     def __distributePosAmongSameStockRecs(self, dbDict):
         matchPosition = False
@@ -599,10 +603,10 @@ class app():
             ltp = dbDict['CMP']
             canOrder = False
             if dbDict['BUY_SELL'] == 'BUY':
-                if limitPrice * self.__LtpDisFactor >= ltp:
+                if limitPrice * self.__createLtpDisFactor >= ltp:
                     canOrder = True
             else:
-                if limitPrice <= ltp * self.__LtpDisFactor:
+                if limitPrice <= ltp * self.__createLtpDisFactor:
                     canOrder = True
             if not canOrder:
                 self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %d Limit = %d", dbDict['NSE_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
@@ -675,6 +679,31 @@ class app():
         return status, dbDict, orderNum
 
 
+    def __checkLtpAndCancelOpenPendingOrders(self, dbDict):
+        status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
+        if status:
+            openOrdersStateOpen = False
+            for orderDict in dbDict['OPEN_ORDERS']:
+                if orderDict['ORDER_STATUS'] == 'OPEN':
+                    limitPrice = orderDict['LIMIT']
+                    openOrdersStateOpen = True
+
+            if openOrdersStateOpen:
+                delOrder = False
+                if dbDict['BUY_SELL'] == 'BUY':
+                    if limitPrice * self.__deleteLtpDisFactor < ltp:
+                        delOrder = True
+                else:
+                    if limitPrice > ltp * self.__deleteLtpDisFactor:
+                        delOrder = True
+                
+                if delOrder:
+                    self.__logger.info("Stock %s. LTP = %.2f Limit = %.2f. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
+                    _, dbDict = self.__cancelOrder(dbDict)
+
+        return status, dbDict
+
+
     # This function updates the order status
     def __updateOpenOrderStatus(self):
         # Get the latest update on orders from Paytm
@@ -698,11 +727,14 @@ class app():
                             orderDict['TRADED_QTY'] = trdQty
                             if trdQty == qty:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
+                            else:
+                                _, dbDict = self.__checkLtpAndCancelOpenPendingOrders(dbDict)
                         else:
                             self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
                     
                 self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         self.__logger.debug("PayTm API successful. Finished updating the order status")
+
 
     def __waitForCloseOrdersToComplete(self, closeDbDictOrderNumArr):
         allCloseOrdersComplete = False
