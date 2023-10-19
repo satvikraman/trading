@@ -183,6 +183,21 @@ class app():
                     status = False
                     self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])
         return status
+
+
+    def checkOpenOrders(self):
+        status = True
+        valid_until_date = os.environ.get('valid_until_date', '')
+        valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
+        if valid_until_date.lower() != valid_today:
+            dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN']])
+            for dbDict in dbDicts:
+                if self.__hasPendingOrders(dbDict):
+                    status = False
+                    self.__logger.critical("STOCK = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
+                                            dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
+        assert(status)
+        return status
     
 
     def __moveOldPosToHolding(self):
@@ -579,7 +594,7 @@ class app():
             qty = int(totalQty * 12.5 / 100) - posHoldQty
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 5
-            limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
+            limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
         if self.__enableBuyAtHighRecPrice:
             if qty == 0:
                 qty = remQty
@@ -594,7 +609,7 @@ class app():
                 qty = int(totalQty * 50 / 100) - posHoldQty
                 orderType = 'LMT'
                 limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-                limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
+                limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
             if qty == 0:
                 qty = remQty
                 orderType = 'LMT'
@@ -1001,6 +1016,7 @@ def payTmThread():
     squareOffMinus15 = False
     marketOpen = False
 
+    trade.checkOpenOrders()
     status = trade.startupCheck()
     if not status:
         print('Startup check failed. Exiting')
