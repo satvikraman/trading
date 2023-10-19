@@ -233,24 +233,6 @@ class app():
                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], dbDict['CMP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
 
-    def __computeExpDate(self, recDict, dbDict):
-        status = True
-        invDays = invMonths = 0
-        invPeriod = recDict['INV_PERIOD']
-        if '*' in invPeriod:
-            invPeriod = dbDict['INV_PERIOD'] if 'INV_PERIOD' in dbDict else invPeriod
-
-        if 'MONTH'.lower() in invPeriod.lower():
-            invMonths = re.match(r'\d+', invPeriod)
-            invMonths = int(invMonths.group(0))
-        elif 'DAY'.lower() in invPeriod.lower():
-            invDays = re.match(r'\d+', invPeriod)
-            invDays = int(invDays.group(0))
-
-        expDate = datetime.datetime.strftime(datetime.datetime.strptime(recDict['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
-        return status, invPeriod, expDate
-
-
     def __addNewRec(self, recDict, holdQty=0, posHoldStatus=None):
         status = False
         
@@ -272,8 +254,6 @@ class app():
         qty = max(int(maxAmount / avgPrice), 1)
         qty = qty * margin
 
-        status, recDict['INV_PERIOD'], recDict['EXP_DATE'] = self.__computeExpDate(recDict, recDict)
-
         # Security ID of the stock 
         securityId = self.__payTmMoney.findSecurityCode(recDict['NSE_SYMBOL'])
         recDict['POS_QTY'] = 0
@@ -294,8 +274,6 @@ class app():
     
 
     def __updateRec(self, recDict, dbDict):
-        status, dbDict['INV_PERIOD'], dbDict['EXP_DATE'] = self.__computeExpDate(recDict, dbDict)
-
         # Copy values from the input dict to the DB dict and then update the DB
         keys = ['STOP_LOSS', 'TARGET', 'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
         for key in keys:
@@ -303,7 +281,7 @@ class app():
                 dbDict[key] = recDict[key]
 
         dbDictTime = dbDict['REC_TIME']
-        keys = ['REC_TIME', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        keys = ['REC_TIME', 'INV_PERIOD', 'EXP_DATE', 'VISIBLE', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
         # Offline non-margin entries wont have the correct time. Hence use this to query the DB but also update the REC_TIME with the correct time in the loop below
         for key in keys:
             if key in recDict:
@@ -352,10 +330,9 @@ class app():
     def __isInvPeriodLeft(self, recDict):
         recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
         todaysDate = self.__today
-        _, _, expDate = self.__computeExpDate(recDict, recDict)
-        expDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
-        expDays = abs((todaysDate - recDate).days) * 100 / abs((expDate - recDate).days)
-        status = True if expDays <= 10 else False
+        expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y")
+        expInvPeriodPerc = abs((todaysDate - recDate).days) * 100 / abs((expDate - recDate).days)
+        status = True if expInvPeriodPerc <= 10 else False
         return status
         
 
@@ -397,11 +374,12 @@ class app():
                 if (ltp >= dbDict['TARGET']):
                     self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['NSE_SYMBOL'], ltp, dbDict['TARGET'])
                     dbDict['REC_STATUS'] = 'CLOSE'
-                # Act on stop loss on closing basis or if during trading hours the price has significantly fallen below the original stop-loss
-                elif (not self.__marketOpen and ltp <= dbDict['STOP_LOSS']) or (self.__marketOpen and ltp * 1.03 <= dbDict['STOP_LOSS']):
-                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
-                                       ltp, dbDict['STOP_LOSS'])
-                    dbDict['REC_STATUS'] = 'CLOSE'
+                # Act on SL only if visibility is 'hidden'. Also act on closing basis or if during trading hours the price has significantly fallen below SL
+                elif dbDict['VISIBLE'] == 'HIDDEN':
+                    if (not self.__marketOpen and ltp <= dbDict['STOP_LOSS']) or (self.__marketOpen and ltp * 1.03 <= dbDict['STOP_LOSS']):
+                        self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
+                                        ltp, dbDict['STOP_LOSS'])
+                        dbDict['REC_STATUS'] = 'CLOSE'
             else:
                 if ltp <= dbDict['TARGET'] or ltp >= dbDict['STOP_LOSS']:
                     dbDict['REC_STATUS'] = 'CLOSE'
@@ -577,7 +555,7 @@ class app():
             qty = int(totalQty * 12.5 / 100) - posHoldQty
             orderType = 'LMT'
             limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 5
-            limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
+            limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
         if self.__enableBuyAtHighRecPrice:
             if qty == 0:
                 qty = remQty
@@ -592,7 +570,7 @@ class app():
                 qty = int(totalQty * 50 / 100) - posHoldQty
                 orderType = 'LMT'
                 limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-                limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
+                limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
             if qty == 0:
                 qty = remQty
                 orderType = 'LMT'
@@ -727,8 +705,6 @@ class app():
                             orderDict['TRADED_QTY'] = trdQty
                             if trdQty == qty:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
-                            else:
-                                _, dbDict = self.__checkLtpAndCancelOpenPendingOrders(dbDict)
                         else:
                             self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
                     
@@ -955,7 +931,7 @@ class app():
         # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
         self.__lock.acquire()
         # Some orders may be still open --> cancel them and close position
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], [['VISIBLE', 'HIDDEN']]])
         expDbDicts = []
         for dbDict in dbDicts:
             expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()

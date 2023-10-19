@@ -93,8 +93,8 @@ class iciciDirect():
             invPeriod = '0 DAYS*'
         elif strategy == 'MOMENTUM PICK':
             invPeriod = '14 DAYS*'
-        elif strategy == 'QUANT_PICKS':
-            invPeriod = '30 DAYS*'
+        elif strategy == 'QUANT PICKS':
+            invPeriod = '3 MONTHS*'
         elif strategy == 'GLADIATOR STOCKS':
             invPeriod = '3 MONTHS*'
         else:
@@ -103,7 +103,7 @@ class iciciDirect():
         return invPeriod
 
     def prepareRecDict(self, rowDict):
-        mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS']
+        mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
         importantKeys = ['INV_PERIOD']
         priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
@@ -293,6 +293,8 @@ class iciciDirect():
             cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
             cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
             rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
+            if 'INV_PERIOD' not in rowDict:
+                rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
             self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
 
@@ -340,69 +342,73 @@ class iciciDirect():
 
     def scrapeiClick2Gain(self):
         tblRowsArrOfDict = []
-        loadPgAttempts = 0
-        while loadPgAttempts < 3:
-            try:
-                self.__browser.switch_to.window(self.__iclick2gainHdl)
-                # Select Margin as the recommendation type
-                menu3 = self.__browser.find_element_by_id("iclick_gain")
-                self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
-                recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
-                # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
-                recommendationType.select_by_value("ALL")
 
-                # Click on view to see the results
-                viewBtn = menu3.find_element_by_id("btnview")
-                viewBtn.send_keys(Keys.ENTER)
+        menuVals = ["ALL", "MRGN", "MMNT", "QANT"]
+        for menuVal in menuVals:
+            loadPgAttempts = 0
+            while loadPgAttempts < 3:
+                try:
+                    self.__browser.switch_to.window(self.__iclick2gainHdl)
+                    # Select Margin as the recommendation type
+                    menu3 = self.__browser.find_element_by_id("iclick_gain")
+                    self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
+                    recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
+                    # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
+                    recommendationType.select_by_value("ALL")
 
-                # Scrape the data (header + body) from the webpage
-                loadTblAttempts = 0
-                while loadTblAttempts < 3:
-                    try:
-                        tbl = self.__browser.find_element_by_id("pnlclick2gain")
-                        tblBody = tbl.find_element_by_tag_name("tbody")
-                        tblRows = tblBody.find_elements_by_tag_name("tr")
-                        tblRowsArrOfDict = []
-                        for tblRow in tblRows:
-                            tblRowCols = tblRow.find_elements_by_tag_name("td")
-                            # If we find a row with 10 entries
-                            if(len(tblRowCols) == 10):
-                                rowDict = {}
-                                rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols)
-                                if rowDict != None:
-                                    # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
-                                    # i.e. it has been struck-through, it means that recommendation has been dicarded
-                                    if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
-                                        rowDict['REC_STATUS'] = 'CLOSE'
-                                    # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
-                                    # i.e. the background colour has been changed to grey it has been closed
-                                    elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
-                                        rowDict['REC_STATUS'] = 'CLOSE'
-                                    elif(self.__halfCloseRec(rowDict['UPDATE_ACTION_1'])):
-                                        rowDict['REC_STATUS'] = 'PARTIAL_CLOSE'
-                                    elif(self.__closeRec(rowDict['UPDATE_ACTION_1'], rowDict['UPDATE_ACTION_2'])):
-                                        rowDict["REC_STATUS"] = 'CLOSE'
-                                    else:
-                                        rowDict['REC_STATUS'] = 'OPEN'
-                                    rowDict['SOURCE'] = 'iCLICK-2-GAIN'
-                                    tblRowsArrOfDict.append(rowDict)
-                        break
-                    except Exception as e:
-                        loadTblAttempts += 1
-                        time.sleep(1)
+                    # Click on view to see the results
+                    viewBtn = menu3.find_element_by_id("btnview")
+                    viewBtn.send_keys(Keys.ENTER)
+
+                    # Scrape the data (header + body) from the webpage
+                    loadTblAttempts = 0
+                    while loadTblAttempts < 3:
+                        try:
+                            tbl = self.__browser.find_element_by_id("pnlclick2gain")
+                            tblBody = tbl.find_element_by_tag_name("tbody")
+                            tblRows = tblBody.find_elements_by_tag_name("tr")
+                            tblRowsArrOfDict = []
+                            for tblRow in tblRows:
+                                tblRowCols = tblRow.find_elements_by_tag_name("td")
+                                # If we find a row with 10 entries
+                                if(len(tblRowCols) == 10):
+                                    rowDict = {}
+                                    rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols)
+                                    if rowDict != None:
+                                        # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                                        # i.e. it has been struck-through, it means that recommendation has been dicarded
+                                        if(tblRow.get_attribute('style') == 'text-decoration: line-through;'):
+                                            rowDict['REC_STATUS'] = 'CLOSE'
+                                        # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
+                                        # i.e. the background colour has been changed to grey it has been closed
+                                        elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
+                                            rowDict['REC_STATUS'] = 'CLOSE'
+                                        elif(self.__halfCloseRec(rowDict['UPDATE_ACTION_1'])):
+                                            rowDict['REC_STATUS'] = 'PARTIAL_CLOSE'
+                                        elif(self.__closeRec(rowDict['UPDATE_ACTION_1'], rowDict['UPDATE_ACTION_2'])):
+                                            rowDict["REC_STATUS"] = 'CLOSE'
+                                        else:
+                                            rowDict['REC_STATUS'] = 'OPEN'
+                                        rowDict['SOURCE'] = 'iCLICK-2-GAIN'
+                                        tblRowsArrOfDict.append(rowDict)
+                            break
+                        except Exception as e:
+                            loadTblAttempts += 1
+                            time.sleep(1)
+                    break
+                except Exception as e:
+                    self.__browser.refresh()
+                    loadPgAttempts += 1
+                    time.sleep(1)
+            if menuVal == 'ALL' and len(tblRowsArrOfDict) > 0:
                 break
-            except Exception as e:
-                self.__browser.refresh()
-                loadPgAttempts += 1
-                time.sleep(1)
         return tblRowsArrOfDict
     
 
     def scrapeiClick2Invest(self):
         tblRowsArrOfDict = []
 
-        menuVals = ["Long Term", "Medium Term", "Short Term"]
-        #menuVals = ["ALL"]
+        menuVals = ["ALL", "Long Term", "Medium Term", "Short Term"]
         for menuVal in menuVals:
             loadPgAttempts = 0
             while loadPgAttempts < 3:
@@ -444,6 +450,8 @@ class iciciDirect():
                     self.__browser.refresh()
                     loadPgAttempts += 1
                     time.sleep(1)
+            if menuVal == 'ALL' and len(tblRowsArrOfDict) > 0:
+                break
         return tblRowsArrOfDict
 
 
