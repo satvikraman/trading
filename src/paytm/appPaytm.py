@@ -392,7 +392,9 @@ class app():
     def __getCMPUpdateRecStatus(self, dbDict):
         status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
         if status:
+            self.__logger.info("Stock %s LTP = %.2f", dbDict['NSE_SYMBOL'], ltp)
             dbDict['CMP'] = ltp
+            dbDict = self.__checkLtpAndCancelOpenPendingOrders(ltp, dbDict)
             if dbDict['BUY_SELL'] == 'BUY':
                 if (ltp >= dbDict['TARGET']):
                     self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['NSE_SYMBOL'], ltp, dbDict['TARGET'])
@@ -679,29 +681,27 @@ class app():
         return status, dbDict, orderNum
 
 
-    def __checkLtpAndCancelOpenPendingOrders(self, dbDict):
-        status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
-        if status:
-            openOrdersStateOpen = False
-            for orderDict in dbDict['OPEN_ORDERS']:
-                if orderDict['ORDER_STATUS'] == 'OPEN':
-                    limitPrice = orderDict['LIMIT']
-                    openOrdersStateOpen = True
+    def __checkLtpAndCancelOpenPendingOrders(self, dbDict, ltp):
+        openOrdersStateOpen = False
+        for orderDict in dbDict['OPEN_ORDERS']:
+            if orderDict['ORDER_STATUS'] == 'OPEN':
+                limitPrice = orderDict['LIMIT']
+                openOrdersStateOpen = True
 
-            if openOrdersStateOpen:
-                delOrder = False
-                if dbDict['BUY_SELL'] == 'BUY':
-                    if limitPrice * self.__deleteLtpDisFactor < ltp:
-                        delOrder = True
-                else:
-                    if limitPrice > ltp * self.__deleteLtpDisFactor:
-                        delOrder = True
-                
-                if delOrder:
-                    self.__logger.info("Stock %s. LTP = %.2f Limit = %.2f. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
-                    _, dbDict = self.__cancelOrder(dbDict)
+        if openOrdersStateOpen:
+            delOrder = False
+            if dbDict['BUY_SELL'] == 'BUY':
+                if limitPrice * self.__deleteLtpDisFactor < ltp:
+                    delOrder = True
+            else:
+                if limitPrice > ltp * self.__deleteLtpDisFactor:
+                    delOrder = True
+            
+            if delOrder:
+                self.__logger.info("Stock %s. LTP = %.2f Limit = %.2f. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
+                _, dbDict = self.__cancelOrder(dbDict)
 
-        return status, dbDict
+        return dbDict
 
 
     # This function updates the order status
@@ -727,8 +727,6 @@ class app():
                             orderDict['TRADED_QTY'] = trdQty
                             if trdQty == qty:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
-                            else:
-                                _, dbDict = self.__checkLtpAndCancelOpenPendingOrders(dbDict)
                         else:
                             self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
                     
