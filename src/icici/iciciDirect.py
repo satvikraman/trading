@@ -343,7 +343,7 @@ class iciciDirect():
     def scrapeiClick2Gain(self):
         tblRowsArrOfDict = []
 
-        menuVals = ["ALL", "MRGN", "MMNT", "QANT"]
+        menuVals = ["ALL", "MRGN", "MMNT", "GLDR", "QANT"]
         for menuVal in menuVals:
             loadPgAttempts = 0
             while loadPgAttempts < 3:
@@ -354,7 +354,7 @@ class iciciDirect():
                     self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
                     recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
                     # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
-                    recommendationType.select_by_value("ALL")
+                    recommendationType.select_by_value(menuVal)
 
                     # Click on view to see the results
                     viewBtn = menu3.find_element_by_id("btnview")

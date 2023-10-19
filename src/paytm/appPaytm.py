@@ -183,6 +183,21 @@ class app():
                     status = False
                     self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])
         return status
+
+
+    def checkOpenOrders(self):
+        status = True
+        valid_until_date = os.environ.get('valid_until_date', '')
+        valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
+        if valid_until_date.lower() != valid_today:
+            dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN']])
+            for dbDict in dbDicts:
+                if self.__hasPendingOrders(dbDict):
+                    status = False
+                    self.__logger.critical("STOCK = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
+                                            dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
+        assert(status)
+        return status
     
 
     def __moveOldPosToHolding(self):
@@ -369,7 +384,9 @@ class app():
     def __getCMPUpdateRecStatus(self, dbDict):
         status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
         if status:
+            self.__logger.info("Stock %s LTP = %.2f", dbDict['NSE_SYMBOL'], ltp)
             dbDict['CMP'] = ltp
+            dbDict = self.__checkLtpAndCancelOpenPendingOrders(ltp, dbDict)
             if dbDict['BUY_SELL'] == 'BUY':
                 if (ltp >= dbDict['TARGET']):
                     self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['NSE_SYMBOL'], ltp, dbDict['TARGET'])
@@ -657,29 +674,27 @@ class app():
         return status, dbDict, orderNum
 
 
-    def __checkLtpAndCancelOpenPendingOrders(self, dbDict):
-        status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
-        if status:
-            openOrdersStateOpen = False
-            for orderDict in dbDict['OPEN_ORDERS']:
-                if orderDict['ORDER_STATUS'] == 'OPEN':
-                    limitPrice = orderDict['LIMIT']
-                    openOrdersStateOpen = True
+    def __checkLtpAndCancelOpenPendingOrders(self, dbDict, ltp):
+        openOrdersStateOpen = False
+        for orderDict in dbDict['OPEN_ORDERS']:
+            if orderDict['ORDER_STATUS'] == 'OPEN':
+                limitPrice = orderDict['LIMIT']
+                openOrdersStateOpen = True
 
-            if openOrdersStateOpen:
-                delOrder = False
-                if dbDict['BUY_SELL'] == 'BUY':
-                    if limitPrice * self.__deleteLtpDisFactor < ltp:
-                        delOrder = True
-                else:
-                    if limitPrice > ltp * self.__deleteLtpDisFactor:
-                        delOrder = True
-                
-                if delOrder:
-                    self.__logger.info("Stock %s. LTP = %.2f Limit = %.2f. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
-                    _, dbDict = self.__cancelOrder(dbDict)
+        if openOrdersStateOpen:
+            delOrder = False
+            if dbDict['BUY_SELL'] == 'BUY':
+                if limitPrice * self.__deleteLtpDisFactor < ltp:
+                    delOrder = True
+            else:
+                if limitPrice > ltp * self.__deleteLtpDisFactor:
+                    delOrder = True
+            
+            if delOrder:
+                self.__logger.info("Stock %s. LTP = %.2f Limit = %.2f. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
+                _, dbDict = self.__cancelOrder(dbDict)
 
-        return status, dbDict
+        return dbDict
 
 
     # This function updates the order status
@@ -979,6 +994,7 @@ def payTmThread():
     squareOffMinus15 = False
     marketOpen = False
 
+    trade.checkOpenOrders()
     status = trade.startupCheck()
     if not status:
         print('Startup check failed. Exiting')
