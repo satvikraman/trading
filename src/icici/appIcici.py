@@ -94,7 +94,7 @@ class app():
                 invDays = re.match(r'\d+', invPeriod)
                 invDays = int(invDays.group(0))
 
-            expDate = datetime.datetime.strftime(datetime.datetime.strptime(recDict['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
+            expDate = datetime.datetime.strftime(datetime.datetime.strptime(dbDict['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
             return status, invPeriod, expDate
 
 
@@ -207,7 +207,7 @@ class app():
 
                 if dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['STRATEGY'] == recDict['STRATEGY'] and dbDict['REC_DATE'] == recDict['REC_DATE']:
                     found = True
-                elif dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
+                elif dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
                     found = True
                 
                 if found:
@@ -220,8 +220,13 @@ class app():
                         else:
                             hasChanged = True
                             dbDict[key] = recDict[key]
+
                         if key == 'INV_PERIOD':
-                            _, dbDict['INV_PERIOD'], dbDict['EXP_DATE'] = self.__computeExpDate(recDict, dbDict)
+                            _, invPeriod, expDate = self.__computeExpDate(recDict, dbDict)
+                            if invPeriod != dbDict['INV_PERIOD'] or expDate != dbDict['EXP_DATE']:
+                                dbDict['INV_PERIOD'] = invPeriod
+                                dbDict['EXP_DATE'] = expDate
+                                hasChanged = True
 
                     for key in otherKeys:
                         if key in dbDict:
@@ -267,7 +272,7 @@ class app():
                     daysDiff = abs((dbDate - recDate).days)
                     if dbDict2['STRATEGY'] == recDict['STRATEGY'] and dbDict2['REC_DATE'] == recDict['REC_DATE']:
                         found2 = True
-                    elif bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
+                    elif bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
                         found2 = True
 
                 if not found2:
@@ -299,7 +304,7 @@ class app():
                 if dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['STRATEGY'] == recDict['STRATEGY'] and dbDict['REC_DATE'] == recDict['REC_DATE']:
                     recFound = True
                     break
-                elif dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
+                elif dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
                     recFound = True
                     break
             # Close the recommendation that was not found
@@ -319,7 +324,7 @@ class app():
                 if dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and dbDict['STRATEGY'] == recDict['STRATEGY'] and dbDict['REC_DATE'] == recDict['REC_DATE']:
                     recFound = True
                     break
-                elif dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
+                elif dbDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
                     recFound = True
                     break
             # Close the recommendation that was not found
@@ -353,7 +358,7 @@ class app():
             self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
-    def runPeriodicChecks(self, marketCloseMinus5):
+    def runPeriodicChecks(self, marketCloseMinusDelta):
         # Send all recommendations in DB that haven't be ACK'ed
         self.__sendNonAckedRecsFromDb()
 
@@ -372,7 +377,7 @@ class app():
 
         self.__updateMismatchedVisibilityNonMarginRecs(invRecDicts, gainRecDicts)
 
-        if marketCloseMinus5:
+        if marketCloseMinusDelta:
             self.closeNonMarginExpiredRecs(dryRun=False)
 
         self.__closeMarginRecsNotUpdated(gainRecDicts)
@@ -390,9 +395,9 @@ if __name__ == '__main__':
     trade.closeNonMarginExpiredRecs(dryRun=True)
     trade.openIciciSession()
     marketClose = False
-    marketCloseMinus5 = False
+    marketCloseMinusDelta = False
     while not marketClose:
-        trade.runPeriodicChecks(marketCloseMinus5)
+        trade.runPeriodicChecks(marketCloseMinusDelta)
         time.sleep(30)
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
-        marketCloseMinus5 = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=25)
+        marketCloseMinusDelta = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=20)

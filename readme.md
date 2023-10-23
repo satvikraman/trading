@@ -30,3 +30,9 @@ To create the list of requirements enter the following command
 conda list -e > requirements.txt
 To install the list of packages required enter the following command
 conda install --file requirements.txt
+
+# Working with JSON documents offline
+Go to https://jsoneditoronline.org/
+You may filter the json documents using lodash filter by writing something similar to what's shown below
+  const res = _.filter(data._default, stock => stock.POS_HOLD_STATUS == 'OPEN')
+  return _.chain(res)

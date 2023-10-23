@@ -486,9 +486,11 @@ class app():
 
 
     # This function updates the position of a stock and finds its status
-    def __getPosStatus(self, dbDict):
+    def __getPosStatus(self, dbDict, forceGetPos=False):
         status = True
-        if self.__hasPendingOrders(dbDict):
+        if not forceGetPos:
+            forceGetPos = self.__hasPendingOrders(dbDict)
+        if forceGetPos:
             status, dbDict = self.__distributePosAmongSameStockRecs(dbDict)
         
         thisCloseQty = 0
@@ -674,7 +676,7 @@ class app():
         return status, dbDict, orderNum
 
 
-    def __checkLtpAndCancelOpenPendingOrders(self, dbDict, ltp):
+    def __checkLtpAndCancelOpenPendingOrders(self, ltp, dbDict):
         openOrdersStateOpen = False
         for orderDict in dbDict['OPEN_ORDERS']:
             if orderDict['ORDER_STATUS'] == 'OPEN':
@@ -740,7 +742,7 @@ class app():
                 orderComplete = False
                 dbDict = closeDbDictOrderNum['DB_DICT']
                 orderNum = closeDbDictOrderNum['ORDER_NO']
-                if orderNum != '':
+                if orderNum != '' and orderNum != None:
                     status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderNum)
                     if status:
                         if trdQty == qty:
@@ -786,14 +788,14 @@ class app():
         # Now that all orders have executed update the position status
         for closeDbDictOrderNum in closeDbDictOrderNumArr:
             closeDbDict = closeDbDictOrderNum['DB_DICT']
-            _, closeDbDict = self.__getPosStatus(closeDbDict)
+            _, closeDbDict = self.__getPosStatus(closeDbDict, forceGetPos=True)
 
 
     def __executeEOMSeq(self, dbDicts):
         # Cancel any open orders and place orders to close open positions
         for dbDict in dbDicts:
             _, cancelDict = self.__cancelOrder(dbDict)
-            _, cancelDict = self.__getPosStatus(cancelDict)
+            _, cancelDict = self.__getPosStatus(cancelDict, forceGetPos=True)
 
 
     def __followOrders(self, dbDict):
@@ -870,7 +872,7 @@ class app():
             return True
         
         for dbDict in dbDicts:
-            status, dbDict = self.__getPosStatus(dbDict)
+            status, dbDict = self.__getPosStatus(dbDict, forceGetPos=True)
 
 
     def __selfHeal(self):
@@ -946,7 +948,7 @@ class app():
         # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
         self.__lock.acquire()
         # Some orders may be still open --> cancel them and close position
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], [['VISIBLE', 'HIDDEN']]])
+        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
         expDbDicts = []
         for dbDict in dbDicts:
             expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
