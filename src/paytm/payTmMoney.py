@@ -36,6 +36,7 @@ class payTmMoney:
             self.__api_secret = os.environ.get('api_secret', '')
             self.__request_token = os.environ.get('request_token', '')
             self.__state_key = os.environ.get('state_key', '')
+            self.__orderBook = None
     
     def findSecurityCode(self, nseSym):
         securityID = None
@@ -220,6 +221,8 @@ class payTmMoney:
     def cancelOrder(self, orderNo, offline=False):
         status = False
         message = orderNum = None
+        if self.__orderBook == None:
+            self.getOrderBookUpdate()
         for resOrder in self.__orderBook['data']:
             if(('order_no' in resOrder.keys()) and (resOrder['order_no'] ==  orderNo)):
                 retries = self.__retries

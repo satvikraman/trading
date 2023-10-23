@@ -88,6 +88,6 @@ if __name__ == '__main__':
     #trade = app('./payTmMoney.ini')
     #trade.changePayTmSchema()
 
-    trade = app('./payTmMoney.ini', './iciciDirect.ini')
-    trade.cleanSpecificStocks()
+    #trade = app('./payTmMoney.ini', './iciciDirect.ini')
+    #trade.cleanSpecificStocks()
 

@@ -272,15 +272,15 @@ class app():
                     daysDiff = abs((dbDate - recDate).days)
                     if dbDict2['STRATEGY'] == recDict['STRATEGY'] and dbDict2['REC_DATE'] == recDict['REC_DATE']:
                         found2 = True
-                    elif bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
+                    elif bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict2['STRATEGY'])) and daysDiff <= 7:
                         found2 = True
 
                 if not found2:
                     if(recDict['REC_STATUS'] != 'CLOSE'):
+                        _, _, recDict['EXP_DATE'] = self.__computeExpDate(recDict, recDict)
                         apiDict = self.__iciciDirect.prepareRecDict(recDict)
                         status = self.__send2PayTm('NEW_REC', apiDict)
                         recDict['ACK'] = 'ACK' if status else 'NACK'
-                        _, _, recDict['EXP_DATE'] = self.__computeExpDate(recDict, recDict)
                         res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
                         self.__logger.info('New Recommendation %s', recDict)
                     else:
