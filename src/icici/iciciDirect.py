@@ -93,8 +93,8 @@ class iciciDirect():
             invPeriod = '0 DAYS*'
         elif strategy == 'MOMENTUM PICK':
             invPeriod = '14 DAYS*'
-        elif strategy == 'QUANT_PICKS':
-            invPeriod = '30 DAYS*'
+        elif strategy == 'QUANT PICKS':
+            invPeriod = '3 MONTHS*'
         elif strategy == 'GLADIATOR STOCKS':
             invPeriod = '3 MONTHS*'
         else:
@@ -103,7 +103,7 @@ class iciciDirect():
         return invPeriod
 
     def prepareRecDict(self, rowDict):
-        mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS']
+        mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
         importantKeys = ['INV_PERIOD']
         priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
@@ -293,6 +293,8 @@ class iciciDirect():
             cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
             cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
             rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
+            if 'INV_PERIOD' not in rowDict:
+                rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
             self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
 

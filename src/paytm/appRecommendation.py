@@ -79,7 +79,7 @@ class app():
             lowRecPrice = fraction * rowDict['HIGH_REC_PRICE']
             fraction = 1
 
-        rowDict['LOW_REC_PRICE'] = round(int(lowRecPrice * 100) / 500, 2) * 5
+        rowDict['LOW_REC_PRICE'] = round(round(int(lowRecPrice * 100) / 500, 2) * 5, 2)
         return rowDict
 
     def authorize(self):
