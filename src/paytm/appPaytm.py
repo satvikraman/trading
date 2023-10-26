@@ -391,10 +391,14 @@ class app():
                 if (ltp >= dbDict['TARGET']):
                     self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['NSE_SYMBOL'], ltp, dbDict['TARGET'])
                     dbDict['REC_STATUS'] = 'CLOSE'
+                elif self.__marketOpen and ltp * 1.01 <= dbDict['STOP_LOSS']:
+                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
+                                    ltp, dbDict['STOP_LOSS'])
+                    dbDict['REC_STATUS'] = 'CLOSE'
                 # Act on SL only if visibility is 'hidden'. Also act on closing basis or if during trading hours the price has significantly fallen below SL
                 elif dbDict['VISIBLE'] == 'HIDDEN':
-                    if (not self.__marketOpen and ltp <= dbDict['STOP_LOSS']) or (self.__marketOpen and ltp * 1.03 <= dbDict['STOP_LOSS']):
-                        self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
+                    if not self.__marketOpen and ltp <= dbDict['STOP_LOSS']:
+                        self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
                                         ltp, dbDict['STOP_LOSS'])
                         dbDict['REC_STATUS'] = 'CLOSE'
             else:
@@ -606,7 +610,7 @@ class app():
                 if limitPrice <= ltp * self.__createLtpDisFactor:
                     canOrder = True
             if not canOrder:
-                self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %d Limit = %d", dbDict['NSE_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
+                self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['NSE_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
                 return False, dbDict
         
         trigger = 0
@@ -693,7 +697,7 @@ class app():
                     delOrder = True
             
             if delOrder:
-                self.__logger.info("Stock %s. LTP = %.2f Limit = %.2f. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
+                self.__logger.info("Stock %s. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
                 _, dbDict = self.__cancelOrder(dbDict)
 
         return dbDict

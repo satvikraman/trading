@@ -242,18 +242,23 @@ class iciciDirect():
 
     def __formatInvRemarkCell(self, cell):
         resDict = {'REC_STATUS': 'OPEN'}
-        if re.match("Book 50%", cell):
+        if re.match("Book 50%", cell) or re.match("Book Partial Profit", cell):
             # Extract part profit price & %
             resDict['REC_STATUS'] = 'PARTIAL_CLOSE'
             stopLoss = re.match(r'^.*trail\D*(\d+)\D*', cell)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])
-        elif re.match("Book profit", cell) or re.match('Target 1', cell):
+        elif re.match("Book profit", cell) or re.match('Target 1', cell) or re.match('TGT1', cell) or re.match('Book Full Profit', cell):
             resDict['REC_STATUS'] = 'CLOSE'
             if re.match("Book profit", cell):
                 finalProfit = re.match(r'\D+(\d+)', cell)
                 if finalProfit != None:
                     resDict['FINAL_PROFIT_PRICE'] = self.__convPriceToFloat(finalProfit.groups()[0])
+        elif re.match("Exit", cell) or re.match("Square off", cell) or re.match("SLTP", cell):
+            resDict['REC_STATUS'] = 'CLOSE'
+            stopLoss = re.match(r'^.*at\D*(\d+)\D*', cell)
+            if stopLoss != None:
+                resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])            
         elif re.match('.*revised stoploss', cell):
             stopLoss = re.match(r'.*revised stoploss\D*(\d+)', cell)
             if stopLoss != None:
