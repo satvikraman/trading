@@ -521,6 +521,7 @@ class app():
 
     def __cancelOrder(self, dbDict):
         status = True
+        status, dbDict = self.__getPosStatus(dbDict)
         for orderDict in dbDict['OPEN_ORDERS']:
             if orderDict['ORDER_STATUS'] == 'OPEN':
                 orderStatus, orderMessage, orderNum = self.__payTmMoney.cancelOrder(orderDict['ORDER_NO'])
@@ -928,11 +929,7 @@ class app():
 
     def __closeAllOpenIntraDayPositions(self):
         # Get all open positions
-        self.__logger.info("Closing all open positions")
-
-        self.__lock.acquire()
-        self.__updateOpenOrderStatus()
-        self.__lock.release()
+        self.__logger.info("Closing all open intra-day positions")
 
         # Check for all orders in 'OPEN' state
         # Some orders may be still open --> cancel them and close position
