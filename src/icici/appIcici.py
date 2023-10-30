@@ -374,7 +374,7 @@ class app():
         actionableKeys = ['LOW_REC_PRICE']
         otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
                      'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
-        #gainRecDicts = self.__iciciDirect.scrapeiClick2Gain()         
+        gainRecDicts = self.__iciciDirect.scrapeiClick2Gain()         
         self.__mergeNonMarginRecsToDb(gainRecDicts, actionableKeys, otherKeys)
 
         self.__updateMismatchedVisibilityNonMarginRecs(invRecDicts, gainRecDicts)
