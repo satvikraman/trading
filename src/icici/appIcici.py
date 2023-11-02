@@ -396,6 +396,12 @@ if __name__ == '__main__':
     trade = app('./iciciDirect.ini')
     trade.closeNonMarginExpiredRecs(dryRun=True)
     trade.openIciciSession()
+
+    marketOpen = False
+    while not marketOpen:
+        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
+        time.sleep(15)
+
     marketClose = False
     marketCloseMinusDelta = False
     while not marketClose:
