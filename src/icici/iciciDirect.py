@@ -363,7 +363,8 @@ class iciciDirect():
 
                     # Click on view to see the results
                     viewBtn = menu3.find_element_by_id("btnview")
-                    viewBtn.send_keys(Keys.ENTER)
+                    #viewBtn.send_keys(Keys.ENTER)
+                    viewBtn.click()
 
                     # Scrape the data (header + body) from the webpage
                     loadTblAttempts = 0
@@ -428,7 +429,8 @@ class iciciDirect():
 
                     # Click on view to see the results
                     viewBtn = menu3.find_element_by_id("btnview")
-                    viewBtn.send_keys(Keys.ENTER)
+                    #viewBtn.send_keys(Keys.ENTER)
+                    viewBtn.click()
 
                     # Scrape the data (header + body) from the webpage
                     loadTblAttempts = 0

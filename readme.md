@@ -34,5 +34,5 @@ conda install --file requirements.txt
 # Working with JSON documents offline
 Go to https://jsoneditoronline.org/
 You may filter the json documents using lodash filter by writing something similar to what's shown below
-  const res = _.filter(data._default, stock => stock.POS_HOLD_STATUS == 'OPEN')
-  return _.chain(res)
+  const res = _.filter(data._default, stock => stock.POS_HOLD_STATUS != 'CLOSE' && stock.VISIBLE == 'HIDDEN')
+  return _.chain(res).value()
