@@ -192,7 +192,7 @@ class app():
                     status = self.__send2PayTm(recDict)
                     if status:
                         if not self.__updateRec(rowNum):
-                            self.__logger.error("Unable to update row %d. Recommendation %s", rowNum, redDict)
+                            self.__logger.error("Unable to update row %d. Recommendation %s", rowNum, recDict)
         except Exception as err:
             print(err)
     
