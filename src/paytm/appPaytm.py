@@ -534,10 +534,17 @@ class app():
         return status, dbDict
 
 
+    def __computeHighLimitPrice(self, highRecPrice, target, ltp, profitShedPerc=10/100):
+        limitPrice1 = highRecPrice + (target - highRecPrice) * profitShedPerc
+        limitPrice = min(limitPrice1, ltp)
+        limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
+        return limitPrice
+
+
     def __investTight(self, dbDict):
         investTight = False
-        for strategy in ['Kavan Patel', 'Dhwani Patel', 'Lotus Funds', 'Clovek Wealth']:
-            if dbDict['STRATEGY'].lower() == strategy.lower():
+        for strategy in ["Sanjiv Bhasin"]:
+            if dbDict['SOURCE'].lower() == strategy.lower():
                 investTight = True
                 break
         return investTight
@@ -578,8 +585,8 @@ class app():
         if invPerc == 0 and product == 'DELIVERY' and not investTight:
             qty = int(totalQty * 12.5 / 100) - posHoldQty
             orderType = 'LMT'
-            limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) / 5
-            limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
+            limitPrice = self.__computeHighLimitPrice(dbDict['HIGH_REC_PRICE'], dbDict['TARGET'], dbDict['CMP'], profitShedPerc=10/100)
+            
         if self.__enableBuyAtHighRecPrice:
             if qty == 0:
                 qty = remQty

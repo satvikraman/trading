@@ -52,10 +52,33 @@ class app():
             logging.getLogger('').addHandler(fileHandler)
 
 
+    def prepareRecDict(self, rowDict):
+        mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
+        mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
+        importantKeys = ['INV_PERIOD']
+        priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
+        otherkeys = ['REC_TIME', 'INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        recDict = {}
+        for key in mandatoryKeys + mandatoryPriceKeys + importantKeys + priceKeys + otherkeys:
+            if key in rowDict:
+                recDict[key] = rowDict[key]
+            elif key in mandatoryKeys or key in mandatoryPriceKeys:
+                self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
+                return {}
+            elif key in importantKeys:
+                if key == 'INV_PERIOD':
+                    rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
+            elif key in priceKeys:
+                recDict[key] = 0
+            elif key in otherkeys:
+                recDict[key] = ''        
+        return recDict
+
+
     def __send2PayTm(self, recDict):
             retries = self.__numRetries
             status = False
-
+            
             while not status and retries >= 0:
                 url = self.__paytmBaseURL + 'v1/rec'
                 try:
@@ -76,8 +99,8 @@ class app():
         lowRecPrice = fraction * rowDict['HIGH_REC_PRICE']
         fraction = 0.99
         while lowRecPrice < rowDict['STOP_LOSS']:
-            lowRecPrice = fraction * rowDict['HIGH_REC_PRICE']
             fraction = 1
+            lowRecPrice = fraction * rowDict['HIGH_REC_PRICE']
 
         rowDict['LOW_REC_PRICE'] = round(round(int(lowRecPrice * 100) / 500, 2) * 5, 2)
         return rowDict
@@ -142,14 +165,14 @@ class app():
                     rowDict = {}
                     rowDict['REC_STATUS'] = row[1]
                     rowDict['STOCK'] = row[2]
-                    rowDict['SOURCE'] = 'PayTm'
-                    rowDict['STRATEGY'] = row[3]
-                    rowDict['REC_DATE'] = row[4]
-                    rowDict['REC_TIME'] = row[5]
+                    rowDict['SOURCE'] = row[3]
+                    rowDict['STRATEGY'] = row[4]
+                    rowDict['REC_DATE'] = row[5]
+                    rowDict['REC_TIME'] = "xx:xx"
 
-                    expDate = row[6]
+                    rowDict['EXP_DATE'] = row[6]
                     recDate = datetime.datetime.strptime(rowDict['REC_DATE'], "%d-%b-%Y")
-                    expDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
+                    expDate = datetime.datetime.strptime(rowDict['EXP_DATE'], "%d-%b-%Y")
                     daysDiff = abs((expDate - recDate).days)
                     rowDict['INV_PERIOD'] = str(daysDiff) + ' DAYS'
 
@@ -161,10 +184,12 @@ class app():
 
                     rowDict['NSE_SYMBOL'] = row[10]
                     rowDict['BUY_SELL'] = 'BUY'
+                    rowDict['VISIBLE'] = 'VISIBLE'
                     rowDict['CMP'] = 0
 
                     self.__logger.info("Sending recommendation %s", rowDict)
-                    status = self.__send2PayTm(rowDict)
+                    recDict = self.prepareRecDict(rowDict)
+                    status = self.__send2PayTm(recDict)
                     if status:
                         if not self.__updateRec(rowNum):
                             self.__logger.error("Unable to update row %d. Recommendation %s", rowNum, redDict)
@@ -177,6 +202,6 @@ if __name__ == '__main__':
     marketOpen = True
     while marketOpen:
         # Start closing all positions as soon as it is 3:00PM
-        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=29) 
+        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25) 
         trade.readRec()
         time.sleep(15)
