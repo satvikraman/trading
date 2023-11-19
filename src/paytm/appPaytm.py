@@ -90,7 +90,6 @@ class app():
                             {'NSE_SYMBOL': 'POLYMED', 'SECURITY_ID': '25718', 'QTY': 63}, 
                             {'NSE_SYMBOL': 'RELIANCE', 'SECURITY_ID': '2885', 'QTY': 12}, 
                             {'NSE_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
-                            {'NSE_SYMBOL': 'SOLARINDS', 'SECURITY_ID': '13332', 'QTY': 7}, 
                             {'NSE_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
                             {'NSE_SYMBOL': 'TITAN', 'SECURITY_ID': '3506', 'QTY': 19}, 
                             {'NSE_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
@@ -543,7 +542,7 @@ class app():
 
     def __investTight(self, dbDict):
         investTight = False
-        for strategy in ["Sanjiv Bhasin"]:
+        for strategy in []:
             if dbDict['SOURCE'].lower() == strategy.lower():
                 investTight = True
                 break
