@@ -81,17 +81,12 @@ class app():
                             {'NSE_SYMBOL': 'HDFCBANK', 'SECURITY_ID': '1333', 'QTY': 91}, 
                             {'NSE_SYMBOL': 'HINDUNILVR', 'SECURITY_ID': '1394', 'QTY': 14}, 
                             {'NSE_SYMBOL': 'INFY', 'SECURITY_ID': '1594', 'QTY': 18}, 
-                            {'NSE_SYMBOL': 'ITC', 'SECURITY_ID': '1660', 'QTY': 107}, 
                             {'NSE_SYMBOL': 'JIOFIN', 'SECURITY_ID': '18143', 'QTY': 12}, 
                             {'NSE_SYMBOL': 'MARICO', 'SECURITY_ID': '4067', 'QTY': 126}, 
-                            {'NSE_SYMBOL': 'NESTLEIND', 'SECURITY_ID': '17963', 'QTY': 3}, 
-                            {'NSE_SYMBOL': 'PGHH', 'SECURITY_ID': '2535', 'QTY': 4}, 
                             {'NSE_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
-                            {'NSE_SYMBOL': 'POLYMED', 'SECURITY_ID': '25718', 'QTY': 63}, 
                             {'NSE_SYMBOL': 'RELIANCE', 'SECURITY_ID': '2885', 'QTY': 12}, 
                             {'NSE_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
                             {'NSE_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
-                            {'NSE_SYMBOL': 'TITAN', 'SECURITY_ID': '3506', 'QTY': 19}, 
                             {'NSE_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
 
 

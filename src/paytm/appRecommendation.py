@@ -130,7 +130,7 @@ class app():
         try:
             status = False
             writeRange = self.__sheetName+'!A'+str(rowNum)+':A'+str(rowNum)
-            values = [['FALSE']]
+            values = [['DONE']]
             body = {
                 'values': values
             }
