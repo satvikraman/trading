@@ -54,8 +54,8 @@ class app():
             self.__backupDb(db)
             self.__persistence = persistence(configFile, db)
 
-            dotenv.load_dotenv('./.env')
-            self.__amountPerOrder = int(os.environ.get('max_amount_per_order', '5000'))
+            res = dotenv.load_dotenv('.env', override=True)
+            self.__amountPerOrder = int(os.environ.get("max_amount_per_order", '5000'))
             self.__logger.info('Max Amount Per Order %d', self.__amountPerOrder)
 
             self.__dryRun = dryRun
@@ -1044,6 +1044,7 @@ def flaskThread():
 
 if __name__ == '__main__':
     trade.openPayTmMoneySession()
+    """
     trade.getHoldingsData()
 
     paytmThr = threading.Thread(target=payTmThread)
@@ -1059,7 +1060,7 @@ if __name__ == '__main__':
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
         time.sleep(1)
-
+    """
 # Individual order Status transitions as
 # OPEN --> CLOSE
 
