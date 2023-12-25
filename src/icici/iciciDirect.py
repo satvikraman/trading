@@ -47,7 +47,7 @@ class iciciDirect():
 
         # Click on IClick2Gain
         menu2 = self.__browser.find_element_by_id("pnlmnudsp")
-        iClick2Gain = menu2.find_element_by_partial_link_text("iCLICK-2-GAIN")
+        iClick2Gain = menu2.find_element_by_partial_link_text("Trading Ideas (iCLICK-2-GAIN)")
         iClick2Gain.click()
         time.sleep(5)
 
@@ -62,7 +62,7 @@ class iciciDirect():
 
         # Click on IClick2Gain
         menu2 = self.__browser.find_element_by_id("pnlmnudsp")
-        iClick2Invest = menu2.find_element_by_partial_link_text("iCLICK-2-INVEST")
+        iClick2Invest = menu2.find_element_by_partial_link_text("Investment Ideas (iCLICK 2 INVEST)")
         iClick2Invest.click()
         time.sleep(5)
 
