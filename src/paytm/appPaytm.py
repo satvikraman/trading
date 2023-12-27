@@ -70,6 +70,7 @@ class app():
             self.__enableBuyAtHighRecPrice = True if self.__config['APP']['ENABLE_BUY_AT_HIGH_REC_PRICE'] == 'TRUE' else False
 
             self.__squareOff = False
+            self.__cmp = {}
             self.__marketOpen = False
 
             self.__core = [ {'NSE_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
@@ -253,7 +254,7 @@ class app():
 
         # Qty of stock that can be bought
         if recDict['STRATEGY'] == 'MARGIN':
-            maxAmount = self.__amountPerOrder / 4
+            maxAmount = 2000
             margin = self.__timesMargin
         else:
             maxAmount = self.__amountPerOrder
@@ -375,8 +376,26 @@ class app():
         return status
 
 
-    def __getCMPUpdateRecStatus(self, dbDict):
-        status, ltp = self.__payTmMoney.getLastTradedPrice(dbDict['SECURITY_ID'])
+    def __getCMP(self, dbDicts=None):
+        if dbDicts == None:
+            self.__lock.acquire()
+            dbDicts = self.__persistence.getDb([['REC_STATUS', '!CLOSE']])
+            self.__lock.release()
+
+        for dbDict in dbDicts:
+            if dbDict['NSE_SYMBOL'] not in self.__cmp:
+                self.__cmp[dbDict['NSE_SYMBOL']] = {'LTP': -1, 'SECURITY_ID': dbDict['SECURITY_ID']}
+
+        for nseSymbol in self.__cmp:
+            status, ltp = self.__payTmMoney.getLastTradedPrice(self.__cmp[nseSymbol]['SECURITY_ID'])
+            if status:
+                self.__cmp[nseSymbol]['LTP'] = ltp
+            time.sleep(0.01)
+
+
+    def __updateRecStatus(self, dbDict):
+        ltp = dbDict['CMP'] if dbDict['NSE_SYMBOL'] not in self.__cmp else self.__cmp[dbDict['NSE_SYMBOL']]['LTP']
+        status = ltp > 0
         if status:
             self.__logger.info("Stock %s LTP = %.2f", dbDict['NSE_SYMBOL'], ltp)
             dbDict['CMP'] = ltp
@@ -573,33 +592,41 @@ class app():
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
 
         # First  order is a 'MKT' order
-        qty = 0
-        invPerc = posHoldQty * 100 / totalQty
-        investTight = self.__investTight(dbDict)
-        if invPerc == 0 and product == 'DELIVERY' and not investTight:
-            qty = int(totalQty * 12.5 / 100) - posHoldQty
-            orderType = 'LMT'
-            limitPrice = self.__computeHighLimitPrice(dbDict['HIGH_REC_PRICE'], dbDict['TARGET'], dbDict['CMP'], profitShedPerc=10/100)
-            
-        if self.__enableBuyAtHighRecPrice:
-            if qty == 0:
-                qty = remQty
-                orderType = 'LMT'
-                limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-        else:
-            if invPerc <= 12.5 and qty == 0:
-                qty = int(totalQty * 25 / 100) - posHoldQty
-                orderType = 'LMT'
-                limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-            if invPerc <= 25 and qty == 0:
-                qty = int(totalQty * 50 / 100) - posHoldQty
-                orderType = 'LMT'
-                limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-                limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
-            if qty == 0:
-                qty = remQty
-                orderType = 'LMT'
-                limitPrice = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
+        if product == 'DELIVERY':
+            qty = 0
+            invPerc = posHoldQty * 100 / totalQty
+            investTight = self.__investTight(dbDict)
+            if invPerc == 0 and not investTight:           
+                qty = max(int(totalQty * 33 / 100) - posHoldQty, 1)
+                orderType = 'MKT'
+                limitPrice = 0
+                #qty = max(int(totalQty * 12.5 / 100) - posHoldQty, 1)
+                #orderType = 'LMT'
+                #limitPrice = self.__computeHighLimitPrice(dbDict['HIGH_REC_PRICE'], dbDict['TARGET'], dbDict['CMP'], profitShedPerc=10/100)
+                
+            if self.__enableBuyAtHighRecPrice:
+                if qty == 0:
+                    qty = remQty
+                    orderType = 'LMT'
+                    limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
+            else:
+                if invPerc <= 12.5 and qty == 0:
+                    qty = int(totalQty * 25 / 100) - posHoldQty
+                    orderType = 'LMT'
+                    limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
+                if invPerc <= 25 and qty == 0:
+                    qty = int(totalQty * 50 / 100) - posHoldQty
+                    orderType = 'LMT'
+                    limitPrice = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
+                    limitPrice = round(round(int(limitPrice * 100) / 500, 2) * 5, 2)
+                if qty == 0:
+                    qty = remQty
+                    orderType = 'LMT'
+                    limitPrice = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
+        elif product == 'INTRADAY':
+            qty = remQty
+            orderType = 'MKT'
+            limitPrice = 0
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
@@ -657,7 +684,7 @@ class app():
                 openOp = 'SELL'
                 closeOp = 'BUY'
 
-            buySell = openOp if posHoldQty < 0 else closeOp
+            buySell = 'BUY' if posHoldQty < 0 else 'SELL'
             orderType = 'MKT'
             limitPrice = 0
             trigger = 0
@@ -808,7 +835,7 @@ class app():
         if not self.__marketOpen:
             return
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
-            self.__getCMPUpdateRecStatus(dbDict)
+            self.__updateRecStatus(dbDict)
             self.__openPosition(dbDict)
         elif dbDict['REC_STATUS'] in ['PARTIAL_CLOSE', 'CLOSE']:
             cancelOrder = True if dbDict['POS_HOLD_STATUS'] == 'OPEN' else False
@@ -818,10 +845,11 @@ class app():
     def __reconcileRecs(self):
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
         self.__logger.debug("Getting CMP data")
+        self.__getCMP()
         self.__lock.acquire()
         dbDicts = self.__persistence.getDb([['REC_STATUS', '!CLOSE']])
         for dbDict in dbDicts:
-            self.__getCMPUpdateRecStatus(dbDict)
+            self.__updateRecStatus(dbDict)
         self.__lock.release()
 
         # If recommendation (margin or otherwise) == 'OPEN' and order == 'OPEN'
@@ -996,7 +1024,6 @@ trade = app('./payTmMoney.ini', dryRun=False)
 
 def payTmThread():
     squareOffMinus15 = False
-    marketOpen = False
 
     trade.checkOpenOrders()
     status = trade.startupCheck()
@@ -1007,17 +1034,18 @@ def payTmThread():
         print('Startup check passed!!!')
 
     trade.printMilestones()
+    marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
         time.sleep(15)
     
     while marketOpen:
-        # Start closing all positions as soon as it is 3:00PM
+        # Start closing all intraday positions as soon as it is 3:00PM
         squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
         marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25) 
         trade.setMarketTimer(squareOffMinus15, marketOpen)
         trade.runPeriodicChecks()
-        time.sleep(15)
+        time.sleep(1)
 
     trade._app__logger.info("Markets have closed. Exiting gracefully")
 
@@ -1044,7 +1072,6 @@ def flaskThread():
 
 if __name__ == '__main__':
     trade.openPayTmMoneySession()
-    """
     trade.getHoldingsData()
 
     paytmThr = threading.Thread(target=payTmThread)
@@ -1060,7 +1087,7 @@ if __name__ == '__main__':
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
         time.sleep(1)
-    """
+
 # Individual order Status transitions as
 # OPEN --> CLOSE
 

@@ -17,7 +17,7 @@ from persistence import persistence
 # OPEN --> CLOSE
 
 class app():
-    def __init__(self, configFile, db=None):
+    def __init__(self, configFile, dbInv=None, dbIntraDay=None, dbFnO=None):
         if(os.path.isfile(configFile)):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
@@ -42,14 +42,25 @@ class app():
             logging.getLogger('').addHandler(consoleHandler)
             logging.getLogger('').addHandler(fileHandler)
 
-            if db == None:
-                db = self.__config['DATABASE']['DB']
-            self.__backupDb(db)                
+            if dbInv == None:
+                dbInv = self.__config['DATABASE']['DB']
+            self.__backupDb(dbInv)                
+            self.__persistenceInv = persistence(configFile, dbInv)
 
-            self.__persistence = persistence(configFile, db)
+            if dbIntraDay == None:
+                dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
+            self.__backupDb(dbIntraDay)                
+            self.__persistenceIntraDay = persistence(configFile, dbIntraDay)
+
+            if dbFnO == None:
+                dbFnO = self.__config['DATABASE']['DB_FNO']
+            self.__backupDb(dbFnO)                
+            self.__persistenceFnO = persistence(configFile, dbFnO)
+
             self.__iciciDirect = iciciDirect(configFile)
             self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
             self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
+            self.__timeToRefreshTradeIeas = int(self.__config['APP']['TIMES_TO_REFRESH_TRADE_IDEAS'])
             
 
     def __backupDb(self, db):
@@ -99,7 +110,7 @@ class app():
 
 
     def closeNonMarginExpiredRecs(self, dryRun=True):
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
+        dbDicts = self.__persistenceInv.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
         todaysDate = datetime.datetime.today().date()
         for dbDict in dbDicts:
             expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
@@ -111,7 +122,7 @@ class app():
                     recDict = self.__iciciDirect.prepareRecDict(dbDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
-                    self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
+                    self.__persistenceInv.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
 
 
     def __transitionRec(self, dbDict, newRec):
@@ -125,14 +136,22 @@ class app():
         return status, dbDict
 
 
-    def __closeMarginRecsNotUpdated(self, recDicts):
-        # Sometime the table just does not show any entries. Do view this as the rec has been cancelled
+    def __closeMarginRecsNotVisible(self, recDicts):
+        # Sometime the table just does not show any entries. If so, return
         if len(recDicts) == 0:
+            return
+    
+        foundMarginRecs = False
+        for recDict in recDicts:
+            if recDict['STRATEGY'] == 'MARGIN':
+                foundMarginRecs = True
+                break
+        if not foundMarginRecs:
             return
 
         # Find all 'MARGIN' recommendations in DB that are open
         dateStr = datetime.datetime.now().strftime("%d-%b-%Y")
-        dbDicts = self.__persistence.getDb([['STRATEGY', 'MARGIN'], ['REC_DATE', dateStr], ['REC_STATUS', 'OPEN']])
+        dbDicts = self.__persistenceIntraDay.getDb([['STRATEGY', 'MARGIN'], ['REC_DATE', dateStr], ['REC_STATUS', 'OPEN']])
 
         # If they are not found in the recommendations on the web page --> close them 
         for dbDict in dbDicts:
@@ -145,44 +164,47 @@ class app():
             # Close the recommendation that was not found
             if not found:
                 dbDict['REC_STATUS'] = 'CLOSE'
+                dbDict['VISIBLE'] = 'HIDDEN'
                 recDict = self.__iciciDirect.prepareRecDict(dbDict)
                 status = self.__send2PayTm('UPDATE_REC', recDict)
                 dbDict['ACK'] = 'ACK' if status else 'NACK'
-                self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                self.__persistenceIntraDay.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
 
 
-    def __updateMarginRecStatus(self, recDict):
-        if recDict['STRATEGY'] != 'MARGIN':
-            return
-        recDict['VISIBLE'] = 'VISIBLE'
-        # Find open recommendations matching the condition in DB
-        self.__logger.debug("updateRecStatus: Finding in DB nseSym=%s, strategy=%s, date=%s, time=%s, recStatus=%s", 
-                            recDict['NSE_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'], 'None')
-        isInDb, dbDict = self.__persistence.isInDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-        self.__logger.debug("Find results: status = %s & dbDict = %s", isInDb, dbDict)
+    def __updateMarginRecStatus(self, gainRecDicts):        
+        for recDict in gainRecDicts:
+            if recDict['STRATEGY'] != 'MARGIN':
+                continue
+            recDict['VISIBLE'] = 'VISIBLE'
+            recDict['EXP_DATE']  = recDict['REC_DATE']
+            # Find open recommendations matching the condition in DB
+            self.__logger.debug("updateRecStatus: Finding in DB nseSym=%s, strategy=%s, date=%s, time=%s, recStatus=%s", 
+                                recDict['NSE_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'], 'None')
+            isInDb, dbDict = self.__persistenceIntraDay.isInDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+            self.__logger.debug("Find results: status = %s & dbDict = %s", isInDb, dbDict)
 
-        # If no recommendation found in DB and if the current recommendation is not close, then
-        # Insert the recommendation in DB
-        if not isInDb:
-            if(recDict['REC_STATUS'] != 'CLOSE'):
-                recDict = self.__iciciDirect.prepareRecDict(recDict)
-                status = self.__send2PayTm('NEW_REC', recDict)
-                recDict['ACK'] = 'ACK' if status else 'NACK'
-                res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-                self.__logger.info('New Recommendation %s', recDict)
-            else:
-                recDict['ACK'] = 'ACK'
-                res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-                self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
-        elif isInDb:
-                # If the recommendation has changed then
-                isChange, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
-                if isChange:
-                    recDict = self.__iciciDirect.prepareRecDict(dbDict)
-                    status = self.__send2PayTm('UPDATE_REC', recDict)
-                    dbDict['ACK'] = 'ACK' if status else 'NACK'
-                    self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-                #else: Nothing to be done
+            # If no recommendation found in DB and if the current recommendation is not close, then
+            # Insert the recommendation in DB
+            if not isInDb:
+                if(recDict['REC_STATUS'] != 'CLOSE'):
+                    recDict = self.__iciciDirect.prepareRecDict(recDict)
+                    status = self.__send2PayTm('NEW_REC', recDict)
+                    recDict['ACK'] = 'ACK' if status else 'NACK'
+                    res = self.__persistenceIntraDay.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+                    self.__logger.info('New Recommendation %s', recDict)
+                else:
+                    recDict['ACK'] = 'ACK'
+                    res = self.__persistenceIntraDay.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
+            elif isInDb:
+                    # If the recommendation has changed then
+                    isChange, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
+                    if isChange:
+                        recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                        status = self.__send2PayTm('UPDATE_REC', recDict)
+                        dbDict['ACK'] = 'ACK' if status else 'NACK'
+                        self.__persistenceIntraDay.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                    #else: Nothing to be done
 
 
     def __mergeNonMarginRecsToDb(self, recDicts, actionableKeys, otherKeys):
@@ -190,7 +212,7 @@ class app():
         # REC_STATUS
         # LOW_REC_PRICE, STOP_LOSS, PART_PROFIT_PRICE, PART_PROFIT_PERC, FINAL_PROFIT_PRICE, EXIT_PRICE
         # REC_TIME, UPDATE_ACTION_1, UPDATE_TIME_1, UPDATE_ACTION_2, UPDATE_TIME_2
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE']])
+        dbDicts = self.__persistenceInv.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE']])
 
         for recDict in recDicts:
             # This function is only for DELIVERY based recommendations
@@ -250,13 +272,13 @@ class app():
                     hasChanged = hasChanged or recChanged
 
                     if updateDb: 
-                        self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
+                        self.__persistenceInv.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
 
                     if hasChanged:
                         recDict = self.__iciciDirect.prepareRecDict(dbDict)
                         status = self.__send2PayTm('UPDATE_REC', recDict)
                         dbDict['ACK'] = 'ACK' if status else 'NACK'
-                        self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
+                        self.__persistenceInv.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
 
                     break
 
@@ -266,7 +288,7 @@ class app():
                 # However, since the recommendation is already closed there is nothing that needs to be done. If we find the recommendation among the closed 
                 # recommendations, no action will be taken
                 found2 = False
-                dbDicts2 = self.__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', '!MARGIN'], ['REC_STATUS', 'CLOSE']])
+                dbDicts2 = self.__persistenceInv.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', '!MARGIN'], ['REC_STATUS', 'CLOSE']])
                 for dbDict2 in dbDicts2:
                     dbDate = datetime.datetime.strptime(dbDict2['REC_DATE'], "%d-%b-%Y")
                     daysDiff = abs((dbDate - recDate).days)
@@ -281,19 +303,23 @@ class app():
                         apiDict = self.__iciciDirect.prepareRecDict(recDict)
                         status = self.__send2PayTm('NEW_REC', apiDict)
                         recDict['ACK'] = 'ACK' if status else 'NACK'
-                        res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+                        res = self.__persistenceInv.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
                         self.__logger.info('New Recommendation %s', recDict)
                     else:
                         recDict['ACK'] = 'ACK'
-                        res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+                        res = self.__persistenceInv.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
                         self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['NSE_SYMBOL'], recDict)
 
 
     def __updateMismatchedVisibilityNonMarginRecs(self, invRecDicts, gainRecDicts):
+        # Don't change visibility if no recommendations are seen on the webpage
+        if len(invRecDicts) == 0 and len(gainRecDicts) == 0:
+            return
+        
         mismatchedDictList = []
 
         # Find all non-MARGIN recommendations in DB that are not closed and we think are visible
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE'], ['VISIBLE', 'VISIBLE']])
+        dbDicts = self.__persistenceInv.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE'], ['VISIBLE', 'VISIBLE']])
         # If they are not found in any of the recommendations on the web page --> update their visibility
         for dbDict in dbDicts:
             recFound = False
@@ -313,7 +339,7 @@ class app():
                                             'TARGET': dbDict['TARGET'], 'VISIBLE': 'HIDDEN'})
 
         # Find all non-MARGIN recommendations in DB that are not closed and we think are not visible
-        dbDicts = self.__persistence.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
+        dbDicts = self.__persistenceInv.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
         # If they are found in any of the recommendations on the web page --> update their visibility
         for dbDict in dbDicts:
             recFound = False
@@ -333,7 +359,7 @@ class app():
                                             'TARGET': dbDict['TARGET'], 'VISIBLE': 'VISIBLE'})
         
         for ele in mismatchedDictList:
-            dbDicts = self.__persistence.getDb([['NSE_SYMBOL', ele['NSE_SYMBOL']], ['STRATEGY', ele['STRATEGY']], ['REC_DATE', ele['REC_DATE']]])
+            dbDicts = self.__persistenceInv.getDb([['NSE_SYMBOL', ele['NSE_SYMBOL']], ['STRATEGY', ele['STRATEGY']], ['REC_DATE', ele['REC_DATE']]])
             if len(dbDicts) != 1:
                 self.__logger.error("Found %d number of records for STOCK=%s STRATEGY=%S REC_DATE=%s", len(dbDicts), ele['NSE_SYMBOL'], ele['STRATEGY'], ele['REC_DATE'])
             else:
@@ -342,49 +368,59 @@ class app():
                 recDict = self.__iciciDirect.prepareRecDict(dbDict)
                 status = self.__send2PayTm('UPDATE_REC', recDict)
                 dbDict['ACK'] = 'ACK' if status else 'NACK'
-                self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
+                self.__persistenceInv.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
 
 
     def __sendNonAckedRecsFromDb(self):
         # Find open recommendations matching the condition in DB
         self.__logger.debug("__sendNonAckedRecs: Finding in DB ACK=False")
-        dbDicts = self.__persistence.getDb([['ACK', '!ACK']])
-        self.__logger.debug("Find results: dbDict = %s", dbDicts)
+        for instrument in ["Equity", "Margin", "FnO"]:
+            if instrument == "Equity":
+                persistence = self.__persistenceInv
+            elif instrument == "Margin":
+                persistence = self.__persistenceIntraDay
+            elif instrument == "FnO":
+                persistence = self.__persistenceFnO
 
-        for dbDict in dbDicts:
-            recDict = self.__iciciDirect.prepareRecDict(dbDict)
-            status = self.__send2PayTm('UPDATE_REC', recDict)
-            dbDict['ACK'] = 'ACK' if status else 'NACK'
-            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            dbDicts = persistence.getDb([['ACK', '!ACK']])
+            self.__logger.debug("Find results: dbDict = %s", dbDicts)
+
+            for dbDict in dbDicts:
+                recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                status = self.__send2PayTm('UPDATE_REC', recDict)
+                dbDict['ACK'] = 'ACK' if status else 'NACK'
+                persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
     def runPeriodicChecks(self, marketCloseMinusDelta):
         # Send all recommendations in DB that haven't be ACK'ed
         self.__sendNonAckedRecsFromDb()
 
-        # Scrape recommendations from iClick2Invest
         invRecDicts = []
-        actionableKeys = ['INV_PERIOD']
-        otherKeys = []
-        invRecDicts = self.__iciciDirect.scrapeiClick2Invest()         
-        self.__mergeNonMarginRecsToDb(invRecDicts, actionableKeys, otherKeys)
+        if True:
+            # Scrape recommendations from iClick2Invest
+            actionableKeys = ['INV_PERIOD']
+            otherKeys = []
+            invRecDicts = self.__iciciDirect.scrapeiClick2Invest()         
+            self.__mergeNonMarginRecsToDb(invRecDicts, actionableKeys, otherKeys)
 
         # Scrape recommendations from iClick2Gain
-        gainRecDicts = []
-        actionableKeys = ['LOW_REC_PRICE']
-        otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
-                     'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
-        gainRecDicts = self.__iciciDirect.scrapeiClick2Gain()         
-        self.__mergeNonMarginRecsToDb(gainRecDicts, actionableKeys, otherKeys)
+        for i in range(self.__timeToRefreshTradeIeas):
+            gainRecDicts = []
+            actionableKeys = ['LOW_REC_PRICE']
+            otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
+                        'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+            gainRecDicts = self.__iciciDirect.scrapeiClick2Gain()         
+            self.__mergeNonMarginRecsToDb(gainRecDicts, actionableKeys, otherKeys)
 
-        self.__updateMismatchedVisibilityNonMarginRecs(invRecDicts, gainRecDicts)
+            self.__updateMismatchedVisibilityNonMarginRecs(invRecDicts, gainRecDicts)
 
-        if marketCloseMinusDelta:
-            self.closeNonMarginExpiredRecs(dryRun=False)
+            if marketCloseMinusDelta:
+                self.closeNonMarginExpiredRecs(dryRun=False)
 
-        self.__closeMarginRecsNotUpdated(gainRecDicts)
-        for recDict in gainRecDicts:
-            self.__updateMarginRecStatus(recDict)
+            self.__closeMarginRecsNotVisible(gainRecDicts)
+            self.__updateMarginRecStatus(gainRecDicts)
+            time.sleep(1)
 
 
     def openIciciSession(self):
@@ -397,15 +433,13 @@ if __name__ == '__main__':
     trade.closeNonMarginExpiredRecs(dryRun=True)
     trade.openIciciSession()
 
-    marketOpen = False
-    while not marketOpen:
-        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
-        time.sleep(15)
-
+    marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
     marketClose = False
     marketCloseMinusDelta = False
     while not marketClose:
         trade.runPeriodicChecks(marketCloseMinusDelta)
-        time.sleep(30)
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
         marketCloseMinusDelta = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=20)
+        while not marketOpen:
+            marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
+            time.sleep(15)

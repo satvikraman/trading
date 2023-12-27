@@ -137,9 +137,8 @@ class iciciDirect():
         # Remove () from the ICICI Direct stock code
         cellDict['ICICI_SYMBOL'] = re.sub(r'\(|\)|\s+', '', data[1])
         # Find the corresponding NSE symbol
-        mapDict = self.__mapIciciToNseStock.mapIcici2Nse(cellDict['ICICI_SYMBOL'], 'EQ')
-        self.__logger.debug('ICICI_SYMBOL = %s <=> NSE_SYMBOL = %s', mapDict['ICICI_SYMBOL'], mapDict['NSE_SYMBOL'])
-        cellDict['NSE_SYMBOL'] = mapDict['NSE_SYMBOL']
+        status, cellDict['ICICI_SYMBOL'], cellDict['NSE_SYMBOL'] = self.__mapIciciToNseStock.mapNameToICICNSESymbol(cellDict['STOCK'], 'EQ')
+        self.__logger.debug('ICICI_SYMBOL = %s <=> NSE_SYMBOL = %s', cellDict['ICICI_SYMBOL'], cellDict['NSE_SYMBOL'])
         # Extract the strategy
         cellDict['STRATEGY'] = data[2].split(' - ')[0]
         cellDict['BUY_SELL'] = data[2].split(' - ')[1]
@@ -272,7 +271,8 @@ class iciciDirect():
 
     def strategiesToInvest(self, source):
         if source == 'iCLICK-2-GAIN':
-            strategiesToInvest = ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
+            strategiesToInvest = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
+            #strategiesToInvest = ['MARGIN']
         elif source == 'iCLICK-2-INVEST':
             strategiesToInvest = ['TOP PICKS', 'NANO NIVESH', 'QUANT DERIVATIVES PICK', 'MARGIN TRADING FUNDING (MTF)', 'STOCK TALES', 'RESULT UPDATE', 'IDIRECT INSTINCT', 'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 
                                 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
