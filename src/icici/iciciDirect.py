@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import time
+import datetime
 import configparser
 
 sys.path.append('./src/common')
@@ -87,25 +88,32 @@ class iciciDirect():
         return status
     
 
-    def __suggestInvPeriod(self, strategy):
+    def __suggestInvPeriod(self, strategy, iciciSymbol, recDate):
         invPeriod = ''
         if strategy == 'MARGIN':
-            invPeriod = '0 DAYS*'
+            invPeriod  = '0 DAYS*'
+        elif strategy == 'OPTIONS':
+            spliticiciSymbol = iciciSymbol.split('-')
+            expiryDate = spliticiciSymbol[1]+'-'+spliticiciSymbol[2]+'-'+spliticiciSymbol[3]
+            recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
+            expDate    = datetime.datetime.strptime(expiryDate, "%d-%b-%Y")
+            invPeriod  = (expDate - recDate).days
+            invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
         elif strategy == 'MOMENTUM PICK':
-            invPeriod = '14 DAYS*'
+            invPeriod  = '14 DAYS*'
         elif strategy == 'QUANT PICKS':
-            invPeriod = '3 MONTHS*'
+            invPeriod  = '3 MONTHS*'
         elif strategy == 'GLADIATOR STOCKS':
-            invPeriod = '3 MONTHS*'
+            invPeriod  = '3 MONTHS*'
         else:
-            invPeriod = '14 DAYS*'
+            invPeriod  = '14 DAYS*'
             self.__logger.error("Handle suggestion of investment period for this strategy %s", strategy)
         return invPeriod
 
     def prepareRecDict(self, rowDict):
-        mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
+        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
-        importantKeys = ['INV_PERIOD']
+        importantKeys = ['INV_PERIOD', 'MKT']
         priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
         otherkeys = ['REC_TIME', 'INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
         recDict = {}
@@ -136,12 +144,12 @@ class iciciDirect():
         cellDict['STOCK'] = re.sub(r'\s+$', '', data[0])
         # Remove () from the ICICI Direct stock code
         cellDict['ICICI_SYMBOL'] = re.sub(r'\(|\)|\s+', '', data[1])
-        # Find the corresponding NSE symbol
-        status, cellDict['ICICI_SYMBOL'], cellDict['NSE_SYMBOL'] = self.__mapIciciToNseStock.mapNameToICICNSESymbol(cellDict['STOCK'], 'EQ')
-        self.__logger.debug('ICICI_SYMBOL = %s <=> NSE_SYMBOL = %s', cellDict['ICICI_SYMBOL'], cellDict['NSE_SYMBOL'])
         # Extract the strategy
         cellDict['STRATEGY'] = data[2].split(' - ')[0]
         cellDict['BUY_SELL'] = data[2].split(' - ')[1]
+        # Find the corresponding NSE symbol
+        status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.__mapIciciToNseStock.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'], cellDict['ICICI_SYMBOL'])
+        self.__logger.debug('ICICI_SYMBOL = %s <=> MKT_SYMBOL = %s', cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'])
         self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
 
@@ -155,14 +163,13 @@ class iciciDirect():
 
         # Remove trailing space from the stock name
         cellDict['STOCK'] = re.sub(r'\s+$', '', data[0])
-        # Remove () from the ICICI Direct stock code
-        status, cellDict['ICICI_SYMBOL'], cellDict['NSE_SYMBOL'] = self.__mapIciciToNseStock.mapNameToICICNSESymbol(cellDict['STOCK'], 'EQ')
-
         # Extract the strategy
         recDetails = data[1].split(' - ')
         cellDict['STRATEGY'] = re.sub(r'^\W+', '', recDetails[0])
         cellDict['INV_PERIOD'] = recDetails[1]
         cellDict['BUY_SELL'] = recDetails[2]
+        status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.__mapIciciToNseStock.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'])
+
         self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
 
@@ -269,26 +276,53 @@ class iciciDirect():
         return resDict
     
 
-    def strategiesToInvest(self, source):
+    def getStrategiesToInvest(self, source, filter=None):
         if source == 'iCLICK-2-GAIN':
-            strategiesToInvest = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
-            #strategiesToInvest = ['MARGIN']
+            allStrategies = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS']
+            strategiesToInvest = allStrategies
         elif source == 'iCLICK-2-INVEST':
-            strategiesToInvest = ['TOP PICKS', 'NANO NIVESH', 'QUANT DERIVATIVES PICK', 'MARGIN TRADING FUNDING (MTF)', 'STOCK TALES', 'RESULT UPDATE', 'IDIRECT INSTINCT', 'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 
-                                'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
+            allStrategies = ['TOP PICKS', 'NANO NIVESH', 'QUANT DERIVATIVES PICK', 'MARGIN TRADING FUNDING (MTF)', 'STOCK TALES', 'RESULT UPDATE', 'IDIRECT INSTINCT', 'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 
+                             'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
+            strategiesToInvest = allStrategies
+        
+        if filter == 'ALL':
+            strategiesToInvest = allStrategies
+
         return strategiesToInvest
+
+    def strategiesToInvest(self, source, strategy, buySell):
+        status = False
+        strategiesToInvest = self.getStrategiesToInvest(source)
+        if strategy in strategiesToInvest:
+            status = True
+            if strategy == "OPTIONS" and buySell == 'SELL':
+                status = False
+        return status
     
 
-    def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols):
-        #strategiesToInvest = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
-        strategiesToInvest = self.strategiesToInvest('iCLICK-2-GAIN')
+    def __formatiCLICK_2_GAINTblExpandRowToDict(self, tblExpandRow):
+        status = False
+        invPeriod = ''
+
+        gridPullRight = tblExpandRow.find_elements_by_class_name("pull-right")
+        if len(gridPullRight) == 1:
+            gridBold = gridPullRight[0].find_element_by_class_name("bold")
+            if gridBold.text != '':
+                status = True
+                invPeriod = gridBold.text
+                invPeriod = re.sub(r'\s+$', '', invPeriod)
+                invPeriod = re.sub(r'\s+^', '', invPeriod).upper()
+        return status, invPeriod
+
+
+    def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols, foundInvPeriod, invPeriod):
         rowDict = None
         self.__logger.debug('==== Format Table Row To Dictionary ====')
         for i in range(9):
             self.__logger.debug('Row data to format. Cell %d \n%s', i, tblRowCols[i].text)
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatStockCell(tblRowCols[0].text)
-        if cell1Dict['STRATEGY'] in strategiesToInvest:
+        if self.strategiesToInvest('iCLICK-2-GAIN', cell1Dict['STRATEGY'], cell1Dict['BUY_SELL']):
             cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
             cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
             cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
@@ -298,21 +332,22 @@ class iciciDirect():
             cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
             cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
             rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
-            if 'INV_PERIOD' not in rowDict:
-                rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
+            if foundInvPeriod:
+                rowDict['INV_PERIOD'] = invPeriod
+            else:
+                rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'], cell1Dict['ICICI_SYMBOL'], cell3Dict['REC_DATE'])
             self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
 
 
     def __formatiCLICK_2_INVESTTblRowToDict(self, tblRowCols):
-        strategiesToInvest = self.strategiesToInvest('iCLICK-2-INVEST')
         rowDict = None
         self.__logger.debug('==== Format Table Row To Dictionary ====')
         for i in range(7):
             self.__logger.debug('Row data to format. Cell %d \n%s', i, tblRowCols[i].text)
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatInvStockCell(tblRowCols[0].text)
-        if cell1Dict['STRATEGY'] in strategiesToInvest:
+        if self.strategiesToInvest('iCLICK-2-INVEST', cell1Dict['STRATEGY'], cell1Dict['BUY_SELL']):
             cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
             cell3Dict = self.__formatInvRecommendationCell(tblRowCols[2].text)
             cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
@@ -374,12 +409,15 @@ class iciciDirect():
                             tblBody = tbl.find_element_by_tag_name("tbody")
                             tblRows = tblBody.find_elements_by_tag_name("tr")
                             tblRowsArrOfDict = []
-                            for tblRow in tblRows:
+                            for i in range(0, len(tblRows), 2):
+                                tblExpandRow = tblRows[i+1]
+                                foundInvPeriod, invPeriod = self.__formatiCLICK_2_GAINTblExpandRowToDict(tblExpandRow)
+                                tblRow = tblRows[i]
                                 tblRowCols = tblRow.find_elements_by_tag_name("td")
                                 # If we find a row with 10 entries
                                 if(len(tblRowCols) == 10):
                                     rowDict = {}
-                                    rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols)
+                                    rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols, foundInvPeriod, invPeriod)
                                     if rowDict != None:
                                         # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
                                         # i.e. it has been struck-through, it means that recommendation has been dicarded

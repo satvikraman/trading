@@ -51,7 +51,7 @@ class persistence:
             for item in vals[1:]:
                 query = query | (where(keyword) == item)
         elif '&&' in val:
-            vals = val.split('&')
+            vals = val.split('&&')
             query = (where(keyword) == vals[0])
             for item in vals[1:]:
                 query = query & (where(keyword) == item)
@@ -59,7 +59,6 @@ class persistence:
             query = (where(keyword) == val)
         
         query = (~(query)) if inverse else (query)
-            
         return query
 
 
@@ -67,7 +66,6 @@ class persistence:
         query = self.__query.noop()
         for queryParamVal in queryParamVals:
             query = query & self.__formSubQuery(queryParamVal[0], queryParamVal[1])
-
         return query
 
 
@@ -78,7 +76,7 @@ class persistence:
             self.__acquireLock()
             dictArr = self.__db.search(query)
             self.__releaseLock()
-            return dictArr
+        return dictArr
 
 
     def insertDb(self, dict, queryParamVals):

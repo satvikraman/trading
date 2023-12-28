@@ -21,7 +21,7 @@ from persistence import persistence
 flask = Flask(__name__)
 
 class app():
-    def __init__(self, configFile, db=None, dryRun=False):
+    def __init__(self, configFile, dbInv=None, dbIntraDay=None, dbFnO=None, dryRun=False):
         if(os.path.isfile(configFile)):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
@@ -49,10 +49,20 @@ class app():
             logging.getLogger('').addHandler(fileHandler)
 
             self.__lock = threading.Lock()
-            if db == None:
-                db = self.__config['DATABASE']['DB']
-            self.__backupDb(db)
-            self.__persistence = persistence(configFile, db)
+            if dbInv == None:
+                dbInv = self.__config['DATABASE']['DB_EQUITY']
+            self.__backupDb(dbInv)
+            self.__persistenceInv = persistence(configFile, dbInv)
+
+            if dbIntraDay == None:
+                dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
+            self.__backupDb(dbIntraDay)
+            self.__persistenceIntraDay = persistence(configFile, dbIntraDay)
+
+            if dbFnO == None:
+                dbFnO = self.__config['DATABASE']['DB_FNO']
+            self.__backupDb(dbFnO)
+            self.__persistenceFnO = persistence(configFile, dbFnO)
 
             res = dotenv.load_dotenv('.env', override=True)
             self.__amountPerOrder = int(os.environ.get("max_amount_per_order", '5000'))
@@ -73,22 +83,22 @@ class app():
             self.__cmp = {}
             self.__marketOpen = False
 
-            self.__core = [ {'NSE_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
-                            {'NSE_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
-                            {'NSE_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': 8}, 
-                            {'NSE_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY':127}, 
-                            {'NSE_SYMBOL': 'CDSL', 'SECURITY_ID': '21174', 'QTY': 33}, 
-                            {'NSE_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 90}, 
-                            {'NSE_SYMBOL': 'HDFCBANK', 'SECURITY_ID': '1333', 'QTY': 91}, 
-                            {'NSE_SYMBOL': 'HINDUNILVR', 'SECURITY_ID': '1394', 'QTY': 14}, 
-                            {'NSE_SYMBOL': 'INFY', 'SECURITY_ID': '1594', 'QTY': 18}, 
-                            {'NSE_SYMBOL': 'JIOFIN', 'SECURITY_ID': '18143', 'QTY': 12}, 
-                            {'NSE_SYMBOL': 'MARICO', 'SECURITY_ID': '4067', 'QTY': 126}, 
-                            {'NSE_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
-                            {'NSE_SYMBOL': 'RELIANCE', 'SECURITY_ID': '2885', 'QTY': 12}, 
-                            {'NSE_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
-                            {'NSE_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
-                            {'NSE_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
+            self.__core = [ {'MKT_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
+                            {'MKT_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
+                            {'MKT_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': 8}, 
+                            {'MKT_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY':127}, 
+                            {'MKT_SYMBOL': 'CDSL', 'SECURITY_ID': '21174', 'QTY': 33}, 
+                            {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 90}, 
+                            {'MKT_SYMBOL': 'HDFCBANK', 'SECURITY_ID': '1333', 'QTY': 91}, 
+                            {'MKT_SYMBOL': 'HINDUNILVR', 'SECURITY_ID': '1394', 'QTY': 14}, 
+                            {'MKT_SYMBOL': 'INFY', 'SECURITY_ID': '1594', 'QTY': 18}, 
+                            {'MKT_SYMBOL': 'JIOFIN', 'SECURITY_ID': '18143', 'QTY': 12}, 
+                            {'MKT_SYMBOL': 'MARICO', 'SECURITY_ID': '4067', 'QTY': 126}, 
+                            {'MKT_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
+                            {'MKT_SYMBOL': 'RELIANCE', 'SECURITY_ID': '2885', 'QTY': 12}, 
+                            {'MKT_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
+                            {'MKT_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
+                            {'MKT_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
 
 
     def __backupDb(self, db):
@@ -118,9 +128,8 @@ class app():
         # we don't need to repeatedly do this calculation. Hold - Core = Trade
         for holding in self.__holdings:
             for core in self.__core:
-                if holding['NSE_SYMBOL'] == core['NSE_SYMBOL']:
+                if holding['NSE_SYMBOL'] == core['MKT_SYMBOL']:
                     holding['HOLD_QTY'] = holding['HOLD_QTY'] - core['QTY']
-                    holding['IN_DB'] = False
 
         if not status:
             self.__logger.error("getHoldingsData function returned error")
@@ -136,11 +145,11 @@ class app():
             if dbDict['POS_QTY'] != 0 or dbDict['POS_HOLD_QTY'] != 0:
                 found = False
                 for dbHolding in dbHoldings:
-                    if dbDict['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
+                    if dbDict['MKT_SYMBOL'] == dbHolding['MKT_SYMBOL']:
                         dbHolding['HOLD_QTY'] += dbDict['POS_HOLD_QTY'] - dbDict['POS_QTY']
                         found = True
                 if not found:
-                    dbHolding = {'NSE_SYMBOL': dbDict['NSE_SYMBOL'], 'HOLD_QTY': dbDict['POS_HOLD_QTY'] - dbDict['POS_QTY'], 'IN_HOLD': False}
+                    dbHolding = {'MKT_SYMBOL': dbDict['MKT_SYMBOL'], 'MKT': dbDict['MKT'], 'HOLD_QTY': dbDict['POS_HOLD_QTY'] - dbDict['POS_QTY'], 'IN_HOLD': False}
                     dbHoldings.append(dbHolding)
 
         for holding in self.__holdings:
@@ -151,7 +160,7 @@ class app():
             if not dbHolding['IN_HOLD'] and dbHolding['HOLD_QTY'] > 0:
                 found = False
                 for holding in self.__holdings:
-                    if holding['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
+                    if (dbHolding['MKT'] == 'NSE' and holding['NSE_SECURITY_ID'] == dbHolding['MKT_SYMBOL']) or (dbHolding['MKT'] == 'BSE' and holding['BSE_SECURITY_ID'] == dbHolding['MKT_SYMBOL']):
                         if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
@@ -160,14 +169,14 @@ class app():
                                                     holding['NSE_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
-                    self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['NSE_SYMBOL'])
+                    self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['MKT_SYMBOL'])
 
         # Check if all stocks in holding that are not entirely in core also find a mention in Holding for the same quantity.
         for holding in self.__holdings:
             if not holding['IN_DB'] and holding['HOLD_QTY'] > 0:
                 found = False
                 for dbHolding in dbHoldings:
-                    if holding['NSE_SYMBOL'] == dbHolding['NSE_SYMBOL']:
+                    if (dbHolding['MKT'] == 'NSE' and holding['NSE_SECURITY_ID'] == dbHolding['MKT_SYMBOL']) or (dbHolding['MKT'] == 'BSE' and holding['BSE_SECURITY_ID'] == dbHolding['MKT_SYMBOL']):
                         if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
@@ -190,7 +199,7 @@ class app():
                 if self.__hasPendingOrders(dbDict):
                     status = False
                     self.__logger.critical("STOCK = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
-                                            dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
+                                            dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
         assert(status)
         return status
     
@@ -204,7 +213,7 @@ class app():
                     dbDict['HOLD_QTY'] += dbDict['POS_QTY']
                     dbDict['POS_QTY'] = 0
                     dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
-                    res = self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                    res = self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
     def startupCheck(self):
@@ -224,7 +233,7 @@ class app():
         for dbDict in dbDicts:
             expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
             if expDate <= self.__today.date():
-                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], 
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], dbDict['CMP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
                 
         perc = 1
@@ -232,18 +241,18 @@ class app():
         # Stocks very close to target
         for dbDict in dbDicts:
             if dbDict['CMP'] * 1.01 >= dbDict['TARGET']:
-                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], 
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], dbDict['CMP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
         self.__logger.info("Following stocks are trading %.1f%% away from their stop loss price", perc)
         # Stocks very close to stop-loss
         for dbDict in dbDicts:
             if dbDict['STOP_LOSS'] * 1.01 >= dbDict['CMP']:
-                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['NSE_SYMBOL'], dbDict['STRATEGY'], 
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], dbDict['CMP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
 
-    def __addNewRec(self, recDict, holdQty=0, posHoldStatus=None):
+    def __addNewRec(self, recDict, persistenceInst, holdQty=0, posHoldStatus=None):
         status = False
         
         recDict['CMP'] = float(recDict['CMP'])
@@ -265,15 +274,14 @@ class app():
         qty = qty * margin
 
         # Security ID of the stock 
-        securityId = self.__payTmMoney.findSecurityCode(recDict['NSE_SYMBOL'])
         recDict['POS_QTY'] = 0
         recDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
         recDict['HOLD_QTY'] = holdQty
         recDict['POS_HOLD_QTY'] = holdQty
         recDict['POS_HOLD_STATUS'] = 'OPEN' if posHoldStatus == None else posHoldStatus
-        recDict.update({'SECURITY_ID': securityId, 'QTY': qty, 'MAX_AMOUNT': maxAmount, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
+        recDict.update({'SECURITY_ID': recDict['SECURITY_ID'], 'QTY': qty, 'MAX_AMOUNT': maxAmount, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
 
-        res = self.__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+        res = persistenceInst.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
         if res > 0:
             self.__followOrders(recDict)
             status = True
@@ -283,7 +291,7 @@ class app():
         return status, recDict
     
 
-    def __updateRec(self, recDict, dbDict):
+    def __updateRec(self, recDict, dbDict, persistenceInst):
         # Copy values from the input dict to the DB dict and then update the DB
         keys = ['STOP_LOSS', 'TARGET', 'PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
         for key in keys:
@@ -310,7 +318,7 @@ class app():
             hasChanged = True
         #elif recDict[key] == 'OPEN' --> Don't update.
         
-        res = self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDictTime]])
+        res = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDictTime]])
         if res:
             status = True
             if hasChanged:
@@ -350,23 +358,30 @@ class app():
         if self.__squareOff and recDict['STRATEGY'] == 'MARGIN':
             return True
         
+        if recDict['STRATEGY'] == 'MARGIN':
+            persistenceInst = self.__persistenceIntraDay
+        elif recDict['STRATEGY'] == 'OPTIONS':
+            persistenceInst = self.__persistenceFnO
+        else:
+            persistenceInst = self.__persistenceInv
+
         self.__lock.acquire()
         today = self.__today.strftime("%d-%b-%Y").lower()
-        isInDb, dbDict = self.__persistence.isInDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+        isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
         # If rec not in DB, check without the time criteria once. Offline recommendations (which are all non-margin) don't have correct timestamps
         if not isInDb and recDict['STRATEGY'] != 'MARGIN':
-            isInDb, dbDict = self.__persistence.isInDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+            isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
         
         # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
         if recDict['REC_DATE'].lower() == today:
-            status, dbDict = self.__updateRec(recDict, dbDict) if isInDb else self.__addNewRec(recDict)
+            status, dbDict = self.__updateRec(recDict, dbDict, persistenceInst) if isInDb else self.__addNewRec(recDict, persistenceInst)
         # else if in holdings (- any holding in the core portfolio), 
         elif isInDb:
-            status, dbDict = self.__updateRec(recDict, dbDict)
+            status, dbDict = self.__updateRec(recDict, dbDict, persistenceInst)
         # else i.e. old recommendation i.e. not in DB --> if >= 90% investment period left then investment else send ACK anyways
         elif recDict['REC_STATUS'] == 'OPEN':
             if self.__isInvPeriodLeft(recDict):
-                status, dbDict = self.__addNewRec(recDict)
+                status, dbDict = self.__addNewRec(recDict, persistenceInst)
             else:
                 status = True
         else:
@@ -379,45 +394,56 @@ class app():
     def __getCMP(self, dbDicts=None):
         if dbDicts == None:
             self.__lock.acquire()
-            dbDicts = self.__persistence.getDb([['REC_STATUS', '!CLOSE']])
+            for instrument in ["EQUITY", "MARGIN", "FnO"]:
+                if instrument == "EQUITY":
+                    persistenceInst = self.__persistenceInv
+                    securityType = 'EQUITY'
+                elif instrument == "MARGIN":
+                    persistenceInst = self.__persistenceIntraDay
+                    securityType = 'EQUITY'
+                elif instrument == "FnO":
+                    persistenceInst = self.__persistenceFnO
+                    securityType = 'OPTION'
+                
+                dbDicts = persistenceInst.getDb([['REC_STATUS', '!CLOSE']])
+                for dbDict in dbDicts:
+                    if dbDict['MKT_SYMBOL'] not in self.__cmp:
+                        self.__cmp[dbDict['MKT_SYMBOL']] = {'LTP': -1, 'SECURITY_ID': dbDict['SECURITY_ID'], 'SECURITY_TYPE': securityType, 'MKT': dbDict['MKT']}
             self.__lock.release()
 
-        for dbDict in dbDicts:
-            if dbDict['NSE_SYMBOL'] not in self.__cmp:
-                self.__cmp[dbDict['NSE_SYMBOL']] = {'LTP': -1, 'SECURITY_ID': dbDict['SECURITY_ID']}
-
         for nseSymbol in self.__cmp:
-            status, ltp = self.__payTmMoney.getLastTradedPrice(self.__cmp[nseSymbol]['SECURITY_ID'])
+            status, ltp = self.__payTmMoney.getLastTradedPrice(self.__cmp[nseSymbol]['SECURITY_ID'], self.__cmp[nseSymbol]['SECURITY_TYPE'], 
+                                                               self.__cmp[nseSymbol]['MKT'])
             if status:
                 self.__cmp[nseSymbol]['LTP'] = ltp
             time.sleep(0.01)
 
 
     def __updateRecStatus(self, dbDict):
-        ltp = dbDict['CMP'] if dbDict['NSE_SYMBOL'] not in self.__cmp else self.__cmp[dbDict['NSE_SYMBOL']]['LTP']
+        ltp = dbDict['CMP'] if dbDict['MKT_SYMBOL'] not in self.__cmp else self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
         status = ltp > 0
         if status:
-            self.__logger.info("Stock %s LTP = %.2f", dbDict['NSE_SYMBOL'], ltp)
+            self.__logger.info("Stock %s LTP = %.2f", dbDict['MKT_SYMBOL'], ltp)
             dbDict['CMP'] = ltp
             dbDict = self.__checkLtpAndCancelOpenPendingOrders(ltp, dbDict)
             if dbDict['BUY_SELL'] == 'BUY':
                 if (ltp >= dbDict['TARGET']):
-                    self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['NSE_SYMBOL'], ltp, dbDict['TARGET'])
+                    self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['TARGET'])
                     dbDict['REC_STATUS'] = 'CLOSE'
                 elif self.__marketOpen and ltp * 1.01 <= dbDict['STOP_LOSS']:
-                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
+                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__marketOpen), 
                                     ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
                 # Act on SL only if visibility is 'hidden'. Also act on closing basis or if during trading hours the price has significantly fallen below SL
                 elif dbDict['VISIBLE'] == 'HIDDEN':
                     if not self.__marketOpen and ltp <= dbDict['STOP_LOSS']:
-                        self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['NSE_SYMBOL'], str(self.__marketOpen), 
+                        self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__marketOpen), 
                                         ltp, dbDict['STOP_LOSS'])
                         dbDict['REC_STATUS'] = 'CLOSE'
             else:
                 if ltp <= dbDict['TARGET'] or ltp >= dbDict['STOP_LOSS']:
                     dbDict['REC_STATUS'] = 'CLOSE'
-            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         return status, dbDict
 
 
@@ -445,9 +471,9 @@ class app():
                 # Remember we are talking about positions and not holdings so we need to only considers orders traded today.
                 # To reduce the field, for MARGIN it necessarily means recommendations given today, but for others it means any recommendations that were traded today
                 if dbDict['STRATEGY'] == 'MARGIN':
-                    sameStkDicts = self.__persistence.getDb([['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', 'MARGIN'], ['REC_DATE', dbDict['REC_DATE']]])
+                    sameStkDicts = self.__persistence.getDb([['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', 'MARGIN'], ['REC_DATE', dbDict['REC_DATE']]])
                 else:
-                    sameStkDicts = self.__persistence.getDb([['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', '!MARGIN']])
+                    sameStkDicts = self.__persistence.getDb([['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', '!MARGIN']])
 
                 totalStkPosQty = 0
                 openOrdersStateOpen = closeOrdersStateOpen = False
@@ -482,7 +508,7 @@ class app():
                 if totalStkPosQty == posQty:
                     matchPosition = True
                     for sameStkDict in sameStkDicts:
-                        self.__persistence.updateDb(sameStkDict, [['NSE_SYMBOL', sameStkDict['NSE_SYMBOL']], ['STRATEGY', sameStkDict['STRATEGY']], ['REC_DATE', sameStkDict['REC_DATE']], 
+                        self.__persistence.updateDb(sameStkDict, [['MKT_SYMBOL', sameStkDict['MKT_SYMBOL']], ['STRATEGY', sameStkDict['STRATEGY']], ['REC_DATE', sameStkDict['REC_DATE']], 
                                                     ['REC_TIME', sameStkDict['REC_TIME']]])
                 else:
                     if not openOrdersStateOpen and not closeOrdersStateOpen:
@@ -494,7 +520,7 @@ class app():
             else:
                 time.sleep(1)
         
-        dbDicts = self.__persistence.getDb([['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+        dbDicts = self.__persistence.getDb([['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         if len(dbDicts) > 0:
             retDbDict = dbDicts[0]
         else:
@@ -525,9 +551,9 @@ class app():
             posHoldStatus = 'OPEN'
 
         if posHoldStatus != dbDict['POS_HOLD_STATUS']:
-            self.__logger.debug("Changing position of stock %s from %s => %s", dbDict['NSE_SYMBOL'], dbDict['POS_HOLD_STATUS'], posHoldStatus)
+            self.__logger.debug("Changing position of stock %s from %s => %s", dbDict['MKT_SYMBOL'], dbDict['POS_HOLD_STATUS'], posHoldStatus)
             dbDict['POS_HOLD_STATUS'] = posHoldStatus
-            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
         return status, dbDict
 
@@ -543,7 +569,7 @@ class app():
                     timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
                     orderDict['ORDER_STATUS'] = 'CLOSE'
                     orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': orderStatus, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
-                    self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                    self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         return status, dbDict
 
 
@@ -580,13 +606,13 @@ class app():
         totalQty = dbDict['QTY']
         remQty = totalQty - posHoldQty
         if remQty < 0:
-            self.__logger.critical("Stock: %s remQty %d is < 0", dbDict['NSE_SYMBOL'], remQty)
+            self.__logger.critical("Stock: %s remQty %d is < 0", dbDict['MKT_SYMBOL'], remQty)
             return False, dbDict
         if remQty == 0:
-            self.__logger.error("POS_HOLD_STATUS of stock %s should have gone to POSITION state", dbDict['NSE_SYMBOL'])
+            self.__logger.error("POS_HOLD_STATUS of stock %s should have gone to POSITION state", dbDict['MKT_SYMBOL'])
             return False, dbDict
         if totalQty == 0:
-            self.__logger.critical("Stock: %s totalQty %d is < 0", dbDict['NSE_SYMBOL'], totalQty)
+            self.__logger.critical("Stock: %s totalQty %d is < 0", dbDict['MKT_SYMBOL'], totalQty)
             return False, dbDict
         
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
@@ -639,15 +665,15 @@ class app():
                 if limitPrice <= ltp * self.__createLtpDisFactor:
                     canOrder = True
             if not canOrder:
-                self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['NSE_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
+                self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
                 return False, dbDict
         
         trigger = 0
 
         # If the order fails -> status will be False. Retry the order
         self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, product=%s, orderType=%s, limit=%.2f", 
-                            dbDict['NSE_SYMBOL'], qty, dbDict['BUY_SELL'], product, orderType, limitPrice)
-        orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=qty, buySell=dbDict['BUY_SELL'], 
+                            dbDict['MKT_SYMBOL'], qty, dbDict['BUY_SELL'], product, orderType, limitPrice)
+        orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['MKT_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=qty, buySell=dbDict['BUY_SELL'], 
                                                                             product=product, orderType=orderType, limitPrice=limitPrice, triggerPrice=0)
 
         if orderStatus:
@@ -657,7 +683,7 @@ class app():
             orderDict = {'BUY_SELL': dbDict['BUY_SELL'], 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': qty, 'TRADED_QTY': 0, 
                         'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
             dbDict['OPEN_ORDERS'].append(orderDict)
-            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
             return True, dbDict
         else:
             return False, dbDict
@@ -672,37 +698,30 @@ class app():
 
         posHoldQty= dbDict['POS_HOLD_QTY']
         if posHoldQty == 0:
-            self.__logger.warning("Nothing to be closed for %s. product = %s posholdQty = %d", dbDict['NSE_SYMBOL'], product, posHoldQty)
+            self.__logger.warning("Nothing to be closed for %s. product = %s posholdQty = %d", dbDict['MKT_SYMBOL'], product, posHoldQty)
             return True, dbDict, ''
 
         orderNum = ''
         if status:
-            if dbDict['BUY_SELL'] == 'BUY':
-                openOp = 'BUY'
-                closeOp = 'SELL'
-            else:
-                openOp = 'SELL'
-                closeOp = 'BUY'
-
             buySell = 'BUY' if posHoldQty < 0 else 'SELL'
             orderType = 'MKT'
             limitPrice = 0
             trigger = 0
             closeQty = max(int(posHoldQty / 2) if partial else posHoldQty, 1)
 
-            self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], closeQty, buySell, product, orderType)
+            self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, product, orderType)
             
-            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['NSE_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=abs(closeQty), buySell=buySell, 
+            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['MKT_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=abs(closeQty), buySell=buySell, 
                                                                                product=product, orderType='MKT', limitPrice=0, triggerPrice=0)
             if not orderStatus:
-                self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['NSE_SYMBOL'], closeQty, buySell, 'INTRADAY', 'MKT')
+                self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, 'INTRADAY', 'MKT')
             status = orderStatus
             
             timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
             orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': closeQty, 'TRADED_QTY': 0, 
                          'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
             dbDict['CLOSE_ORDERS'].append(orderDict)
-            self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         else:
             self.__logger.critical("Unable to find order %s", dbDict['order_no'])
         
@@ -726,7 +745,7 @@ class app():
                     delOrder = True
             
             if delOrder:
-                self.__logger.info("Stock %s. Cancelling order %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
+                self.__logger.info("Stock %s. Cancelling order %s", dbDict['MKT_SYMBOL'], orderDict['ORDER_NO'])
                 _, dbDict = self.__cancelOrder(dbDict)
 
         return dbDict
@@ -748,7 +767,7 @@ class app():
             for dbDict in dbDicts:
                 for orderDict in dbDict['OPEN_ORDERS']:
                     if orderDict['ORDER_STATUS'] == 'OPEN':
-                        self.__logger.debug("Stock = %s has open order # = %s", dbDict['NSE_SYMBOL'], orderDict['ORDER_NO'])
+                        self.__logger.debug("Stock = %s has open order # = %s", dbDict['MKT_SYMBOL'], orderDict['ORDER_NO'])
                         status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
                         self.__logger.debug("Order # = %s Qty = %d Traded Qty = %d", orderDict['ORDER_NO'], qty, trdQty)
                         if status:
@@ -758,7 +777,7 @@ class app():
                         else:
                             self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
                     
-                self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         self.__logger.debug("PayTm API successful. Finished updating the order status")
 
 
@@ -784,7 +803,7 @@ class app():
                                 if closeOrderDict['ORDER_NO'] == orderNum and closeOrderDict['ORDER_STATUS'] != 'CLOSE':
                                     closeOrderDict['ORDER_STATUS'] = 'CLOSE'
                                     closeOrderDict['TRADED_QTY'] = trdQty
-                                    self.__persistence.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                                    self.__persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                         else:
                             break
                     else:

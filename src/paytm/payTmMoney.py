@@ -101,8 +101,8 @@ class payTmMoney:
         print(res)
 
 
-    def getLastTradedPrice(self, securityId, exchange='NSE'):
-        pref = [exchange, str(securityId),'EQUITY']
+    def getLastTradedPrice(self, securityId, securityType, exchange='NSE'):
+        pref = [exchange, str(securityId), securityType]
         ltp = None
         status = False
         retries = self.__retries
@@ -134,11 +134,11 @@ class payTmMoney:
                     for holding in res['data']['results']:
                         found = False
                         for resDict in resDictArr:
-                            if resDict['NSE_SYMBOL'] == holding['nse_symbol']:
+                            if resDict['NSE_SYMBOL'] == holding['nse_symbol'] or resDict['BSE_SYMBOL'] == holding['bse_symbol']:
                                 found = True
                                 resDict['HOLD_QTY'] += int(holding['quantity'])
                         if not found:
-                            resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'SECURITY_ID': holding['nse_security_id'], 'ISIN_CODE': holding['isin_code'], 'HOLD_QTY': int(holding['quantity'])}
+                            resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'NSE_SECURITY_ID': holding['nse_security_id'], 'BSE_SYMBOL': holding['bse_symbol'], 'BSE_SECURITY_ID': holding['bse_security_id'], 'HOLD_QTY': int(holding['quantity'])}
                             resDictArr.append(resDict)
                 else:
                     retries -= 1
