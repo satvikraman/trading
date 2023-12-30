@@ -1,4 +1,5 @@
 import logging
+import dotenv
 import os
 import datetime
 from dateutil.relativedelta import relativedelta
@@ -6,8 +7,10 @@ import re
 import shutil
 import sys
 import time
+import urllib.request
 import configparser
 import requests
+import zipfile
 
 sys.path.append('./src/common')
 from iciciDirect import iciciDirect
@@ -62,6 +65,19 @@ class app():
             self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
             self.__timeToRefreshTradeIeas = int(self.__config['APP']['TIMES_TO_REFRESH_TRADE_IDEAS'])
             
+            # Download the latest ICICI dataset once every day
+            dotenv.load_dotenv('.env', override=True)
+            icici_dataset_valid_until_date = os.environ.get('icici_dataset_valid_until_date', '')
+            today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
+            if(icici_dataset_valid_until_date.lower() != today):
+                iciciDatasetPath = "./dataset"
+                iciciDataset = iciciDatasetPath + "SecurityMaster-" + today + ".zip"
+                try:
+                    urllib.request.urlretrieve(self.__config['APP']['ICICI_DATESET'], iciciDataset)
+                    with zipfile.ZipFile(iciciDataset, 'r') as zip_ref:
+                        zip_ref.extractall(iciciDatasetPath)
+                except Exception as e:
+                    self.__logger.critical(e)
 
     def __backupDb(self, db):
         backupDb = db + '-APP-' + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S")
@@ -453,17 +469,17 @@ class app():
             otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
                         'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
             gainRecDicts = self.__iciciDirect.scrapeiClick2Gain()         
+            self.__updateLeverageRecStatus(gainRecDicts)
             self.__mergeNonLeverageRecsToDb(gainRecDicts, actionableKeys, otherKeys)
+
+            self.__closeLeverageRecsNotVisible(gainRecDicts)
             self.__updateMismatchedVisibilityNonLeverageRecs(invRecDicts, gainRecDicts)
 
-            self.__updateLeverageRecStatus(gainRecDicts)
-            self.__closeLeverageRecsNotVisible(gainRecDicts)
-
-            if marketCloseMinusDelta:
-                self.closeExpiredRecs('EQUITY', dryRun=False)
-                self.closeExpiredRecs('FnO', dryRun=False)
-
             time.sleep(1)
+
+        if marketCloseMinusDelta:
+            self.closeExpiredRecs('EQUITY', dryRun=False)
+            self.closeExpiredRecs('FnO', dryRun=False)
 
 
     def openIciciSession(self):

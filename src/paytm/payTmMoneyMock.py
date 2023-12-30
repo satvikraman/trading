@@ -32,33 +32,37 @@ class payTmMoneyMock:
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
 
-            dotenv.load_dotenv('./.env')
+            dotenv.load_dotenv('./.env', override=True)
             self.__api_key = os.environ.get('api_key', '')
             self.__api_secret = os.environ.get('api_secret', '')
             self.__request_token = os.environ.get('request_token', '')
             self.__state_key = os.environ.get('state_key', '')
-    
+            self.__closeOpenOrders = False
+            self.__autoCloseOpenOrders = True
+
+
     def setIncompleteOrders(self, enable, fraction):
         self.__incompleteOrders = enable
         self.__incompleteOrderFraction = fraction
 
-    def setCMP(self, nseSym, cmp):
+
+    def setAutoCloseOpenOrders(self, autoCloseOpenOrders, closeOpenOrders):
+        self.__autoCloseOpenOrders = autoCloseOpenOrders
+        self.__closeOpenOrders = closeOpenOrders
+
+
+    def setCMP(self, recDict, cmp):
         status = False
-        for dict in self.__stockDictArr:
-            if dict['NSE_SYMBOL'] == nseSym:
+        for dict in self.__cmpDictArr:
+            if dict['MKT_SYMBOL'] == recDict['MKT_SYMBOL']:
                 status = True
                 dict['CMP'] = cmp
         if not status:
-            for dict in self.__cmpDictArr:
-                if dict['NSE_SYMBOL'] == nseSym:
-                    status = True
-                    dict['CMP'] = cmp
-            if not status:
-                status = True
-                securityId = self.findSecurityCode(nseSym)
-                self.__cmpDictArr.append({'NSE_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'CMP': cmp}) 
+            status = True
+            self.__cmpDictArr.append({'MKT_SYMBOL': recDict['MKT_SYMBOL'], 'SECURITY_ID': recDict['SECURITY_ID'], 'CMP': cmp}) 
 
         return status, cmp
+
 
     def cheatAddStockDictArr(self, recDict):
         if recDict == None:
@@ -66,41 +70,23 @@ class payTmMoneyMock:
         else:
             removeDict = None
             for stockDict in self.__stockDictArr:
-                if stockDict['NSE_SYMBOL'] == recDict['NSE_SYMBOL'] and stockDict['STRATEGY'] == recDict['STRATEGY'] and stockDict['REC_DATE'] == recDict['REC_DATE']:
+                if stockDict['MKT_SYMBOL'] == recDict['MKT_SYMBOL'] and stockDict['STRATEGY'] == recDict['STRATEGY'] and stockDict['REC_DATE'] == recDict['REC_DATE']:
                     removeDict = stockDict
             if removeDict != None:
                 self.__stockDictArr.remove(removeDict)
             self.__stockDictArr.append(recDict)
 
-    def findSecurityCode(self, nseSym):
-        securityID = None
-        with(open(self.__config['PAYTM-MONEY']['SECURITYID_DATASET'], 'r', encoding="utf-8-sig")) as paytmcsv:
-            paytmReader = csv.DictReader(paytmcsv)
-            for paytmRow in paytmReader:
-                if (paytmRow['symbol'] != nseSym):
-                    continue
-                else:
-                     securityID = str(paytmRow['security_id'])
-                     break
-        if(securityID == None):
-            self.__logger.critical('Unable to find security ID for %s', nseSym)
-        
-        return securityID
         
     def payTmLogin(self):
         return True
 
-    def getLastTradedPrice(self, securityId, exchange='NSE'):
+
+    def getLastTradedPrice(self, securityId, securityType, exchange='NSE'):
         status = False
-        for dict in self.__stockDictArr:
+        for dict in self.__cmpDictArr:
             if dict['SECURITY_ID'] == securityId:
                 status = True
                 ltp = dict['CMP']
-        if not status:
-            for dict in self.__cmpDictArr:
-                if dict['SECURITY_ID'] == securityId:
-                    status = True
-                    ltp = dict['CMP']
 
         return status, ltp
  
@@ -108,17 +94,20 @@ class payTmMoneyMock:
         status = True
         resDictArr = []
         for dict in self.__stockDictArr:
-            resDict = {'NSE_SYMBOL': dict['NSE_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'HOLD_QTY': dict['ACT_HOLD_QTY']}
+            resDict = {'MKT_SYMBOL': dict['MKT_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'HOLD_QTY': dict['ACT_HOLD_QTY']}
             resDictArr.append(resDict)
         return status, resDictArr
 
-    def getSecurityPosition(self, securityId, product, exchange='NSE'):
+    def getSecurityPosition(self, securityId, product, openOrderType, exchange='NSE'):
         status = True
         pos = openQty = closeQty = 0
         for dict in self.__stockDictArr:
-            if dict['SECURITY_ID'] == securityId:
+            if dict['SECURITY_ID'] == securityId and dict['PRODUCT'] == product:
                 status = True
+                if self.__autoCloseOpenOrders:
+                    self.__closeOpenOrders = True
                 for orderDict in dict['OPEN_ORDERS']:
+                    self.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
                     timeStr = orderDict['CREATE_TIME']
                     if timeStr != '':
                         orderTime = datetime.datetime.strptime(timeStr, '%d-%b-%Y %H:%M')
@@ -126,12 +115,13 @@ class payTmMoneyMock:
                             openQty += orderDict['TRADED_QTY']
 
                 for orderDict in dict['CLOSE_ORDERS']:
+                    self.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
                     timeStr = orderDict['CREATE_TIME']
                     if timeStr != '':
                         orderTime = datetime.datetime.strptime(timeStr, '%d-%b-%Y %H:%M')
                         if orderTime.date() == datetime.datetime.today().date():
-                            closeQty += orderDict['TRADED_QTY']
-                
+                            closeQty += orderDict['TRADED_QTY']                
+                self.__closeOpenOrders = False
                 pos = openQty - closeQty
                 dict['POS_HOLD_QTY'] = pos
                 break
@@ -146,8 +136,18 @@ class payTmMoneyMock:
             for orderDict in dict['OPEN_ORDERS']:
                 if orderDict['ORDER_NO'] == orderNo:
                     qty = orderDict['ORDER_QTY']
-                    if self.__incompleteOrders:
-                        qtyToClose = int(qty/self.__incompleteOrderFraction)
+                    status = True
+                    if orderDict['ORDER_STATUS'] != 'CLOSE':
+                        qtyToClose = 0
+                        if self.__closeOpenOrders:
+                            _, cmp = self.getLastTradedPrice(orderDict['SECURITY_ID'], orderDict['SEGMENT'], exchange='NSE')
+                            if orderDict['BUY_SELL'] == 'BUY':
+                                if ((orderDict['ORDER_TYPE'] == 'LMT' and cmp <= orderDict['LIMIT']) or (orderDict['ORDER_TYPE'] == 'MKT')):
+                                    qtyToClose = int(qty/self.__incompleteOrderFraction)
+                            else:
+                                if ((orderDict['ORDER_TYPE'] == 'LMT' and cmp >= orderDict['LIMIT']) or (orderDict['ORDER_TYPE'] == 'MKT')):
+                                    qtyToClose = int(qty/self.__incompleteOrderFraction)                           
+
                         if orderDict['TRADED_QTY'] + qtyToClose >= qty:
                             trdQty = orderDict['TRADED_QTY'] = qty
                             orderDict['ORDER_STATUS'] = 'CLOSE'
@@ -155,18 +155,27 @@ class payTmMoneyMock:
                             trdQty = orderDict['TRADED_QTY'] + qtyToClose
                             orderDict['TRADED_QTY'] = trdQty
                     else:
-                        trdQty = orderDict['TRADED_QTY'] = qty
-                        orderDict['ORDER_STATUS'] = 'CLOSE'
-                    status = True
+                        trdQty = orderDict['TRADED_QTY']
                     break
             
             if not status:
                 for orderDict in dict['CLOSE_ORDERS']:
-                    if orderDict['ORDER_NO'] == orderNo:
+                    if orderDict['ORDER_NO'] == orderNo: 
                         qty = orderDict['ORDER_QTY']
-                        trdQty = orderDict['TRADED_QTY'] = qty
-                        orderDict['ORDER_STATUS'] = 'CLOSE'
-                        status = True
+                        if orderDict['ORDER_STATUS'] != 'CLOSE':
+                            qtyToClose = 0
+                            qtyToClose = int(qty/self.__incompleteOrderFraction)
+
+                            if orderDict['TRADED_QTY'] + qtyToClose >= qty:
+                                trdQty = orderDict['TRADED_QTY'] = qty
+                                orderDict['ORDER_STATUS'] = 'CLOSE'
+                            else:
+                                trdQty = orderDict['TRADED_QTY'] + qtyToClose
+                                orderDict['TRADED_QTY'] = trdQty
+
+                            status = True
+                        else:
+                            trdQty = orderDict['TRADED_QTY']
                         break
 
         return status, qty, trdQty
@@ -191,13 +200,14 @@ class payTmMoneyMock:
         return status, message, orderNum
 
 
-    def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice):
+    def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
         status = True
         prevOrdered = False
         timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
-        orderDict = {'ORDER_NO': '', 'ORDER_QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'CREATE_TIME': timeStr, 'CANCEL_ORDER_NUM': ''}
+        orderDict = {'ORDER_NO': '', 'ORDER_QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 
+                     'BUY_SELL': buySell, 'SECURITY_ID': securityId, 'SEGMENT': segment, 'TRIGGER': triggerPrice, 'CREATE_TIME': timeStr, 'CANCEL_ORDER_NUM': ''}
         for dict in self.__stockDictArr:
-            if dict['NSE_SYMBOL'] == nseSym and dict['PRODUCT'] == product:
+            if dict['MKT_SYMBOL'] == nseSym and dict['PRODUCT'] == product:
                 prevOrdered = True
                 orderNum = str(self.__orderNum)
                 orderDict['ORDER_NO'] = orderNum
@@ -214,8 +224,8 @@ class payTmMoneyMock:
             orderNum = str(self.__orderNum)
             orderDict['ORDER_NO'] = orderNum
             self.__orderNum += 1
-            stockDict = {'NSE_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'CMP': limitPrice, 'QTY': qty, 'POS_HOLD_QTY': 0, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'OPEN_BUY_SELL': buySell,
-                         'LIMIT': limitPrice, 'TRIGGER': triggerPrice, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []}
+            stockDict = {'MKT_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'QTY': qty, 'POS_HOLD_QTY': 0, 'PRODUCT': product, 'OPEN_BUY_SELL': buySell,
+                         'OPEN_ORDERS': [], 'CLOSE_ORDERS': []}
             stockDict['OPEN_ORDERS'].append(orderDict)
             self.__stockDictArr.append(stockDict)
 

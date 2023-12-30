@@ -24,21 +24,23 @@ if(os.path.isfile(configFile)):
     logging.getLogger('').addHandler(fileHandler)
 
 
-def setTodaysDate(idx):
-    recDicts = [{"STOCK": "COFORGE LIMITED", "ICICI_SYMBOL": "NIITEC", "NSE_SYMBOL": "COFORGE", "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "BUY",  "CMP": 5465.30,   "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00,    "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "TARGET": 5498.00,    "STOP_LOSS": 5434.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                {"STOCK": "ITC LIMITED",     "ICICI_SYMBOL": "ITC",    "NSE_SYMBOL": "ITC",     "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "SELL", "CMP": 436.85,    "LOW_REC_PRICE": 437.50,  "HIGH_REC_PRICE": 438.00,     "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "TARGET": 432.40,     "STOP_LOSS": 439.90,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                {"STOCK": "TITAN",           "ICICI_SYMBOL": "TITIND", "NSE_SYMBOL": "TITAN",   "STRATEGY": "GLADIATOR STOCKS", 'INV_PERIOD': '3 MONTHS',   "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                {"STOCK": "TITAN",           "ICICI_SYMBOL": "TITIND", "NSE_SYMBOL": "TITAN",   "STRATEGY": "MOMENTUM",         'INV_PERIOD': '14 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                {"STOCK": "TITAN",           "ICICI_SYMBOL": "TITIND", "NSE_SYMBOL": "TITAN",   "STRATEGY": "QUANT PICKS",      'INV_PERIOD': '30 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}
+def setTodaysDate(idx, offsetTime=0):
+    recDicts = [{"STOCK": "COFORGE LIMITED", "MKT": "NSE", "SECURITY_ID": '11543', "ICICI_SYMBOL": "NIITEC", "MKT_SYMBOL": "COFORGE", "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "BUY",  "CMP": 5460.3,   "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00,    "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "SOURCE": "iCLICK-2-GAIN", "TARGET": 5498.00,    "STOP_LOSS": 5434.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "ITC LIMITED",     "MKT": "NSE", "SECURITY_ID": '1660',  "ICICI_SYMBOL": "ITC",    "MKT_SYMBOL": "ITC",     "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "SELL", "CMP": 436.85,    "LOW_REC_PRICE": 437.50,  "HIGH_REC_PRICE": 438.00,     "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "SOURCE": "iCLICK-2-GAIN", "TARGET": 432.40,     "STOP_LOSS": 439.90,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "ICICI_SYMBOL": "TITIND", "MKT_SYMBOL": "TITAN",   "STRATEGY": "GLADIATOR STOCKS", 'INV_PERIOD': '3 MONTHS',   "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-INVEST", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "ICICI_SYMBOL": "TITIND", "MKT_SYMBOL": "TITAN",   "STRATEGY": "MOMENTUM",         'INV_PERIOD': '14 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-GAIN", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "ICICI_SYMBOL": "TITIND", "MKT_SYMBOL": "TITAN",   "STRATEGY": "QUANT PICKS",      'INV_PERIOD': '30 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-GAIN", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"}
                ]
     recDict = recDicts[idx]
     recDict['REC_DATE'] = datetime.datetime.today().strftime("%d-%b-%Y")
+    offsetTimeObj = datetime.timedelta(seconds=offsetTime) 
+    recDict['REC_TIME'] = (datetime.datetime.today() - offsetTimeObj).strftime("%H:%M")
     return recDict
 
 def getOfflineRec(recDict=None, addDbDictKeys=None, idx=0, offline=True, changeDate=True, daysOffset=0):
     if recDict == None:
-        recDict = [{"STOCK": "TITAN",       "NSE_SYMBOL": "TITAN",      "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                   {"STOCK": "Tata Motors", "NSE_SYMBOL": "TATAMOTORS", "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
+        recDict = [{"STOCK": "TITAN",       "MKT_SYMBOL": "TITAN",      "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
+                   {"STOCK": "Tata Motors", "MKT_SYMBOL": "TATAMOTORS", "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
 
     if addDbDictKeys == None:
         addDbDictKeys = [{'SECURITY_ID': '3506', 'EXP_DATE': '',
@@ -71,98 +73,89 @@ def getOfflineRec(recDict=None, addDbDictKeys=None, idx=0, offline=True, changeD
     return retDict, mockDict
 
 
-# Some orders have closed, some others remain open before the recommendation is closed
+# Base test. All open orders close. Square off happens at 3:00PM
 def test_Margin1():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
     trade.setAmountPerOrder(50000)    
-    trade._app__persistence.removeAll()
+    trade._app__persistenceIntraDay.removeAll()
     
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
+    
     # If new recommendations have come in (True)
-    # Place orders (1st - 25%)
+    # Place orders (1st - 33%)
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 45
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 2
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['HIGH_REC_PRICE']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Now when the 1st time runPeriodicChecks happens a new order should be placed. 
-    trade._app__runPeriodicChecks()
-    
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
-    assert dbDict[0]['REC_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_QTY'] == 2
-    assert dbDict[0]['POS_HOLD_QTY'] == 2
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 2
+    # When runPeriodicChecks() is run next, the status of the orders will change. If the previous open order is completed
+    # new orders to buy the remainder quantity will be placed
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 14
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_QTY'] == 14
+    assert dbDict[0]['POS_HOLD_QTY'] == 14
     assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 3
-    limitPrice = (dbDict[0]['HIGH_REC_PRICE'] + dbDict[0]['LOW_REC_PRICE'])  / 2
-    limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
-    assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == limitPrice
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'OPEN'
+    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 31
+    assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDict['HIGH_REC_PRICE']
     assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Now when the 2nd time runPeriodicChecks happens a new order should be placed. 
-    # However it won't complete because setIncompleteOrders will be set True
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
-    assert dbDict[0]['REC_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_QTY'] == 5
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 3
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OPEN_ORDERS'][2]['PRODUCT'] == 'INTRADAY'
-    assert dbDict[0]['OPEN_ORDERS'][2]['ORDER_TYPE'] == 'LMT'
-    assert dbDict[0]['OPEN_ORDERS'][2]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][2]['QTY'] == 5
-    assert dbDict[0]['OPEN_ORDERS'][2]['LIMIT'] == recDict['LOW_REC_PRICE']
-    assert dbDict[0]['OPEN_ORDERS'][2]['TRADED_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][2]['ORDER_STATUS'] == 'OPEN'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 3
+    # Even though open buy orders exist, since the cmp > limit price for the 2nd order, the buy order will remain open
+    trade.runPeriodicChecks()
+    assert dbDict[0]['POS_QTY'] == 14
+    assert dbDict[0]['POS_HOLD_QTY'] == 14
+    assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    trade._app__payTmMoney.setIncompleteOrders(True, 3)
+    # Now cmp <= limit for the open buy order. The 2nd buy order will complete
+    trade._app__payTmMoney.setCMP(recDict, recDict['LOW_REC_PRICE'])
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    assert dbDict[0]['REC_STATUS'] == 'OPEN'
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
+    assert dbDict[0]['POS_QTY'] == 45
+    assert dbDict[0]['POS_HOLD_QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 31
+    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
+    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Its 3:00PM and the 2nd order wouldn't have completed, a closing order should be placed
+    # Its 3:00PM. Open positions will be squared off    
     trade.setMarketTimer(True, True)
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OPEN_ORDERS'][2]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OPEN_ORDERS'][2]['QTY'] == 5
-    assert dbDict[0]['OPEN_ORDERS'][2]['TRADED_QTY'] == 1
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 6
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 6
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 3
+    assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
     # After that ICICI closes the recommendation
@@ -170,124 +163,87 @@ def test_Margin1():
     recDict['UPDATE_ACTION_1'] = 'Book Full Profit'
     trade.handleRec(recDict)
 
-    # No action should be taken
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    # But since the recommendation has already been auto-closed, no action will be taken
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert len(dbDict[0]['OPEN_ORDERS']) == 3
+    assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
-    trade._app__persistence.removeAll()
+    trade._app__persistenceIntraDay.removeAll()
 
 
-# The recommendation reaches the position state before the order is closed
+# Late addition of Margin stock. 
 def test_Margin2():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)   
-    trade.setAmountPerOrder('50000')    
-    trade._app__persistence.removeAll()
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade.setAmountPerOrder(50000)    
+    trade._app__persistenceIntraDay.removeAll()
 
     trade.getHoldingsData()
-    recDict = setTodaysDate(0)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    # Late addition of Margin stock. Only 1 order to buy and that should be at HIGH_REC_PRICE
+    recDict = setTodaysDate(0, offsetTime=180)
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
 
     # If new recommendations have come in (True) # Place orders (1st - 25%)
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 45
+    assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 2
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 45
     assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Now when periodic checks are run, more orders may be placed (50%)
-    trade._app__runPeriodicChecks()
-
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    # Now when periodic checks are run, open orders remain open since the CMP > limit price
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_QTY'] == 2
-    assert dbDict[0]['POS_HOLD_QTY'] == 2
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 2
-    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
-    assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 3
-    limitPrice = (dbDict[0]['HIGH_REC_PRICE'] + dbDict[0]['LOW_REC_PRICE'])  / 2
-    limitPrice = round(int(limitPrice * 100) / 500, 2) * 5
-    assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == limitPrice
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'OPEN'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert dbDict[0]['POS_QTY'] == 0
+    assert dbDict[0]['POS_HOLD_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # However, the last order won't complete immediately because the mock has been configured to complete the order in 2 iterations
+    # Let's say the price now falls below
+    trade._app__payTmMoney.setCMP(recDict, recDict['LOW_REC_PRICE'])
+    # However, the last order won't complete immediately because the mock is being configured to complete the order in 2 iterations
     trade._app__payTmMoney.setIncompleteOrders(True, 2)
     
-    # When the next runPeriodicChecks is done, if the 2nd order is complete (False)
-    # additional orders (3rd - 100%) won't be placed where possible. 
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    # When the next runPeriodicChecks is done, the 1st order will be partially completed and after a few iterations within
+    # __distributePosAmongSameStockRecs gets closed
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_QTY'] == 3
-    assert dbDict[0]['POS_HOLD_QTY'] == 3
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 1
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'OPEN'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
+    assert dbDict[0]['POS_QTY'] == 45
+    assert dbDict[0]['POS_HOLD_QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # Turn off incomplete orders
     trade._app__payTmMoney.setIncompleteOrders(False, 1)
 
-    # When the next runPeriodicChecks is done, the 2nd order will completed (False) 
-    # and additional orders 3rd and final order will be placed
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
-    assert dbDict[0]['REC_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_QTY'] == 5
-    assert dbDict[0]['POS_HOLD_QTY'] == 5
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 3
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['OPEN_ORDERS'][2]['PRODUCT'] == 'INTRADAY'
-    assert dbDict[0]['OPEN_ORDERS'][2]['ORDER_TYPE'] == 'LMT'
-    assert dbDict[0]['OPEN_ORDERS'][2]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][2]['QTY'] == 5
-    assert dbDict[0]['OPEN_ORDERS'][2]['LIMIT'] == recDict['LOW_REC_PRICE']
-    assert dbDict[0]['OPEN_ORDERS'][2]['TRADED_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][2]['ORDER_STATUS'] == 'OPEN'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 3
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 0
-
-    # When the next runPeriodicChecks is done, the 3rd order is completed (True) 
-    # and POS_HOLD_STATUS should reach POSITION state
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
-    assert dbDict[0]['REC_STATUS'] == 'OPEN'
-    assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
-    assert dbDict[0]['POS_QTY'] == 10
-    assert dbDict[0]['POS_HOLD_QTY'] == 10
-    assert dbDict[0]['OPEN_ORDERS'][2]['TRADED_QTY'] == 5
-    assert dbDict[0]['OPEN_ORDERS'][2]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 3
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 0
-
     # No new orders will be placed, even if runPeriodicChecks is called because we have reached POSITION state
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
-    assert len(dbDict[0]['OPEN_ORDERS']) == 3
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # Close the recommendation
@@ -295,8 +251,8 @@ def test_Margin2():
     recDict['UPDATE_ACTION_1'] = 'Book Full Profit'
     trade.handleRec(recDict)
 
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
@@ -304,54 +260,60 @@ def test_Margin2():
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 10
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 10
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 3
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
+    # A new recommendation comes in, check that the number of open recommendations in the system is 1
     recDict = setTodaysDate(1)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['REC_STATUS', 'OPEN']])
+    dbDict = trade._app__persistenceIntraDay.getDb([['REC_STATUS', 'OPEN']])
     assert len(dbDict) == 1
 
 
-# Even before an order is completed the recommendation is closed
-def test_Margin3():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
-    trade.setAmountPerOrder(25000)    
-    trade._app__persistence.removeAll()
+# Even before an order is partially completed the recommendation is closed
+def test_Margin3a():
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade.setAmountPerOrder(50000)    
+    trade._app__persistenceIntraDay.removeAll()
     
     trade.getHoldingsData()
 
     recDict = setTodaysDate(0)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
 
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 45
+    assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 1
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == dbDict[0]['HIGH_REC_PRICE']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Close the recommendation even before the 1st order comples 
+    # Close the recommendation even before the 1st order completes 
     recDict['REC_STATUS'] = 'CLOSE'
     recDict['UPDATE_ACTION_1'] = 'Book Full Profit'
+    
+    # Turn off autoCloseOpenOrders
+    trade._app__payTmMoney.setAutoCloseOpenOrders(False, False)
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
@@ -362,8 +324,8 @@ def test_Margin3():
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # When the next periodic check is done, nothing happens
-    trade._app__runPeriodicChecks()
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
@@ -371,114 +333,182 @@ def test_Margin3():
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Old recommendation. Hence wont be inserted in the DB
-    recDict = setTodaysDate(1)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
-    dbDict = trade._app__persistence.getDb([['REC_STATUS', 'OPEN']])
-    assert len(dbDict) == 0
 
-
-# Test that the recommendation closes by itself if it reached TGT1 in a buy order
-def test_Margin4a():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
-    trade.setAmountPerOrder(25000)    
-    trade._app__persistence.removeAll()
+# Even before an order is partially completed the recommendation is closed
+def test_Margin3b():
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade.setAmountPerOrder(50000)    
+    trade._app__persistenceIntraDay.removeAll()
     
     trade.getHoldingsData()
+
     recDict = setTodaysDate(0)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
+
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 45
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 1
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == dbDict[0]['HIGH_REC_PRICE']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Set the CMP of the stock such that it hits TGT1
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['TARGET'])
-
-    # When the runPeriodicChecks runs next it will automatically close the recommendation and the position
-    trade._app__runPeriodicChecks()
+    # Close the recommendation even before the 1st order completes 
+    recDict['REC_STATUS'] = 'CLOSE'
+    recDict['UPDATE_ACTION_1'] = 'Book Full Profit'
     
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    # Turn on incomplete orders. Set to 2 steps
+    trade._app__payTmMoney.setIncompleteOrders(True, 2)
+    # Turn off autoCloseOpenOrders but set closeOpenOrders to True so that orders are closed partially (because setIncompleteOrders is True)
+    trade._app__payTmMoney.setAutoCloseOpenOrders(False, True)
+    trade.handleRec(recDict)
+
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 1
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 7
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
+
+    # When the next periodic check is done, nothing happens
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    assert dbDict[0]['REC_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_QTY'] == 0
+    assert dbDict[0]['POS_HOLD_QTY'] == 0
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
+    assert len(dbDict[0]['CLOSE_ORDERS']) == 1
+
+
+# Test that the recommendation closes by itself if it reached TGT1 in a buy order
+def test_Margin4a():
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade.setAmountPerOrder(50000)    
+    trade._app__persistenceIntraDay.removeAll()
+    
+    trade.getHoldingsData()
+    recDict = setTodaysDate(0)
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
+    trade.setMarketTimer(False, True)
+    trade.handleRec(recDict)
+
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    assert dbDict[0]['REC_STATUS'] == 'OPEN'
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 45
+    assert dbDict[0]['POS_QTY'] == 0
+    assert dbDict[0]['POS_HOLD_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
+    assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
+    assert len(dbDict[0]['CLOSE_ORDERS']) == 0
+
+    # When the runPeriodicChecks runs the 1st open order will be completed and a 2nd order for the remaining quantity will be placed
+    trade.runPeriodicChecks()
+
+    # However the prices shoots up and CMP of the stock hits TGT1
+    trade._app__payTmMoney.setCMP(recDict, recDict['TARGET'])
+
+    # When the runPeriodicChecks runs next it will automatically close the recommendation and the position. The 2nd open order would 
+    # not have been able to execute at all
+    trade.runPeriodicChecks()
+    
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    assert dbDict[0]['REC_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_QTY'] == 0
+    assert dbDict[0]['POS_HOLD_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 14
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
+
+    assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
+    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
+    assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
+    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 31
+    assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDict['HIGH_REC_PRICE']
+    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
+    
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 14
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 14
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 1
+    assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
 
 # Test that the recommendation closes by itself if it reached STOP_LOSS in a buy order
 def test_Margin4b():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
-    trade.setAmountPerOrder(25000)    
-    trade._app__persistence.removeAll()
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade.setAmountPerOrder(50000)    
+    trade._app__persistenceIntraDay.removeAll()
     
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 45    
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 1
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == dbDict[0]['HIGH_REC_PRICE']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Set the CMP of the stock such that it hits TGT1
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['STOP_LOSS'])
+    # Set the CMP of the stock such that it hits stop loss
+    trade._app__payTmMoney.setCMP(recDict, recDict['STOP_LOSS'])
 
     # When the runPeriodicChecks runs next it will automatically close the recommendation and the position
-    trade._app__runPeriodicChecks()
+    trade.runPeriodicChecks()
     
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 1
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 14
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 14
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 14
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -486,104 +516,95 @@ def test_Margin4b():
 
 # Test that the recommendation closes by itself if it reaches TGT1 in a SELL order
 def test_Margin5a():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
-    trade.setAmountPerOrder(25000)    
-    trade._app__persistence.removeAll()
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade.setAmountPerOrder(50000)    
+    trade._app__persistenceIntraDay.removeAll()
     
     trade.getHoldingsData()
     recDict = setTodaysDate(1)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 570
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 17
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == dbDict[0]['LOW_REC_PRICE']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 188
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # Set the CMP of the stock such that it hits TGT1
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['TARGET'])
+    # Set the CMP of the stock such that it hits TGT1 (assume it zooms there) i.e. the open order didn't even get a chance to execute. 
+    trade._app__payTmMoney.setCMP(recDict, recDict['TARGET'])
 
     # When the runPeriodicChecks runs next it will automatically close the recommendation and the position
-    trade._app__runPeriodicChecks()
+    trade.runPeriodicChecks()
     
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 17
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 1
-    assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 17
-    assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 17
-    assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 1
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 1
+    assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-
+# Test that the recommendation closes by itself if it reaches stop loss in a SELL order
 def test_Margin5b():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
-    trade.setAmountPerOrder(25000)    
-    trade._app__persistence.removeAll()
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade.setAmountPerOrder(50000)    
+    trade._app__persistenceIntraDay.removeAll()
     
     trade.getHoldingsData()
     recDict = setTodaysDate(1)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+    assert dbDict[0]['QTY'] == 570
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 17
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == dbDict[0]['LOW_REC_PRICE']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 188
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # Set the CMP of the stock such that it hits TGT1
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['STOP_LOSS'])
-
+    trade._app__payTmMoney.setCMP(recDict, recDict['STOP_LOSS'])
     # When the runPeriodicChecks runs next it will automatically close the recommendation and the position
-    trade._app__runPeriodicChecks()
+    trade.runPeriodicChecks()
     
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 17
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 188
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 1
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 1
+
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 17
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 188
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 17
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 188
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -604,16 +625,16 @@ def test_NonMargin1():
     # Get holdings data after cheating and adding stock to PayTmMock
     trade.getHoldingsData()
 
-    dbDict = trade._app__persistence.insertDb(recDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     recDict['REC_TIME'] = '10:07'
 
     # When runPeriodicCheck runs, more orders should be bought if possible
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['LOW_REC_PRICE'] + 1)
+    trade._app__payTmMoney.setCMP(recDict, recDict['LOW_REC_PRICE'] + 1)
     # Run periodic check. Remaining 2 stocks should be bought
     trade.setMarketTimer(False, True)
-    trade._app__runPeriodicChecks()
+    trade.runPeriodicChecks()
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_QTY'] == 0
@@ -631,7 +652,7 @@ def test_NonMargin1():
 
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_QTY'] == -1
@@ -652,7 +673,7 @@ def test_NonMargin1():
     # If the same partial close recommendation came in again --> No action should be taken
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_QTY'] == -1
@@ -676,7 +697,7 @@ def test_NonMargin1():
 
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == -2
@@ -714,21 +735,21 @@ def test_NonMargin2():
     trade._app__persistence.removeAll()
     trade.getHoldingsData()
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert len(dbDict) == 0
 
     # Old 'OPEN' rec (but with 90% life left) --> Not in DB --> Add to DB so that position can be invested in 
     # and later can be closed based on SL or TARGET because ICICI Direct may not update us when those limits are hit
     recDict, mockDict = getOfflineRec(offline=False, changeDate=True, daysOffset=-1)
-    trade._app__payTmMoney.setCMP(recDict['NSE_SYMBOL'], recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'OPEN'
     trade._app__persistence.removeAll()
     trade.setMarketTimer(False, True)
     trade.getHoldingsData()
 
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
@@ -745,10 +766,10 @@ def test_NonMargin2():
     trade._app__payTmMoney.cheatAddStockDictArr(None)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict)
     trade._app__persistence.removeAll()
-    trade._app__persistence.insertDb(mockDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    trade._app__persistence.insertDb(mockDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     trade.getHoldingsData()
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
@@ -766,7 +787,7 @@ def test_NonMargin2():
     trade._app__persistence.removeAll()
     trade.getHoldingsData()
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
@@ -781,11 +802,11 @@ def test_NonMargin2():
     recDict, mockDict = getOfflineRec(idx=1, offline=True, changeDate=True)
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'OPEN'
     trade._app__persistence.removeAll()
-    trade._app__persistence.insertDb(mockDict, [['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    trade._app__persistence.insertDb(mockDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     trade.getHoldingsData()
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'PARTIAL_CLOSE'
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict['NSE_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
@@ -801,8 +822,8 @@ def test_NonMargin3():
     trade = app('./payTmMoney.ini', './test/testTrade.json', True)
     trade.setAmountPerOrder(50000)    
 
-    recDict = [{"STOCK": "State Bank of India", "ICICI_SYMBOL": "STABAN", "NSE_SYMBOL": "SBIN", "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-               {"STOCK": "State Bank of India", "ICICI_SYMBOL": "STABAN", "NSE_SYMBOL": "SBIN", "STRATEGY": "MOMENTUM PICK", "INV_PERIOD": "14 DAYS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
+    recDict = [{"STOCK": "State Bank of India", "ICICI_SYMBOL": "STABAN", "MKT_SYMBOL": "SBIN", "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
+               {"STOCK": "State Bank of India", "ICICI_SYMBOL": "STABAN", "MKT_SYMBOL": "SBIN", "STRATEGY": "MOMENTUM PICK", "INV_PERIOD": "14 DAYS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
     addDbDictKeys = [{'SECURITY_ID': '3045', 'EXP_DATE': '',
                     'QTY': 35, 'POS_QTY': 0, 'ACT_HOLD_QTY': 35, 'HOLD_QTY': 35, "POS_HOLD_QTY": 35, "POS_HOLD_STATUS": "POSITION", "MAX_AMOUNT": 3750.0, 
                     "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 775, "TRIGGER": 0, "QTY": 35, "TRADED_QTY": 35, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
@@ -816,16 +837,16 @@ def test_NonMargin3():
     trade._app__persistence.removeAll()
     recDict1, mockDict1 = getOfflineRec(recDict, addDbDictKeys, idx=0, offline=True, changeDate=False)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict1)
-    trade._app__persistence.insertDb(mockDict1, [['NSE_SYMBOL', recDict1['NSE_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
+    trade._app__persistence.insertDb(mockDict1, [['MKT_SYMBOL', recDict1['MKT_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
     trade.getHoldingsData()
 
     # The momentum stock recommendation comes in next
     recDict2, mockDict2 = getOfflineRec(recDict, addDbDictKeys, idx=1, offline=False, changeDate=True)
-    trade._app__payTmMoney.setCMP(recDict2['NSE_SYMBOL'], recDict2['HIGH_REC_PRICE'])
+    trade._app__payTmMoney.setCMP(recDict2, recDict2['HIGH_REC_PRICE'])
     trade.setMarketTimer(False, True)
 
     res = trade.handleRec(recDict2)
-    dbDict = trade._app__persistence.getDb([['NSE_SYMBOL', recDict2['NSE_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
+    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict2['MKT_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
@@ -850,8 +871,8 @@ def test_NonMargin4():
     recDict2, mockDict2 = getOfflineRec(idx=1, offline=True, changeDate=True, daysOffset=0)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict1)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict2)
-    trade._app__persistence.insertDb(mockDict1, [['NSE_SYMBOL', recDict1['NSE_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
-    trade._app__persistence.insertDb(mockDict2, [['NSE_SYMBOL', recDict2['NSE_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
+    trade._app__persistence.insertDb(mockDict1, [['MKT_SYMBOL', recDict1['MKT_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
+    trade._app__persistence.insertDb(mockDict2, [['MKT_SYMBOL', recDict2['MKT_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
     trade.getHoldingsData()
 
     # recDict1 should have expired and closed (It was given an offset of -365 days)
@@ -859,4 +880,4 @@ def test_NonMargin4():
     # The only stock whose POS_HOLD_STATUS != 'CLOSE' should be recDict2
     dbDicts = trade._app__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
     assert len(dbDicts) == 1
-    assert dbDicts[0]['NSE_SYMBOL'] == recDict2['NSE_SYMBOL']
+    assert dbDicts[0]['MKT_SYMBOL'] == recDict2['MKT_SYMBOL']

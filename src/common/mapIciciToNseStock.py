@@ -76,6 +76,7 @@ class mapIciciToNseStock():
                         rowDict['MKT'] = 'NSE'
                         rowDict['MKT_SYMBOL'] = shortName + '-' + expiryDate + '-' + strikePrice + '-' + optionType
                         rowDict['ICICI_SYMBOL'] = rowDict['MKT_SYMBOL']
+                        rowDict["LOT_SIZE"] = iciciRow["LotSize"]
                         break
             self.__logger.debug('Generated dictionary %s', rowDict)            
         elif strategy == "FUTURE":

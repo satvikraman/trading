@@ -31,27 +31,13 @@ class payTmMoney:
             self.__logger.setLevel(level)
             self.__retries = int(self.__config['PAYTM-MONEY']['NUM_RETRIES'])
 
-            dotenv.load_dotenv('./.env')
+            dotenv.load_dotenv('./.env', override=True)
             self.__api_key = os.environ.get('api_key', '')
             self.__api_secret = os.environ.get('api_secret', '')
             self.__request_token = os.environ.get('request_token', '')
             self.__state_key = os.environ.get('state_key', '')
             self.__orderBook = None
     
-    def findSecurityCode(self, nseSym):
-        securityID = None
-        with(open(self.__config['PAYTM-MONEY']['SECURITYID_DATASET'], 'r', encoding="utf-8-sig")) as paytmcsv:
-            paytmReader = csv.DictReader(paytmcsv)
-            for paytmRow in paytmReader:
-                if (paytmRow['symbol'] != nseSym):
-                    continue
-                else:
-                     securityID = str(paytmRow['security_id'])
-                     break
-        if(securityID == None):
-            self.__logger.critical('Unable to find security ID for %s', nseSym)
-        
-        return securityID
         
     def payTmLogin(self):
         self.__pm = PMClient(api_key=self.__api_key, api_secret=self.__api_secret)
@@ -229,8 +215,8 @@ class payTmMoney:
                 while not status and retries >= 0:
                     try:
                         res = self.__pm.cancel_order('N', resOrder['txn_type'], resOrder['exchange'], resOrder['segment'], resOrder['product'], 
-                                            resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], resOrder['price'], 
-                                            resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'], off_mkt_flag=offline)
+                                                     resOrder['security_id'], resOrder['quantity'], resOrder['validity'], resOrder['order_type'], resOrder['price'], 
+                                                     resOrder['mkt_type'], resOrder['order_no'], resOrder['serial_no'], resOrder['group_id'], off_mkt_flag=offline)
                         if res['status'] == 'success':
                             status = True
                             orderNum = res['data'][0]['order_no']
@@ -247,8 +233,14 @@ class payTmMoney:
         return status, message, orderNum
 
 
-    def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, triggerPrice, offline=False):
-        product = 'I' if product == 'INTRADAY' else 'C'
+    def placeOrder(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
+        if segment == 'EQUITY':
+            product = 'I' if product == 'INTRADAY' else 'C'
+            segmentCode = 'E'
+        else:
+            product = 'M'
+            segmentCode = 'D'
+
         txnType = 'B' if buySell == 'BUY' else 'S'
 
         if(orderType == 'MKT'):
@@ -257,17 +249,17 @@ class payTmMoney:
             price = limitPrice
         else:
             self.__logger.critical('Invalid order type %s', orderType)
-
+        
         retries = self.__retries
         status = False
         message = orderNum = None
         while not status and retries >= 0:
             try:
-                self.__logger.info('Placing order: nseSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', nseSym, securityId, 
+                self.__logger.info('Placing order: mktSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', mktSym, securityId, 
                                     qty, limitPrice, txnType, product, orderType)
                 res = self.__pm.place_order(txn_type=txnType,
-                                            exchange="NSE",
-                                            segment="E",
+                                            exchange=exchange,
+                                            segment=segmentCode,
                                             product=product, 
                                             security_id=securityId,
                                             quantity=qty,

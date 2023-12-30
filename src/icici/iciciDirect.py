@@ -113,14 +113,31 @@ class iciciDirect():
     def prepareRecDict(self, rowDict):
         mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
+        mandatoryDervKeys = ['LOT_SIZE']
+        mandatoryLevKeys = ['REC_TIME']
+        
         importantKeys = ['INV_PERIOD', 'MKT']
         priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
-        otherkeys = ['REC_TIME', 'INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        
+        otherLevkeys = ['INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        otherNonLevkeys = otherLevkeys + ['REC_TIME']
+        
         recDict = {}
-        for key in mandatoryKeys + mandatoryPriceKeys + importantKeys + priceKeys + otherkeys:
+
+        if rowDict['STRATEGY'] == 'OPTIONS':
+            keysToSend = mandatoryKeys + mandatoryPriceKeys + mandatoryDervKeys + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
+        elif rowDict['STRATEGY'] == 'MARGIN':
+            keysToSend = mandatoryKeys + mandatoryPriceKeys + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
+        else:
+            keysToSend = mandatoryKeys + mandatoryPriceKeys + importantKeys + priceKeys + otherNonLevkeys
+
+        for key in keysToSend:
             if key in rowDict:
                 recDict[key] = rowDict[key]
-            elif key in mandatoryKeys or key in mandatoryPriceKeys:
+            elif key in mandatoryKeys + mandatoryPriceKeys + mandatoryDervKeys:
+                self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
+                return {}
+            elif rowDict['STRATEGY'] in ['OPTIONS', 'MARGIN'] and key in mandatoryLevKeys:
                 self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
                 return {}
             elif key in importantKeys:
@@ -128,7 +145,7 @@ class iciciDirect():
                     rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
             elif key in priceKeys:
                 recDict[key] = 0
-            elif key in otherkeys:
+            elif key in otherNonLevkeys:
                 recDict[key] = ''        
         return recDict
 
@@ -138,19 +155,21 @@ class iciciDirect():
         self.__logger.debug('==== STOCK CELL ====')
         self.__logger.debug('Cell data to format \n%s', cell)
         data = cell.split('\n')
-        self.__logger.debug('Cell data after splitting %s', data)
-
-        # Remove trailing space from the stock name
-        cellDict['STOCK'] = re.sub(r'\s+$', '', data[0])
-        # Remove () from the ICICI Direct stock code
-        cellDict['ICICI_SYMBOL'] = re.sub(r'\(|\)|\s+', '', data[1])
         # Extract the strategy
         cellDict['STRATEGY'] = data[2].split(' - ')[0]
         cellDict['BUY_SELL'] = data[2].split(' - ')[1]
-        # Find the corresponding NSE symbol
-        status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.__mapIciciToNseStock.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'], cellDict['ICICI_SYMBOL'])
-        self.__logger.debug('ICICI_SYMBOL = %s <=> MKT_SYMBOL = %s', cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'])
-        self.__logger.debug('Generated dictionary %s', cellDict)
+        if self.strategiesToInvest('iCLICK-2-GAIN', cellDict['STRATEGY'], cellDict['BUY_SELL']):
+            # Remove trailing space from the stock name
+            cellDict['STOCK'] = re.sub(r'\s+$', '', data[0])
+            # Remove () from the ICICI Direct stock code
+            cellDict['ICICI_SYMBOL'] = re.sub(r'\(|\)|\s+', '', data[1])
+            # Extract the strategy
+            cellDict['STRATEGY'] = data[2].split(' - ')[0]
+            cellDict['BUY_SELL'] = data[2].split(' - ')[1]
+            # Find the corresponding NSE symbol
+            status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.__mapIciciToNseStock.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'], cellDict['ICICI_SYMBOL'])
+            self.__logger.debug('ICICI_SYMBOL = %s <=> MKT_SYMBOL = %s', cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'])
+            self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
 
 
@@ -282,7 +301,7 @@ class iciciDirect():
             strategiesToInvest = allStrategies
         elif source == 'iCLICK-2-INVEST':
             allStrategies = ['TOP PICKS', 'NANO NIVESH', 'QUANT DERIVATIVES PICK', 'MARGIN TRADING FUNDING (MTF)', 'STOCK TALES', 'RESULT UPDATE', 'IDIRECT INSTINCT', 'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 
-                             'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
+                             'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'MARKET STRATEGY']
             strategiesToInvest = allStrategies
         
         if filter == 'ALL':
@@ -315,7 +334,7 @@ class iciciDirect():
         return status, invPeriod
 
 
-    def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols, foundInvPeriod, invPeriod):
+    def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols, tblExpandRow):
         rowDict = None
         self.__logger.debug('==== Format Table Row To Dictionary ====')
         for i in range(9):
@@ -332,6 +351,11 @@ class iciciDirect():
             cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
             cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
             rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
+            
+            foundInvPeriod = False
+            if cell1Dict['STRATEGY'] in ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']:
+                foundInvPeriod, invPeriod = self.__formatiCLICK_2_GAINTblExpandRowToDict(tblExpandRow)
+
             if foundInvPeriod:
                 rowDict['INV_PERIOD'] = invPeriod
             else:
@@ -410,14 +434,13 @@ class iciciDirect():
                             tblRows = tblBody.find_elements_by_tag_name("tr")
                             tblRowsArrOfDict = []
                             for i in range(0, len(tblRows), 2):
-                                tblExpandRow = tblRows[i+1]
-                                foundInvPeriod, invPeriod = self.__formatiCLICK_2_GAINTblExpandRowToDict(tblExpandRow)
                                 tblRow = tblRows[i]
+                                tblExpandRow = tblRows[i+1]
                                 tblRowCols = tblRow.find_elements_by_tag_name("td")
                                 # If we find a row with 10 entries
                                 if(len(tblRowCols) == 10):
                                     rowDict = {}
-                                    rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols, foundInvPeriod, invPeriod)
+                                    rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRowCols, tblExpandRow)
                                     if rowDict != None:
                                         # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
                                         # i.e. it has been struck-through, it means that recommendation has been dicarded
