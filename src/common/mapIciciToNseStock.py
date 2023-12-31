@@ -65,11 +65,11 @@ class mapIciciToNseStock():
             with(open(self.__config['MAP-ICICI-2-NSE']['FNO_DATASET'], 'r')) as icicicsv:
                 iciciReader = csv.DictReader(icicicsv)
                 for iciciRow in iciciReader:
-                    if (iciciRow["ShortName"] == shortName and 
+                    if (iciciRow["ShortName"].upper() == shortName.upper() and 
                         iciciRow["Series"] == 'OPTION' and 
-                        iciciRow["ExpiryDate"].lower() == expiryDate.lower() and 
+                        iciciRow["ExpiryDate"].upper() == expiryDate.upper() and 
                         iciciRow["StrikePrice"] == strikePrice and 
-                        iciciRow["OptionType"].lower() == optionType.lower()):
+                        iciciRow["OptionType"].upper() == optionType.upper()):
 
                         status = True
                         rowDict['SECURITY_ID'] = iciciRow["Token"]
@@ -83,14 +83,15 @@ class mapIciciToNseStock():
             self.__logger.debug("Symbol: %s Yet to add support for Futures", shortName)
         elif 'OPTION' not in strategy and 'FUTURE' not in strategy:
             # Equity investment. Could be intraday as well
-            datasets = [[self.__config['MAP-ICICI-2-NSE']['NSE_DATASET'], 'NSE', ['Token', ' "ExchangeCode"', ' "ShortName"', ' "CompanyName"']], 
-                        [self.__config['MAP-ICICI-2-NSE']['BSE_DATASET'], 'BSE', ['Token', '"ExchangeCode"', '"ShortName"', '"CompanyName"']]]
+            #datasets = [[self.__config['MAP-ICICI-2-NSE']['NSE_DATASET'], 'NSE', ['Token', ' "ExchangeCode"', ' "ShortName"', ' "CompanyName"']], 
+            #            [self.__config['MAP-ICICI-2-NSE']['BSE_DATASET'], 'BSE', ['Token', '"ExchangeCode"', '"ShortName"', '"CompanyName"']]]
+            datasets = [[self.__config['MAP-ICICI-2-NSE']['NSE_DATASET'], 'NSE', ['Token', ' "ExchangeCode"', ' "ShortName"', ' "CompanyName"']]]
 
             for dataset in datasets:
                 with(open(dataset[0], 'r')) as icicicsv:
                     iciciReader = csv.DictReader(icicicsv)
                     for iciciRow in iciciReader:
-                        if iciciRow[dataset[2][3]] == stkName:
+                        if iciciRow[dataset[2][3]].upper() == stkName.upper():
                             status = True
                             rowDict['SECURITY_ID'] = iciciRow[dataset[2][0]]
                             rowDict['MKT'] = dataset[1]

@@ -25,11 +25,11 @@ if(os.path.isfile(configFile)):
 
 
 def setTodaysDate(idx, offsetTime=0):
-    recDicts = [{"STOCK": "COFORGE LIMITED", "MKT": "NSE", "SECURITY_ID": '11543', "ICICI_SYMBOL": "NIITEC", "MKT_SYMBOL": "COFORGE", "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "BUY",  "CMP": 5460.3,   "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00,    "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "SOURCE": "iCLICK-2-GAIN", "TARGET": 5498.00,    "STOP_LOSS": 5434.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
-                {"STOCK": "ITC LIMITED",     "MKT": "NSE", "SECURITY_ID": '1660',  "ICICI_SYMBOL": "ITC",    "MKT_SYMBOL": "ITC",     "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "SELL", "CMP": 436.85,    "LOW_REC_PRICE": 437.50,  "HIGH_REC_PRICE": 438.00,     "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "SOURCE": "iCLICK-2-GAIN", "TARGET": 432.40,     "STOP_LOSS": 439.90,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
-                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "ICICI_SYMBOL": "TITIND", "MKT_SYMBOL": "TITAN",   "STRATEGY": "GLADIATOR STOCKS", 'INV_PERIOD': '3 MONTHS',   "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-INVEST", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
-                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "ICICI_SYMBOL": "TITIND", "MKT_SYMBOL": "TITAN",   "STRATEGY": "MOMENTUM",         'INV_PERIOD': '14 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-GAIN", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
-                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "ICICI_SYMBOL": "TITIND", "MKT_SYMBOL": "TITAN",   "STRATEGY": "QUANT PICKS",      'INV_PERIOD': '30 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,    "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-GAIN", "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"}
+    recDicts = [{"STOCK": "COFORGE LIMITED", "MKT": "NSE", "SECURITY_ID": '11543', "MKT_SYMBOL": "COFORGE", "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "BUY",  "CMP": 5460.3,  "LOW_REC_PRICE": 5455.00, "HIGH_REC_PRICE": 5457.00,    "REC_DATE": "31-Aug-2023", "REC_TIME": "14:04", "SOURCE": "iCLICK-2-GAIN",  "TARGET": 5498.00,    "STOP_LOSS": 5434.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "ITC LIMITED",     "MKT": "NSE", "SECURITY_ID": '1660',  "MKT_SYMBOL": "ITC",     "STRATEGY": "MARGIN",           'INV_PERIOD': '0 DAYS',     "BUY_SELL": "SELL", "CMP": 436.85,  "LOW_REC_PRICE": 437.50,  "HIGH_REC_PRICE": 438.00,     "REC_DATE": "31-Aug-2023", "REC_TIME": "14:33", "SOURCE": "iCLICK-2-GAIN",  "TARGET": 432.40,     "STOP_LOSS": 439.90,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "MKT_SYMBOL": "TITAN",   "STRATEGY": "GLADIATOR STOCKS", 'INV_PERIOD': '3 MONTHS',   "BUY_SELL": "BUY",  "CMP": 627.25,  "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-INVEST","TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "MKT_SYMBOL": "TITAN",   "STRATEGY": "MOMENTUM",         'INV_PERIOD': '14 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,  "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-GAIN",  "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"},
+                {"STOCK": "TITAN",           "MKT": "NSE", "SECURITY_ID": '3506',  "MKT_SYMBOL": "TITAN",   "STRATEGY": "QUANT PICKS",      'INV_PERIOD': '30 DAYS',    "BUY_SELL": "BUY",  "CMP": 627.25,  "LOW_REC_PRICE": 605.00,  "HIGH_REC_PRICE": 622.00,     "REC_DATE": "08-Sep-2023", "REC_TIME": "10:55", "SOURCE": "iCLICK-2-GAIN",  "TARGET": 696.00,     "STOP_LOSS": 578.00,  "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", "VISIBLE": "VISIBLE"}
                ]
     recDict = recDicts[idx]
     recDict['REC_DATE'] = datetime.datetime.today().strftime("%d-%b-%Y")
@@ -39,16 +39,22 @@ def setTodaysDate(idx, offsetTime=0):
 
 def getOfflineRec(recDict=None, addDbDictKeys=None, idx=0, offline=True, changeDate=True, daysOffset=0):
     if recDict == None:
-        recDict = [{"STOCK": "TITAN",       "MKT_SYMBOL": "TITAN",      "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-                   {"STOCK": "Tata Motors", "MKT_SYMBOL": "TATAMOTORS", "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
+        recDict = [{"STOCK": "TITAN",       "MKT": "NSE", 'SECURITY_ID': '3506', "MKT_SYMBOL": "TITAN",      "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00,         "REC_DATE": "08-Sep-2023", "REC_TIME": "10:10", "SOURCE": "iCLICK-2-GAIN",   "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", 'EXP_DATE': '', "VISIBLE": "VISIBLE"},
+                   {"STOCK": "Tata Motors", "MKT": "NSE", 'SECURITY_ID': '3456', "MKT_SYMBOL": "TATAMOTORS", "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 620.00,         "REC_DATE": "08-Sep-2023", "REC_TIME": "10:10", "SOURCE": "iCLICK-2-INVEST", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", 'EXP_DATE': '', "VISIBLE": "VISIBLE"},
+                   {"STOCK": "SBI",         "MKT": "NSE", 'SECURITY_ID': '3045', "MKT_SYMBOL": "SBIN",       "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00,         "REC_DATE": "08-Sep-2023", "REC_TIME": "10:10", "SOURCE": "iCLICK-2-INVEST", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", 'EXP_DATE': '', "VISIBLE": "VISIBLE"},
+                   {"STOCK": "SBI",         "MKT": "NSE", 'SECURITY_ID': '3045', "MKT_SYMBOL": "SBIN",       "STRATEGY": "MOMENTUM PICK",    "INV_PERIOD": "14 DAYS",  "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00,         "REC_DATE": "08-Sep-2023", "REC_TIME": "10:10", "SOURCE": "iCLICK-2-GAIN",   "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN", 'EXP_DATE': '', "VISIBLE": "VISIBLE"}]
 
     if addDbDictKeys == None:
-        addDbDictKeys = [{'SECURITY_ID': '3506', 'EXP_DATE': '',
-                        'QTY': 6, 'POS_QTY': 0, 'ACT_HOLD_QTY': 21, 'HOLD_QTY': 2, "POS_HOLD_QTY": 2, "POS_HOLD_STATUS": "OPEN", "MAX_AMOUNT": 3750.0, 
-                        "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 775, "TRIGGER": 0, "QTY": 2, "TRADED_QTY": 2, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
+        addDbDictKeys = [{'QTY': 6, 'POS_QTY': 0, 'HOLD_QTY': 2, "POS_HOLD_QTY": 2, "POS_HOLD_STATUS": "OPEN", "MAX_AMOUNT": 3750.0, "LATE_ADD": False, 
+                        "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 622, "TRIGGER": 0, "QTY": 2, "TRADED_QTY": 2, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
                         "CLOSE_ORDERS": []},
-                        {'SECURITY_ID': '3456', 'EXP_DATE': '',
-                        'QTY': 6, 'POS_QTY': 0, 'ACT_HOLD_QTY': 0, 'HOLD_QTY': 0, "POS_HOLD_QTY": 0, "POS_HOLD_STATUS": "OPEN", "MAX_AMOUNT": 3750.0, 
+                        {'QTY': 6, 'POS_QTY': 0, 'HOLD_QTY': 0, "POS_HOLD_QTY": 0, "POS_HOLD_STATUS": "OPEN", "MAX_AMOUNT": 3750.0, "LATE_ADD": False, 
+                        "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 620, "TRIGGER": 0, "QTY": 2, "TRADED_QTY": 0, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
+                        "CLOSE_ORDERS": []},
+                        {'QTY': 35, 'POS_QTY': 0, 'HOLD_QTY': 35, "POS_HOLD_QTY": 35, "POS_HOLD_STATUS": "POSITION", "MAX_AMOUNT": 3750.0, "LATE_ADD": False,
+                        "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 775, "TRIGGER": 0, "QTY": 35, "TRADED_QTY": 35, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
+                        "CLOSE_ORDERS": []},
+                        {'QTY': 6, 'POS_QTY': 0, 'HOLD_QTY': 0, "POS_HOLD_QTY": 0, "POS_HOLD_STATUS": "OPEN", "MAX_AMOUNT": 3750.0, "LATE_ADD": False,
                         "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 775, "TRIGGER": 0, "QTY": 2, "TRADED_QTY": 0, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
                         "CLOSE_ORDERS": []}]
 
@@ -63,7 +69,8 @@ def getOfflineRec(recDict=None, addDbDictKeys=None, idx=0, offline=True, changeD
         invMonths = 6
     else:
         invMonths = 12
-    addDbDictKeys[idx]['EXP_DATE'] = datetime.datetime.strftime(datetime.datetime.strptime(recDict[idx]['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
+
+    recDict[idx]['EXP_DATE'] = datetime.datetime.strftime(datetime.datetime.strptime(recDict[idx]['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
 
     mockDict = {**recDict[idx], **addDbDictKeys[idx]}
     
@@ -78,6 +85,8 @@ def test_Margin1():
     trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
     trade.setAmountPerOrder(50000)    
     trade._app__persistenceIntraDay.removeAll()
+    trade._app__persistenceInv.removeAll()
+    trade._app__persistenceFnO.removeAll()
     
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
@@ -615,9 +624,12 @@ def test_Margin5b():
 # + if recStatus changes to PARTIAL_CLOSE its acted upon
 # + if recStatus changes to exit all remain positions excluding whats in the core is sold
 def test_NonMargin1():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
     trade.setAmountPerOrder(50000)    
-    trade._app__persistence.removeAll()
+    trade._app__persistenceIntraDay.removeAll()
+    trade._app__persistenceInv.removeAll()
+    trade._app__persistenceFnO.removeAll()
+
 
     recDict, mockDict = getOfflineRec(offline=True)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict)
@@ -625,16 +637,16 @@ def test_NonMargin1():
     # Get holdings data after cheating and adding stock to PayTmMock
     trade.getHoldingsData()
 
-    dbDict = trade._app__persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
-    recDict['REC_TIME'] = '10:07'
+    dbDict = trade._app__persistenceInv.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
 
     # When runPeriodicCheck runs, more orders should be bought if possible
     trade._app__payTmMoney.setCMP(recDict, recDict['LOW_REC_PRICE'] + 1)
-    # Run periodic check. Remaining 2 stocks should be bought
+
+    # Run periodic check. Order to buy remaining 4 stocks should be placed
     trade.setMarketTimer(False, True)
     trade.runPeriodicChecks()
 
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_QTY'] == 0
@@ -652,7 +664,7 @@ def test_NonMargin1():
 
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_QTY'] == -1
@@ -673,7 +685,7 @@ def test_NonMargin1():
     # If the same partial close recommendation came in again --> No action should be taken
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_QTY'] == -1
@@ -697,7 +709,7 @@ def test_NonMargin1():
 
     trade.handleRec(recDict)
 
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == -2
@@ -714,17 +726,17 @@ def test_NonMargin1():
     assert len(dbDict[0]['CLOSE_ORDERS']) == 2
 
 def test_NonMargin2():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
     trade.setAmountPerOrder(50000)    
 
     #### Not in holding tests starts
     # # Old 'OPEN' rec (< 90% life left) --> Not in DB --> No stock should get added in DB 
     # Don't intend to buy an old Open rec if not already in DB (not even holding)
-    trade._app__persistence.removeAll()
+    trade._app__persistenceInv.removeAll()
     recDict, mockDict = getOfflineRec(offline=False, changeDate=False)
     trade.getHoldingsData()
     res = trade.handleRec(recDict)
-    dbDicts = trade._app__persistence.getDb([])
+    dbDicts = trade._app__persistenceInv.getDb([])
     assert len(dbDicts) == 0
     assert res == True
 
@@ -732,10 +744,10 @@ def test_NonMargin2():
     # Remember: Because of the startup check we wont have a case where the stock is in holding but not in DB
     recDict, mockDict = getOfflineRec(offline=False, changeDate=True, daysOffset=-1)
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'PARTIAL_CLOSE'
-    trade._app__persistence.removeAll()
+    trade._app__persistenceInv.removeAll()
     trade.getHoldingsData()
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert len(dbDict) == 0
 
@@ -744,12 +756,12 @@ def test_NonMargin2():
     recDict, mockDict = getOfflineRec(offline=False, changeDate=True, daysOffset=-1)
     trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'OPEN'
-    trade._app__persistence.removeAll()
+    trade._app__persistenceInv.removeAll()
     trade.setMarketTimer(False, True)
     trade.getHoldingsData()
 
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
@@ -765,11 +777,11 @@ def test_NonMargin2():
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'OPEN'
     trade._app__payTmMoney.cheatAddStockDictArr(None)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict)
-    trade._app__persistence.removeAll()
-    trade._app__persistence.insertDb(mockDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    trade._app__persistenceInv.removeAll()
+    trade._app__persistenceInv.insertDb(mockDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     trade.getHoldingsData()
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
@@ -784,10 +796,10 @@ def test_NonMargin2():
     # we will set the POS_HOLD_STATUS to close 
     recDict, mockDict = getOfflineRec(idx=1, offline=False, changeDate=True)
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'PARTIAL_CLOSE'
-    trade._app__persistence.removeAll()
+    trade._app__persistenceInv.removeAll()
     trade.getHoldingsData()
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
@@ -801,12 +813,12 @@ def test_NonMargin2():
     # we will set the POS_HOLD_STATUS to 'CLOSE 
     recDict, mockDict = getOfflineRec(idx=1, offline=True, changeDate=True)
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'OPEN'
-    trade._app__persistence.removeAll()
-    trade._app__persistence.insertDb(mockDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    trade._app__persistenceInv.removeAll()
+    trade._app__persistenceInv.insertDb(mockDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     trade.getHoldingsData()
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'PARTIAL_CLOSE'
     res = trade.handleRec(recDict)
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
@@ -819,34 +831,23 @@ def test_NonMargin2():
 
 # Same stock in 2 different strategies
 def test_NonMargin3():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
     trade.setAmountPerOrder(50000)    
 
-    recDict = [{"STOCK": "State Bank of India", "ICICI_SYMBOL": "STABAN", "MKT_SYMBOL": "SBIN", "STRATEGY": "GLADIATOR STOCKS", "INV_PERIOD": "3 MONTHS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"},
-               {"STOCK": "State Bank of India", "ICICI_SYMBOL": "STABAN", "MKT_SYMBOL": "SBIN", "STRATEGY": "MOMENTUM PICK", "INV_PERIOD": "14 DAYS", "BUY_SELL": "BUY", "CMP": 627.25, "LOW_REC_PRICE": 605.00, "HIGH_REC_PRICE": 622.00, "REC_DATE": "08-Sep-2023", "REC_TIME": "xx:xx", "TARGET": 696.00, "STOP_LOSS": 578.00, "PART_PROFIT_PRICE": "", "PART_PROFIT_PERC": "", "FINAL_PROFIT_PRICE": "", "EXIT_PRICE": "", "UPDATE_ACTION_1": "", "UPDATE_TIME_1": "", "UPDATE_ACTION_2": "", "UPDATE_TIME_2": "", "REC_STATUS": "OPEN"}]
-    addDbDictKeys = [{'SECURITY_ID': '3045', 'EXP_DATE': '',
-                    'QTY': 35, 'POS_QTY': 0, 'ACT_HOLD_QTY': 35, 'HOLD_QTY': 35, "POS_HOLD_QTY": 35, "POS_HOLD_STATUS": "POSITION", "MAX_AMOUNT": 3750.0, 
-                    "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 775, "TRIGGER": 0, "QTY": 35, "TRADED_QTY": 35, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
-                    "CLOSE_ORDERS": []},
-                    {'SECURITY_ID': '3045', 'EXP_DATE': '',
-                    'QTY': 6, 'POS_QTY': 0, 'ACT_HOLD_QTY': 0, 'HOLD_QTY': 0, "POS_HOLD_QTY": 0, "POS_HOLD_STATUS": "OPEN", "MAX_AMOUNT": 3750.0, 
-                    "OPEN_ORDERS": [{"BUY_SELL": "BUY", "PRODUCT": "DELIVERY", "ORDER_TYPE": "LMT", "LIMIT": 775, "TRIGGER": 0, "QTY": 2, "TRADED_QTY": 0, "ORDER_NO": "", "ORDER_STATUS": "CLOSE", "ORDER_MESSAGE": "", "CREATE_TIME": "15-Sep-2023 10:07"}], 
-                    "CLOSE_ORDERS": []}]
-
     # Insert the Gladiator stock recommendation first
-    trade._app__persistence.removeAll()
-    recDict1, mockDict1 = getOfflineRec(recDict, addDbDictKeys, idx=0, offline=True, changeDate=False)
+    trade._app__persistenceInv.removeAll()
+    recDict1, mockDict1 = getOfflineRec(idx=2, offline=True, changeDate=False)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict1)
-    trade._app__persistence.insertDb(mockDict1, [['MKT_SYMBOL', recDict1['MKT_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
+    trade._app__persistenceInv.insertDb(mockDict1, [['MKT_SYMBOL', recDict1['MKT_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
     trade.getHoldingsData()
 
     # The momentum stock recommendation comes in next
-    recDict2, mockDict2 = getOfflineRec(recDict, addDbDictKeys, idx=1, offline=False, changeDate=True)
+    recDict2, mockDict2 = getOfflineRec(idx=3, offline=False, changeDate=True)
     trade._app__payTmMoney.setCMP(recDict2, recDict2['HIGH_REC_PRICE'])
     trade.setMarketTimer(False, True)
 
     res = trade.handleRec(recDict2)
-    dbDict = trade._app__persistence.getDb([['MKT_SYMBOL', recDict2['MKT_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
+    dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict2['MKT_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
     assert res == True
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
@@ -855,29 +856,30 @@ def test_NonMargin3():
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'DELIVERY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 10
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == dbDict[0]['HIGH_REC_PRICE'] + (dbDict[0]['TARGET'] - dbDict[0]['HIGH_REC_PRICE'])/10
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 81
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == dbDict[0]['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-# Same stock in 2 different strategies
+# Check if 'HIDDEN' recommendations will close upon expiry
 def test_NonMargin4():
-    trade = app('./payTmMoney.ini', './test/testTrade.json', True)
+    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
     trade.setAmountPerOrder(15000)    
-    trade._app__persistence.removeAll()
+    trade._app__persistenceInv.removeAll()
     recDict1, mockDict1 = getOfflineRec(idx=0, offline=True, changeDate=True, daysOffset=-365)
     recDict2, mockDict2 = getOfflineRec(idx=1, offline=True, changeDate=True, daysOffset=0)
+    recDict1['VISIBLE'] = mockDict1['VISIBLE'] = 'HIDDEN'
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict1)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict2)
-    trade._app__persistence.insertDb(mockDict1, [['MKT_SYMBOL', recDict1['MKT_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
-    trade._app__persistence.insertDb(mockDict2, [['MKT_SYMBOL', recDict2['MKT_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
+    trade._app__persistenceInv.insertDb(mockDict1, [['MKT_SYMBOL', recDict1['MKT_SYMBOL']], ['STRATEGY', recDict1['STRATEGY']]])
+    trade._app__persistenceInv.insertDb(mockDict2, [['MKT_SYMBOL', recDict2['MKT_SYMBOL']], ['STRATEGY', recDict2['STRATEGY']]])
     trade.getHoldingsData()
 
     # recDict1 should have expired and closed (It was given an offset of -365 days)
     trade._app__closeAllExpiredOrders()
     # The only stock whose POS_HOLD_STATUS != 'CLOSE' should be recDict2
-    dbDicts = trade._app__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+    dbDicts = trade._app__persistenceInv.getDb([['POS_HOLD_STATUS', '!CLOSE']])
     assert len(dbDicts) == 1
     assert dbDicts[0]['MKT_SYMBOL'] == recDict2['MKT_SYMBOL']

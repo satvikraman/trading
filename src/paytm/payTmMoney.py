@@ -119,12 +119,20 @@ class payTmMoney:
                     status = True
                     for holding in res['data']['results']:
                         found = False
+                        if holding['exchange'] == 'ALL' or holding['exchange'] == 'NSE':
+                            symbol = holding['nse_symbol']
+                            securityId = holding['nse_security_id']
+                        else:
+                            symbol = holding['bse_symbol']
+                            securityId = holding['bse_security_id']
+
                         for resDict in resDictArr:
-                            if resDict['NSE_SYMBOL'] == holding['nse_symbol'] or resDict['BSE_SYMBOL'] == holding['bse_symbol']:
+                            if resDict['MKT_SYMBOL'] == symbol:
                                 found = True
                                 resDict['HOLD_QTY'] += int(holding['quantity'])
+                        
                         if not found:
-                            resDict = {'NSE_SYMBOL': holding['nse_symbol'], 'NSE_SECURITY_ID': holding['nse_security_id'], 'BSE_SYMBOL': holding['bse_symbol'], 'BSE_SECURITY_ID': holding['bse_security_id'], 'HOLD_QTY': int(holding['quantity'])}
+                            resDict = {'MKT_SYMBOL': symbol, 'SECURITY_ID': securityId, 'HOLD_QTY': int(holding['quantity'])}
                             resDictArr.append(resDict)
                 else:
                     retries -= 1

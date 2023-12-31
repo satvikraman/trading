@@ -13,6 +13,8 @@ import threading
 from flask import Flask, request
 
 sys.path.append('./src/common')
+sys.path.append('../pyPMClient')
+from pmClient import WebSocketClient
 
 from payTmMoney import payTmMoney
 from payTmMoneyMock import payTmMoneyMock
@@ -73,7 +75,9 @@ class app():
                 self.__payTmMoney = payTmMoneyMock(configFile)
             else:
                 self.__payTmMoney = payTmMoney(configFile)
-            
+
+            self.useWebsocket = False
+
             self.__timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
             self.__createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
             self.__deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
@@ -128,7 +132,7 @@ class app():
         # we don't need to repeatedly do this calculation. Hold - Core = Trade
         for holding in self.__holdings:
             for core in self.__core:
-                if holding['NSE_SYMBOL'] == core['MKT_SYMBOL']:
+                if holding['MKT_SYMBOL'] == core['MKT_SYMBOL']:
                     holding['HOLD_QTY'] = holding['HOLD_QTY'] - core['QTY']
 
         if not status:
@@ -157,7 +161,7 @@ class app():
                             dbHolding['HOLD_QTY'] += dbDict['POS_HOLD_QTY'] - dbDict['POS_QTY']
                             found = True
                     if not found:
-                        dbHolding = {'MKT_SYMBOL': dbDict['MKT_SYMBOL'], 'MKT': dbDict['MKT'], 'SECURITY_ID': dbDict['SECURITY_ID'], 
+                        dbHolding = {'MKT_SYMBOL': dbDict['MKT_SYMBOL'], 'SECURITY_ID': dbDict['SECURITY_ID'], 
                                      'HOLD_QTY': dbDict['POS_HOLD_QTY'] - dbDict['POS_QTY'], 'IN_HOLD': False}
                         dbHoldings.append(dbHolding)
 
@@ -169,14 +173,13 @@ class app():
             if not dbHolding['IN_HOLD'] and dbHolding['HOLD_QTY'] > 0:
                 found = False
                 for holding in self.__holdings:
-                    if (dbHolding['MKT'] == 'NSE' and holding['NSE_SECURITY_ID'] == dbHolding['SECURITY_ID']) or \
-                       (dbHolding['MKT'] == 'BSE' and holding['BSE_SECURITY_ID'] == dbHolding['SECURITY_ID']):
+                    if (holding['SECURITY_ID'] == dbHolding['SECURITY_ID']):
                         if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
                             status = False
                             self.__logger.critical("For stock %s, quantities don't match. actHoldQty[%d] != dbHoldQty[%d]", 
-                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
+                                                    holding['MKT_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
                     self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['MKT_SYMBOL'])
@@ -186,17 +189,16 @@ class app():
             if not holding['IN_DB'] and holding['HOLD_QTY'] > 0:
                 found = False
                 for dbHolding in dbHoldings:
-                    if (dbHolding['MKT'] == 'NSE' and holding['NSE_SECURITY_ID'] == dbHolding['SECURITY_ID']) or \
-                       (dbHolding['MKT'] == 'BSE' and holding['BSE_SECURITY_ID'] == dbHolding['SECURITY_ID']):
+                    if holding['MKT_SYMBOL'] == dbHolding['SECURITY_ID']:
                         if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
                             status = False
                             self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] != dbHoldQty[%d]", 
-                                                    holding['NSE_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
+                                                    holding['MKT_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
                     status = False
-                    self.__logger.critical("Stock %s is in holding but not in DB", holding['NSE_SYMBOL'])
+                    self.__logger.critical("Stock %s is in holding but not in DB", holding['MKT_SYMBOL'])
         return status
 
 
@@ -252,7 +254,8 @@ class app():
 
 
     def printMilestones(self):
-        self.__getCMP()
+        # Get the CMP once at the start. This initializes the self.__cmp structure and the websocket subscription, if in use
+        self.__refreshCMP()
 
         instruments = ['EQUITY', 'FnO']
         for instrument in instruments:
@@ -268,29 +271,29 @@ class app():
                 expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
                 if expDate <= self.__today.date():
                     self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['MKT_SYMBOL']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                                       dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
                     
             perc = 1
             self.__logger.info("Following stocks are trading %.1f%% away from their target price", perc)
             # Stocks very close to target
             for dbDict in dbDicts:
-                ltp = self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
+                ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
                 if ltp != -1 and ltp * 1.01 >= dbDict['TARGET']:
                     self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['MKT_SYMBOL']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
             self.__logger.info("Following stocks are trading %.1f%% away from their stop loss price", perc)
             # Stocks very close to stop-loss
             for dbDict in dbDicts:
-                ltp = self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
+                ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
                 if ltp != -1 and dbDict['STOP_LOSS'] * 1.01 >= ltp:
                     self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['MKT_SYMBOL']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                                       dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
 
     def __isLateAdd(self, recDict):
         status = False
-        if recDict['SOURCE'] == 'iCLICK-2-GAIN':
+        if recDict['SOURCE'] == 'iCLICK-2-GAIN' and recDict['STRATEGY'] in ['MARGIN', 'OPTIONS']:
             recDateTime = recDict['REC_DATE'] + " " + recDict['REC_TIME']
             recDateTimeObj = datetime.datetime.strptime(recDateTime, "%d-%b-%Y %H:%M")
             nowObj = datetime.datetime.now()
@@ -384,7 +387,7 @@ class app():
         # If in holding find its quantity
         holdQty = 0
         for holding in self.__holdings:
-            if nseSym == holding['NSE_SYMBOL']:
+            if nseSym == holding['MKT_SYMBOL']:
                 holdQty = holding['HOLD_QTY'] 
                 break
 
@@ -441,51 +444,100 @@ class app():
         return status
 
 
-    def __getCMP(self, dbDict=None):
-        if dbDict == None:
-            for instrument in ["EQUITY", "MARGIN", "FnO"]:
-                if instrument == "EQUITY":
-                    persistenceInst = self.__persistenceInv
-                    securityType = 'EQUITY'
-                elif instrument == "MARGIN":
-                    persistenceInst = self.__persistenceIntraDay
-                    securityType = 'EQUITY'
-                elif instrument == "FnO":
-                    persistenceInst = self.__persistenceFnO
-                    securityType = 'OPTION'
-                
-                self.__lock.acquire()
-                dbDicts = persistenceInst.getDb([['REC_STATUS', '!CLOSE']])
-                self.__lock.release()
-                for dbDict in dbDicts:
-                    mktSymbol = dbDict['MKT_SYMBOL']
-                    if mktSymbol not in self.__cmp:
-                        self.__cmp[mktSymbol] = {'LTP': -1, 'SECURITY_ID': dbDict['SECURITY_ID'], 'SECURITY_TYPE': securityType, 'MKT': dbDict['MKT']}
+    def __websocketSubscription(self, actionType, modeType, scripType, exchange, scriptId):
+        preferences =   [{
+                        "actionType": actionType,
+                        "modeType": modeType,
+                        "scripType": scripType,
+                        "exchangeType": exchange,
+                        "scripId": scriptId
+                        }]
+        trade.wsclient.subscribe(preferences)
 
-            for mktSymbol in list(self.__cmp):
-                status, ltp = self.__payTmMoney.getLastTradedPrice(self.__cmp[mktSymbol]['SECURITY_ID'], self.__cmp[mktSymbol]['SECURITY_TYPE'], 
-                                                                   self.__cmp[mktSymbol]['MKT'])
-                if status:
-                    self.__cmp[mktSymbol]['LTP'] = ltp
-                time.sleep(0.01)
+
+    def __modifyCmpSubcription(self, persistenceInst, dbDict, actionType):
+        if actionType == 'REMOVE':
+            if dbDict['STRATEGY'] == 'OPTION':
+                persistenceInsts = [persistenceInst]
+                securityType = 'OPTION'
+            else:
+                additionalDBToCheck = self.__persistenceInv if dbDict['STRATEGY'] == 'MARGIN' else self.__persistenceIntraDay
+                persistenceInsts = [persistenceInst, additionalDBToCheck]
+                securityType = 'EQUITY'
+            
+            # Check if there is any open security. If not unsubscribe
+            continueSubscription = False
+            for persistenceInst in persistenceInsts:
+                dbDicts = persistenceInst.getDb([['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['POS_HOLD_STATUS', '!CLOSE']])
+                if len(dbDicts) > 0:
+                    continueSubscription = True
+                    break
+
+            if not continueSubscription:
+                securityId = dbDict['SECURITY_ID']
+                if securityId in self.__cmp:
+                    self.__cmp.pop(securityId)
+                    if self.useWebsocket:
+                        trade.__websocketSubscription(actionType, 'LTP', securityType, dbDict['MKT'], securityId)
+                else:
+                    self.__logger.critical('Stock %s security_id = %s not in self.__cmp but its only getting unsubscibed now', dbDict['MKT_SYMBOL'], securityId)
         else:
             # Get the LTP if it is not already available. If it is available, dont fetch. It will get updated the next time the reconcileRecs runs
-            mktSymbol = dbDict['MKT_SYMBOL']
-            if mktSymbol not in self.__cmp:
+            securityID = dbDict['SECURITY_ID']
+            if securityID not in self.__cmp:
                 if dbDict['STRATEGY'] == 'OPTIONS':
                     securityType = 'OPTION'
                 else:
                     securityType = 'EQUITY'
-                self.__cmp[mktSymbol] = {'LTP': -1, 'SECURITY_ID': dbDict['SECURITY_ID'], 'SECURITY_TYPE': securityType, 'MKT': dbDict['MKT']}
-                status, ltp = self.__payTmMoney.getLastTradedPrice(self.__cmp[mktSymbol]['SECURITY_ID'], self.__cmp[mktSymbol]['SECURITY_TYPE'], 
-                                                                   self.__cmp[mktSymbol]['MKT'])
+                self.__cmp[securityID] = {'LTP': -1, 'SECURITY_TYPE': securityType, 'MKT': dbDict['MKT']}
+                status, ltp = self.__payTmMoney.getLastTradedPrice(securityID, self.__cmp[securityID]['SECURITY_TYPE'], self.__cmp[securityID]['MKT'])
                 if status:
-                    self.__cmp[mktSymbol]['LTP'] = ltp
+                    self.__cmp[securityID]['LTP'] = ltp
+
+            if self.useWebsocket:
+                trade.__websocketSubscription(actionType, 'LTP', securityType, dbDict['MKT'], dbDict['SECURITY_ID'])
+
+    def __refreshCMP(self):
+        for instrument in ["EQUITY", "MARGIN", "FnO"]:
+            if instrument == "EQUITY":
+                persistenceInst = self.__persistenceInv
+                securityType = 'EQUITY'
+            elif instrument == "MARGIN":
+                persistenceInst = self.__persistenceIntraDay
+                securityType = 'EQUITY'
+            elif instrument == "FnO":
+                persistenceInst = self.__persistenceFnO
+                securityType = 'OPTION'
+            
+            self.__lock.acquire()
+            dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+            self.__lock.release()
+            for dbDict in dbDicts:
+                securityID = dbDict['SECURITY_ID']
+                if securityID not in self.__cmp:
+                    self.__cmp[securityID] = {'LTP': -1, 'SECURITY_TYPE': securityType, 'MKT': dbDict['MKT']}
+
+        for securityID in list(self.__cmp):
+            status, ltp = self.__payTmMoney.getLastTradedPrice(securityID, self.__cmp[securityID]['SECURITY_TYPE'], self.__cmp[securityID]['MKT'])
+            if status:
+                self.__cmp[securityID]['LTP'] = ltp
+            
+            if self.useWebsocket:
+                trade.__websocketSubscription('ADD', 'LTP', securityType, dbDict['MKT'], dbDict['SECURITY_ID'])
+            time.sleep(0.01)
+    
+
+    def setCMP(self, wsMessage):
+        securityId = str(wsMessage['security_id'])
+        try:
+            self.__cmp[securityId]['LTP'] = wsMessage['last_price']
+        except Exception as e:
+            self.__logger.critical("securityId %s not in self.__cmp. Error: %s", securityId, e)
 
 
     def __updateRecStatus(self, persistenceInst, dbDict):
         dbChanged = False
-        ltp = -1 if dbDict['MKT_SYMBOL'] not in self.__cmp else self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
+        ltp = -1 if dbDict['SECURITY_ID'] not in self.__cmp else self.__cmp[dbDict['SECURITY_ID']]['LTP']
         status = ltp > 0
         if status:
             self.__logger.info("Stock %s LTP = %.2f", dbDict['MKT_SYMBOL'], ltp)
@@ -628,6 +680,9 @@ class app():
         posHoldQty = dbDict['POS_HOLD_QTY']
         if (thisCloseQty > 0 and posHoldQty == 0) or (dbDict['REC_STATUS'] != 'OPEN' and posHoldQty == 0):
             posHoldStatus = 'CLOSE'
+            # If using websocket, check if we can unsubscribe
+            if self.useWebsocket:
+                self.__modifyCmpSubcription(persistenceInst, dbDict, 'REMOVE')
         elif thisCloseQty > 0:
             posHoldStatus = 'PARTIAL_CLOSE'
         elif posHoldQty == dbDict['QTY']:
@@ -693,7 +748,7 @@ class app():
                 qty = 0
                 invPerc = posHoldQty * 100 / totalQty
                 investTight = self.__investTight(dbDict)
-                cmp = self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
+                cmp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
                 invPeriod = dbDict['INV_PERIOD']
                 if len(dbDict['OPEN_ORDERS']) > 0:
                     limitPrice = dbDict['OPEN_ORDERS'][0]['LIMIT'] 
@@ -738,7 +793,7 @@ class app():
                 qty = 0
                 invPerc = posHoldQty * 100 / totalQty
                 investTight = self.__investTight(dbDict)
-                cmp = self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
+                cmp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
                 if len(dbDict['OPEN_ORDERS']) > 0:
                     limitPrice = dbDict['OPEN_ORDERS'][0]['LIMIT'] 
                 else: 
@@ -772,7 +827,7 @@ class app():
             qty = 0
             invPerc = posHoldQty * 100 / totalQty
             investTight = self.__investTight(dbDict)
-            cmp = self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
+            cmp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
             if len(dbDict['OPEN_ORDERS']) > 0:
                 limitPrice = dbDict['OPEN_ORDERS'][0]['LIMIT'] 
             else: 
@@ -826,7 +881,7 @@ class app():
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
-            ltp = self.__cmp[dbDict['MKT_SYMBOL']]['LTP']
+            ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
             canOrder = False
             if dbDict['BUY_SELL'] == 'BUY':
                 if limitPrice * self.__createLtpDisFactor >= ltp:
@@ -887,7 +942,7 @@ class app():
             orderType = 'MKT'
             limitPrice = 0
             trigger = 0
-            closeQty = abs(posHoldQty) + 1 // 2 if partial else posHoldQty
+            closeQty = (abs(posHoldQty) + 1) // 2 if partial else posHoldQty
 
             segment = self.__getSegment(dbDict['STRATEGY'])
             self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, product, orderType)
@@ -1035,7 +1090,7 @@ class app():
         if not self.__marketOpen:
             return
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
-            self.__getCMP(dbDict)
+            self.__modifyCmpSubcription(persistenceInst, dbDict, 'ADD')
             self.__updateRecStatus(persistenceInst, dbDict)
             self.__openPosition(persistenceInst, dbDict)
         elif dbDict['REC_STATUS'] in ['PARTIAL_CLOSE', 'CLOSE']:
@@ -1046,7 +1101,8 @@ class app():
     def __reconcileRecs(self):
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
         self.__logger.debug("Getting CMP data")
-        self.__getCMP()
+        if not self.useWebsocket:
+            self.__refreshCMP()
 
         for instrument in ["EQUITY", "MARGIN", "FnO"]:
             self.__logger.debug("Working on instrument %s", instrument)
@@ -1197,6 +1253,39 @@ class app():
 
 trade = app('./payTmMoney.ini', dryRun=False)
 
+def message_received(message):
+    trade.setCMP(message)
+    trade._app__logger.debug("websocket message %s", message)
+
+
+def on_open():
+    trade.useWebsocket = True
+    trade._app__logger.info("websocket connection with PayTm opened")
+
+
+def on_close(close_status_code,close_message):
+    trade.useWebsocket = False
+    trade._app__logger.info("websocket connection with PayTm closed")
+
+
+def on_error(err):
+    trade._app__logger.error("websocket error %s", err)
+
+
+def webSocketThread():
+    trade.wsclient.connect()
+
+
+def openWebsocket():
+    public_access_token = os.environ.get('public_access_token', '')
+    wsclient = WebSocketClient.WebSocketClient(public_access_token)
+    wsclient.set_on_message_listener(message_received)
+    wsclient.set_on_open_listener(on_open)
+    wsclient.set_on_close_listener(on_close)
+    wsclient.set_on_error_listener(on_error)
+    wsclient.set_reconnect_config(True, 5)
+    return wsclient
+
 
 def payTmThread():
     squareOffMinus15 = False
@@ -1250,15 +1339,23 @@ if __name__ == '__main__':
     trade.openPayTmMoneySession()
     trade.getHoldingsData()
 
-    paytmThr = threading.Thread(target=payTmThread)
-    flaskThr = threading.Thread(target=flaskThread)
-    paytmThr.daemon = True
-    flaskThr.daemon = True
-    
-    # Start the threads
-    flaskThr.start()
-    payTmThread()
+    # Open websocket connection with PayTm
+    """
+    websocketThr = threading.Thread(target=webSocketThread)
+    websocketThr.daemon = True   
+    trade.wsclient = openWebsocket()
+    websocketThr.start()
+    while not trade.useWebsocket:
+        time.sleep(1)
+    """
 
+    # Start the threads
+    #paytmThr = threading.Thread(target=payTmThread)
+    #flaskThr = threading.Thread(target=flaskThread)
+    #paytmThr.daemon = True
+    #flaskThr.daemon = True
+    #flaskThr.start()
+    payTmThread()
 
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
@@ -1309,6 +1406,3 @@ if __name__ == '__main__':
 # + If you hit target price, close recommendation and position
 # + If you hit stop loss, close recommendation and position
 # + We will not proactively change the recommendation status to PARTIAL_CLOSE. This will be done only if we are asked to do so
-#
-# Periodic Thread - 2 (Self heal)
-# + TODO: Self heal for non-margin recommendations?

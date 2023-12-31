@@ -94,7 +94,7 @@ class payTmMoneyMock:
         status = True
         resDictArr = []
         for dict in self.__stockDictArr:
-            resDict = {'MKT_SYMBOL': dict['MKT_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'HOLD_QTY': dict['ACT_HOLD_QTY']}
+            resDict = {'MKT_SYMBOL': dict['MKT_SYMBOL'], 'SECURITY_ID': dict['SECURITY_ID'], 'HOLD_QTY': dict['HOLD_QTY']}
             resDictArr.append(resDict)
         return status, resDictArr
 
@@ -135,7 +135,7 @@ class payTmMoneyMock:
         for dict in self.__stockDictArr:
             for orderDict in dict['OPEN_ORDERS']:
                 if orderDict['ORDER_NO'] == orderNo:
-                    qty = orderDict['ORDER_QTY']
+                    qty = orderDict['QTY']
                     status = True
                     if orderDict['ORDER_STATUS'] != 'CLOSE':
                         qtyToClose = 0
@@ -161,7 +161,7 @@ class payTmMoneyMock:
             if not status:
                 for orderDict in dict['CLOSE_ORDERS']:
                     if orderDict['ORDER_NO'] == orderNo: 
-                        qty = orderDict['ORDER_QTY']
+                        qty = orderDict['QTY']
                         if orderDict['ORDER_STATUS'] != 'CLOSE':
                             qtyToClose = 0
                             qtyToClose = int(qty/self.__incompleteOrderFraction)
@@ -204,7 +204,7 @@ class payTmMoneyMock:
         status = True
         prevOrdered = False
         timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
-        orderDict = {'ORDER_NO': '', 'ORDER_QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 
+        orderDict = {'ORDER_NO': '', 'QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 
                      'BUY_SELL': buySell, 'SECURITY_ID': securityId, 'SEGMENT': segment, 'TRIGGER': triggerPrice, 'CREATE_TIME': timeStr, 'CANCEL_ORDER_NUM': ''}
         for dict in self.__stockDictArr:
             if dict['MKT_SYMBOL'] == nseSym and dict['PRODUCT'] == product:
