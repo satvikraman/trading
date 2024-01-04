@@ -15,7 +15,7 @@ class app():
         if os.path.isfile(configFile):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
-            db = self.__config['DATABASE']['DB']            
+            db = self.__config['DATABASE']['DB_EQUITY']            
             self.backupDb(db)
             self.__persistence = persistence(configFile, db)
 
@@ -30,15 +30,15 @@ class app():
         for dbDict in dbDicts:
             for orderDict in dbDict['OPEN_ORDERS'] + dbDict['CLOSE_ORDERS']:
                 if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
-                    print('DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['NSE_SYMBOL'], orderDict)
+                    print('DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
 
 
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
     filter = app('./payTmMoney.ini')
 
-    start = datetime.date(2023, 12, 17)
-    end = datetime.date(2023, 12, 24)
+    start = datetime.date(2023, 12, 24)
+    end = datetime.date(2024, 1, 2)
     filterDate = start
     while filterDate <= end:
         print("Filtering txs on : ", filterDate)

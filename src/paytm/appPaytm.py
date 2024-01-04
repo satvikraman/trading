@@ -313,18 +313,18 @@ class app():
 
         # Qty of stock that can be bought
         if recDict['STRATEGY'] == 'MARGIN':
-            maxAmount = 2000 if not self.__dryRun else self.__amountPerOrder
-            margin = self.__timesMargin
+            maxAmount = self.__amountPerOrder if not self.__dryRun else self.__amountPerOrder
+            #margin = self.__timesMargin
         else:
             maxAmount = self.__amountPerOrder
-            margin = 1
+            #margin = 1
 
         if recDict['STRATEGY'] == 'OPTIONS':
             qty = recDict['LOT_SIZE']
         else:
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
             qty = max(int(maxAmount / avgPrice), 1)
-            qty = qty * margin
+            #qty = qty * margin
 
         # Security ID of the stock 
         recDict['POS_QTY'] = 0
@@ -399,6 +399,9 @@ class app():
 
 
     def __isInvPeriodLeft(self, recDict):
+        if recDict['STRATEGY'] in ['MARGIN', 'OPTIONS']:
+            return True
+        
         recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
         todaysDate = self.__today
         expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y")
@@ -455,7 +458,7 @@ class app():
         trade.wsclient.subscribe(preferences)
 
 
-    def __modifyCmpSubcription(self, persistenceInst, dbDict, actionType):
+    def __modifyCmpSubscription(self, persistenceInst, dbDict, actionType):
         if actionType == 'REMOVE':
             if dbDict['STRATEGY'] == 'OPTION':
                 persistenceInsts = [persistenceInst]
@@ -493,9 +496,8 @@ class app():
                 status, ltp = self.__payTmMoney.getLastTradedPrice(securityID, self.__cmp[securityID]['SECURITY_TYPE'], self.__cmp[securityID]['MKT'])
                 if status:
                     self.__cmp[securityID]['LTP'] = ltp
-
-            if self.useWebsocket:
-                trade.__websocketSubscription(actionType, 'LTP', securityType, dbDict['MKT'], dbDict['SECURITY_ID'])
+                if self.useWebsocket:
+                    trade.__websocketSubscription(actionType, 'LTP', securityType, dbDict['MKT'], dbDict['SECURITY_ID'])
 
     def __refreshCMP(self):
         for instrument in ["EQUITY", "MARGIN", "FnO"]:
@@ -523,16 +525,17 @@ class app():
                 self.__cmp[securityID]['LTP'] = ltp
             
             if self.useWebsocket:
-                trade.__websocketSubscription('ADD', 'LTP', securityType, dbDict['MKT'], dbDict['SECURITY_ID'])
+                trade.__websocketSubscription('ADD', 'LTP', self.__cmp[securityID]['SECURITY_TYPE'], 'NSE', securityID)
             time.sleep(0.01)
     
 
-    def setCMP(self, wsMessage):
-        securityId = str(wsMessage['security_id'])
-        try:
-            self.__cmp[securityId]['LTP'] = wsMessage['last_price']
-        except Exception as e:
-            self.__logger.critical("securityId %s not in self.__cmp. Error: %s", securityId, e)
+    def setCMP(self, wsMessages):
+        for wsMessage in wsMessages:
+            securityId = str(wsMessage['security_id'])
+            try:
+                self.__cmp[securityId]['LTP'] = wsMessage['last_price']
+            except Exception as e:
+                self.__logger.critical("securityId %s not in self.__cmp. Error: %s", securityId, e)
 
 
     def __updateRecStatus(self, persistenceInst, dbDict):
@@ -540,7 +543,7 @@ class app():
         ltp = -1 if dbDict['SECURITY_ID'] not in self.__cmp else self.__cmp[dbDict['SECURITY_ID']]['LTP']
         status = ltp > 0
         if status:
-            self.__logger.info("Stock %s LTP = %.2f", dbDict['MKT_SYMBOL'], ltp)
+            self.__logger.debug("Stock %s LTP = %.2f", dbDict['MKT_SYMBOL'], ltp)
             dbDict = self.__checkLtpAndCancelOpenPendingOrders(persistenceInst, ltp, dbDict)
             if dbDict['STRATEGY'] == 'MARGIN' or dbDict['STRATEGY'] == 'OPTIONS':
                 if dbDict['BUY_SELL'] == 'BUY':
@@ -682,7 +685,7 @@ class app():
             posHoldStatus = 'CLOSE'
             # If using websocket, check if we can unsubscribe
             if self.useWebsocket:
-                self.__modifyCmpSubcription(persistenceInst, dbDict, 'REMOVE')
+                self.__modifyCmpSubscription(persistenceInst, dbDict, 'REMOVE')
         elif thisCloseQty > 0:
             posHoldStatus = 'PARTIAL_CLOSE'
         elif posHoldQty == dbDict['QTY']:
@@ -691,7 +694,7 @@ class app():
             posHoldStatus = 'OPEN'
 
         if posHoldStatus != dbDict['POS_HOLD_STATUS']:
-            self.__logger.debug("Changing position of stock %s from %s => %s", dbDict['MKT_SYMBOL'], dbDict['POS_HOLD_STATUS'], posHoldStatus)
+            self.__logger.info("Changing position of stock %s from %s => %s", dbDict['MKT_SYMBOL'], dbDict['POS_HOLD_STATUS'], posHoldStatus)
             dbDict['POS_HOLD_STATUS'] = posHoldStatus
             persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
@@ -714,6 +717,8 @@ class app():
 
 
     def __investTight(self, dbDict):
+        if dbDict['STRATEGY'] in ['MARGIN', 'OPTIONS']:
+            return True
         investTight = dbDict['LATE_ADD']
         for strategy in []:
             if dbDict['SOURCE'].lower() == strategy.lower():
@@ -809,18 +814,18 @@ class app():
                 if invPerc == 0 and not investTight:           
                     qty = int(totalQty * 33 / 100) - posHoldQty
                     orderType = 'LMT'
-                if qty == 0 or (cmp <= limitPrice2 if dbDict['BUY_SELL'] == 'BUY' else cmp >= limitPrice4):
+                if qty == 0 or (cmp <= limitPrice2 if dbDict['BUY_SELL'] == 'BUY' else cmp >= limitPrice2):
                     qty = remQty
                     orderType = 'LMT'
-                    limitPrice = limitPrice2 if dbDict['BUY_SELL'] == 'BUY' else limitPrice4
+                    limitPrice = limitPrice2
                     if dbDict['BUY_SELL'] == 'BUY':
                         if cmp <= limitPrice4:
                             limitPrice = limitPrice4
                         elif cmp <= limitPrice3:
                             limitPrice = limitPrice3
                     else:
-                        if cmp >= limitPrice2:
-                            limitPrice = limitPrice2
+                        if cmp >= limitPrice4:
+                            limitPrice = limitPrice4
                         elif cmp >= limitPrice3:
                             limitPrice = limitPrice3
         elif segment == 'OPTION':
@@ -898,7 +903,7 @@ class app():
         # If the order fails -> status will be False. Retry the order
         self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, product=%s, orderType=%s, limit=%.2f", 
                             dbDict['MKT_SYMBOL'], qty, dbDict['BUY_SELL'], product, orderType, limitPrice)
-        orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['MKT_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=qty, buySell=dbDict['BUY_SELL'], 
+        orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(mktSym=dbDict['MKT_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=qty, buySell=dbDict['BUY_SELL'], 
                                                                            product=product, orderType=orderType, limitPrice=limitPrice, exchange=dbDict['MKT'], 
                                                                            segment=segment, triggerPrice=0)
 
@@ -946,7 +951,7 @@ class app():
 
             segment = self.__getSegment(dbDict['STRATEGY'])
             self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, product, orderType)
-            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(nseSym=dbDict['MKT_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=closeQty, 
+            orderStatus, orderMessage, orderNum = self.__payTmMoney.placeOrder(mktSym=dbDict['MKT_SYMBOL'], securityId=dbDict['SECURITY_ID'], qty=closeQty, 
                                                                                buySell=buySell, product=product, orderType='MKT', limitPrice=0, exchange=dbDict['MKT'],
                                                                                segment=segment, triggerPrice=0)
             if not orderStatus:
@@ -1090,7 +1095,7 @@ class app():
         if not self.__marketOpen:
             return
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
-            self.__modifyCmpSubcription(persistenceInst, dbDict, 'ADD')
+            self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
             self.__updateRecStatus(persistenceInst, dbDict)
             self.__openPosition(persistenceInst, dbDict)
         elif dbDict['REC_STATUS'] in ['PARTIAL_CLOSE', 'CLOSE']:
@@ -1255,7 +1260,7 @@ trade = app('./payTmMoney.ini', dryRun=False)
 
 def message_received(message):
     trade.setCMP(message)
-    trade._app__logger.debug("websocket message %s", message)
+    #trade._app__logger.debug("websocket message %s", message)
 
 
 def on_open():
@@ -1277,6 +1282,7 @@ def webSocketThread():
 
 
 def openWebsocket():
+    dotenv.load_dotenv('./.env', override=True)
     public_access_token = os.environ.get('public_access_token', '')
     wsclient = WebSocketClient.WebSocketClient(public_access_token)
     wsclient.set_on_message_listener(message_received)
@@ -1289,7 +1295,7 @@ def openWebsocket():
 
 def payTmThread():
     squareOffMinus15 = False
-
+    
     trade.checkOpenOrders()
     status = trade.startupCheck()
     if not status:
@@ -1297,8 +1303,9 @@ def payTmThread():
         return
     else:
         print('Startup check passed!!!')
-
+    
     trade.printMilestones()
+    
     marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
@@ -1340,21 +1347,17 @@ if __name__ == '__main__':
     trade.getHoldingsData()
 
     # Open websocket connection with PayTm
-    """
     websocketThr = threading.Thread(target=webSocketThread)
     websocketThr.daemon = True   
     trade.wsclient = openWebsocket()
     websocketThr.start()
     while not trade.useWebsocket:
         time.sleep(1)
-    """
 
     # Start the threads
-    #paytmThr = threading.Thread(target=payTmThread)
-    #flaskThr = threading.Thread(target=flaskThread)
-    #paytmThr.daemon = True
-    #flaskThr.daemon = True
-    #flaskThr.start()
+    flaskThr = threading.Thread(target=flaskThread)
+    flaskThr.daemon = True
+    flaskThr.start()
     payTmThread()
 
     # Wait for the paytm thread to complete execution

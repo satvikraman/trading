@@ -200,14 +200,14 @@ class payTmMoneyMock:
         return status, message, orderNum
 
 
-    def placeOrder(self, nseSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
+    def placeOrder(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
         status = True
         prevOrdered = False
         timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
         orderDict = {'ORDER_NO': '', 'QTY': qty, 'TRADED_QTY': 0, 'ORDER_STATUS': 'OPEN', 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 
                      'BUY_SELL': buySell, 'SECURITY_ID': securityId, 'SEGMENT': segment, 'TRIGGER': triggerPrice, 'CREATE_TIME': timeStr, 'CANCEL_ORDER_NUM': ''}
         for dict in self.__stockDictArr:
-            if dict['MKT_SYMBOL'] == nseSym and dict['PRODUCT'] == product:
+            if dict['MKT_SYMBOL'] == mktSym and dict['PRODUCT'] == product:
                 prevOrdered = True
                 orderNum = str(self.__orderNum)
                 orderDict['ORDER_NO'] = orderNum
@@ -224,7 +224,7 @@ class payTmMoneyMock:
             orderNum = str(self.__orderNum)
             orderDict['ORDER_NO'] = orderNum
             self.__orderNum += 1
-            stockDict = {'MKT_SYMBOL': nseSym, 'SECURITY_ID': securityId, 'QTY': qty, 'POS_HOLD_QTY': 0, 'PRODUCT': product, 'OPEN_BUY_SELL': buySell,
+            stockDict = {'MKT_SYMBOL': mktSym, 'SECURITY_ID': securityId, 'QTY': qty, 'POS_HOLD_QTY': 0, 'PRODUCT': product, 'OPEN_BUY_SELL': buySell,
                          'OPEN_ORDERS': [], 'CLOSE_ORDERS': []}
             stockDict['OPEN_ORDERS'].append(orderDict)
             self.__stockDictArr.append(stockDict)

@@ -81,7 +81,7 @@ class persistence:
 
     def insertDb(self, dict, queryParamVals):
         status = False
-        found, _ = self.isInDb(queryParamVals)
+        found, retDict = self.isInDb(queryParamVals)
         if(not found and dict):
             self.__acquireLock()
             res = self.__db.insert(dict)
@@ -91,7 +91,7 @@ class persistence:
             else:
                 self.__logger.critical("Unable to insert record in DB: %s", dict)
         else:
-            self.__logger.error("Record already in DB. Can't insert: %s", dict)
+            self.__logger.error("Record already in DB. Can't insert: %s. \nFound: %s", dict, retDict)
         return status
         
 

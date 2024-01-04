@@ -297,7 +297,7 @@ class iciciDirect():
 
     def getStrategiesToInvest(self, source, filter=None):
         if source == 'iCLICK-2-GAIN':
-            allStrategies = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS']
+            allStrategies = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
             strategiesToInvest = allStrategies
         elif source == 'iCLICK-2-INVEST':
             allStrategies = ['TOP PICKS', 'NANO NIVESH', 'QUANT DERIVATIVES PICK', 'MARGIN TRADING FUNDING (MTF)', 'STOCK TALES', 'RESULT UPDATE', 'IDIRECT INSTINCT', 'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 
@@ -337,8 +337,6 @@ class iciciDirect():
     def __formatiCLICK_2_GAINTblRowToDict(self, tblRowCols, tblExpandRow):
         rowDict = None
         self.__logger.debug('==== Format Table Row To Dictionary ====')
-        for i in range(9):
-            self.__logger.debug('Row data to format. Cell %d \n%s', i, tblRowCols[i].text)
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatStockCell(tblRowCols[0].text)
         if self.strategiesToInvest('iCLICK-2-GAIN', cell1Dict['STRATEGY'], cell1Dict['BUY_SELL']):
@@ -354,7 +352,9 @@ class iciciDirect():
             
             foundInvPeriod = False
             if cell1Dict['STRATEGY'] in ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']:
+                tblRowCols[0].click()
                 foundInvPeriod, invPeriod = self.__formatiCLICK_2_GAINTblExpandRowToDict(tblExpandRow)
+                tblRowCols[0].click()
 
             if foundInvPeriod:
                 rowDict['INV_PERIOD'] = invPeriod

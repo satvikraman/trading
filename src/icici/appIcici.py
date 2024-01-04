@@ -76,6 +76,7 @@ class app():
                     urllib.request.urlretrieve(self.__config['APP']['ICICI_DATESET'], iciciDataset)
                     with zipfile.ZipFile(iciciDataset, 'r') as zip_ref:
                         zip_ref.extractall(iciciDatasetPath)
+                    dotenv.set_key('./.env', "icici_dataset_valid_until_date", today)
                 except Exception as e:
                     self.__logger.critical(e)
 
@@ -86,7 +87,6 @@ class app():
 
 
     def __send2PayTm(self, endPoint, recDict):
-        return True
         retries = self.__numRetries
         status = False
 

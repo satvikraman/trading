@@ -100,40 +100,27 @@ def test_Margin1():
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['QTY'] == 45
+    assert dbDict[0]['QTY'] == 9
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 9
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # When runPeriodicChecks() is run next, the status of the orders will change. If the previous open order is completed
-    # new orders to buy the remainder quantity will be placed
+    # When runPeriodicChecks() is run next, the order will still not be placed since the cmp is > HIGH_REC_PRICE
     trade.runPeriodicChecks()
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert dbDict[0]['POS_QTY'] == 14
-    assert dbDict[0]['POS_HOLD_QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
-    assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 31
-    assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDict['HIGH_REC_PRICE']
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
-    assert len(dbDict[0]['CLOSE_ORDERS']) == 0
-
-    # Even though open buy orders exist, since the cmp > limit price for the 2nd order, the buy order will remain open
-    trade.runPeriodicChecks()
-    assert dbDict[0]['POS_QTY'] == 14
-    assert dbDict[0]['POS_HOLD_QTY'] == 14
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
+    assert dbDict[0]['POS_QTY'] == 0
+    assert dbDict[0]['POS_HOLD_QTY'] == 0
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # Now cmp <= limit for the open buy order. The 2nd buy order will complete
@@ -142,11 +129,11 @@ def test_Margin1():
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
-    assert dbDict[0]['POS_QTY'] == 45
-    assert dbDict[0]['POS_HOLD_QTY'] == 45
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 31
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert dbDict[0]['POS_QTY'] == 9
+    assert dbDict[0]['POS_HOLD_QTY'] == 9
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 9
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
     # Its 3:00PM. Open positions will be squared off    
@@ -160,11 +147,11 @@ def test_Margin1():
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 45
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 9
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 45
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 9
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
     # After that ICICI closes the recommendation
@@ -179,7 +166,7 @@ def test_Margin1():
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
     trade._app__persistenceIntraDay.removeAll()

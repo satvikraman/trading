@@ -53,16 +53,33 @@ class app():
 
 
     def prepareRecDict(self, rowDict):
-        mandatoryKeys = ['STOCK', 'SOURCE', 'NSE_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
+        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
-        importantKeys = ['INV_PERIOD']
+        mandatoryDervKeys = ['LOT_SIZE']
+        mandatoryLevKeys = ['REC_TIME']
+        
+        importantKeys = ['INV_PERIOD', 'MKT']
         priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
-        otherkeys = ['REC_TIME', 'INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        
+        otherLevkeys = ['INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        otherNonLevkeys = otherLevkeys + ['REC_TIME']
+        
         recDict = {}
-        for key in mandatoryKeys + mandatoryPriceKeys + importantKeys + priceKeys + otherkeys:
+
+        if rowDict['STRATEGY'] == 'OPTIONS':
+            keysToSend = mandatoryKeys + mandatoryPriceKeys + mandatoryDervKeys + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
+        elif rowDict['STRATEGY'] == 'MARGIN':
+            keysToSend = mandatoryKeys + mandatoryPriceKeys + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
+        else:
+            keysToSend = mandatoryKeys + mandatoryPriceKeys + importantKeys + priceKeys + otherNonLevkeys
+
+        for key in keysToSend:
             if key in rowDict:
                 recDict[key] = rowDict[key]
-            elif key in mandatoryKeys or key in mandatoryPriceKeys:
+            elif key in mandatoryKeys + mandatoryPriceKeys + mandatoryDervKeys:
+                self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
+                return {}
+            elif rowDict['STRATEGY'] in ['OPTIONS', 'MARGIN'] and key in mandatoryLevKeys:
                 self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
                 return {}
             elif key in importantKeys:
@@ -70,7 +87,7 @@ class app():
                     rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
             elif key in priceKeys:
                 recDict[key] = 0
-            elif key in otherkeys:
+            elif key in otherNonLevkeys:
                 recDict[key] = ''        
         return recDict
 
@@ -149,7 +166,7 @@ class app():
         self.authorize()
         try:
             # Call the Sheets API
-            readRange = self.__sheetName+'!A1'+':K'+self.__numRowsToRead
+            readRange = self.__sheetName+'!A1'+':L'+self.__numRowsToRead
             result = self.__service.spreadsheets().values().get(spreadsheetId=self.__spreadsheetID,
                                                                 range=readRange).execute()
             values = result.get('values', [])
@@ -182,7 +199,10 @@ class app():
                     rowDict['HIGH_REC_PRICE'] = float(row[9])
                     rowDict = self.__computeLowRecPrice(rowDict)
 
-                    rowDict['NSE_SYMBOL'] = row[10]
+                    rowDict['MKT_SYMBOL'] = row[10]
+                    rowDict['SECURITY_ID'] = row[11]
+
+                    rowDict['MKT'] = 'NSE'
                     rowDict['BUY_SELL'] = 'BUY'
                     rowDict['VISIBLE'] = 'VISIBLE'
                     rowDict['CMP'] = 0
