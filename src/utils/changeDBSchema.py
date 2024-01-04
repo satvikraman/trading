@@ -1,4 +1,5 @@
 from typing import Any
+import csv
 import os
 import re
 import shutil
@@ -16,16 +17,20 @@ class app():
         if os.path.isfile(configFile1):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile1)
-            db = self.__config['DATABASE']['DB']            
+            db = self.__config['DATABASE']['DB_EQUITY']            
             self.backupDb(db)
+            dbName = re.sub('.json', '-newSchema.json', db)
             self.__persistence1 = persistence(configFile1, db)
+            self.__persistence1a = persistence(configFile1, dbName)
 
         if configFile2 != None and os.path.isfile(configFile2):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile2)
-            db = self.__config['DATABASE']['DB']            
+            db = self.__config['DATABASE']['DB_EQUITY']            
             self.backupDb(db)
+            dbName = re.sub('.json', '-newSchema.json', db)
             self.__persistence2 = persistence(configFile2, db)
+            self.__persistence2a = persistence(configFile1, dbName)
             
     def backupDb(self, db):
         backupDb = db + '-SCHEMA-' + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S")
@@ -33,41 +38,97 @@ class app():
 
 
     def cleanSpecificStocks(self):
-        self.__persistence2.removeFromDb([['NSE_SYMBOL', 'CUB'], ['STRATEGY', 'QUANT DERIVATIVES PICK'], ['REC_DATE', '12-Oct-2023']])
+        self.__persistence1.removeFromDb([['STRATEGY', 'MARGIN']])
         
+
+    def mapICICSymbolToMktSymbol(self, strategy, stkName=None, shortName=None):
+            status = False
+            rowDict = {'SECURITY_ID': '', 'MKT': '', 'MKT_SYMBOL': '', 'ICICI_SYMBOL': ''}
+            if strategy == "OPTIONS":
+                splitShortName = shortName.split('-')
+                shortName = splitShortName[1]
+                expiryDate = splitShortName[2]+'-'+splitShortName[3]+'-'+splitShortName[4]
+                strikePrice = splitShortName[5]
+                optionType = splitShortName[6]
+
+                with(open(self.__config['MAP-ICICI-2-NSE']['FNO_DATASET'], 'r')) as icicicsv:
+                    iciciReader = csv.DictReader(icicicsv)
+                    for iciciRow in iciciReader:
+                        if (iciciRow["ShortName"].upper() == shortName.upper() and 
+                            iciciRow["Series"] == 'OPTION' and 
+                            iciciRow["ExpiryDate"].upper() == expiryDate.upper() and 
+                            iciciRow["StrikePrice"] == strikePrice and 
+                            iciciRow["OptionType"].upper() == optionType.upper()):
+
+                            status = True
+                            rowDict['SECURITY_ID'] = iciciRow["Token"]
+                            rowDict['MKT'] = 'NSE'
+                            rowDict['MKT_SYMBOL'] = shortName + '-' + expiryDate + '-' + strikePrice + '-' + optionType
+                            rowDict['ICICI_SYMBOL'] = rowDict['MKT_SYMBOL']
+                            rowDict["LOT_SIZE"] = iciciRow["LotSize"]
+                            break
+                self.__logger.debug('Generated dictionary %s', rowDict)            
+            elif strategy == "FUTURE":
+                self.__logger.debug("Symbol: %s Yet to add support for Futures", shortName)
+            elif 'OPTION' not in strategy and 'FUTURE' not in strategy:
+                # Equity investment. Could be intraday as well
+                #datasets = [[self.__config['MAP-ICICI-2-NSE']['NSE_DATASET'], 'NSE', ['Token', ' "ExchangeCode"', ' "ShortName"', ' "CompanyName"']], 
+                #            [self.__config['MAP-ICICI-2-NSE']['BSE_DATASET'], 'BSE', ['Token', '"ExchangeCode"', '"ShortName"', '"CompanyName"']]]
+                datasets = [[self.__config['MAP-ICICI-2-NSE']['NSE_DATASET'], 'NSE', ['Token', ' "ExchangeCode"', ' "ShortName"', ' "CompanyName"']]]
+
+                for dataset in datasets:
+                    with(open(dataset[0], 'r')) as icicicsv:
+                        iciciReader = csv.DictReader(icicicsv)
+                        for iciciRow in iciciReader:
+                            if iciciRow[dataset[2][3]].upper() == stkName.upper():
+                                status = True
+                                rowDict['SECURITY_ID'] = iciciRow[dataset[2][0]]
+                                rowDict['MKT'] = dataset[1]
+                                rowDict['MKT_SYMBOL'] = iciciRow[dataset[2][1]]
+                                rowDict['ICICI_SYMBOL'] = iciciRow[dataset[2][2]]
+                                break
+                    if status:
+                        break
+
+            return status, rowDict['SECURITY_ID'], rowDict['ICICI_SYMBOL'], rowDict['MKT_SYMBOL'], rowDict['MKT']
+
 
     def changeIciciSchema(self):
         dbDicts = self.__persistence1.getDb([])
        
+        count = 0
         for dbDict in dbDicts:
-            if 'EXP_DATE' not in dbDict and dbDict['REC_STATUS'] != 'CLOSE':
-                if 'INV_PERIOD' in dbDict:
-                    invPeriod = dbDict['INV_PERIOD']  
-                else:
-                    print("problem: %s", dbDict)
-                    continue
-                
-                invDays = invMonths = 0
-                if 'MONTH'.lower() in invPeriod.lower():
-                    invMonths = re.match(r'\d+', invPeriod)
-                    invMonths = int(invMonths.group(0))
-                elif 'DAY'.lower() in invPeriod.lower():
-                    invDays = re.match(r'\d+', invPeriod)
-                    invDays = int(invDays.group(0))            
-                
-                print("Setting expiry date and visibility on ", dbDict)
-                expDate = datetime.datetime.strftime(datetime.datetime.strptime(dbDict['REC_DATE'], '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
-                dbDict['EXP_DATE'] = expDate
-                dbDict['VISIBLE'] = 'HIDDEN'
+            status, securityId, iciciSymbol, mktSymbol, mkt = self.mapICICSymbolToMktSymbol(dbDict['STRATEGY'], dbDict['STOCK'], dbDict['ICICI_SYMBOL'])
+            newDict = dbDict.copy()
+            newDict['SECURITY_ID'] = securityId
+            newDict['MKT'] = mkt
 
-                self.__persistence1.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            status = self.__persistence1a.insertDb(newDict, [['MKT_SYMBOL', newDict['MKT_SYMBOL']], ['STRATEGY', newDict['STRATEGY']], ['REC_DATE', newDict['REC_DATE']], ['REC_TIME', newDict['REC_TIME']]])
+            if not status:
+                print("Problem inserting %s", newDict)
+            print("Inserting ", count, " entry")
+            count = count + 1
 
 
     def changePayTmSchema(self):
         dbDicts = self.__persistence1.getDb([])
+        count = 0
         for dbDict in dbDicts:
-            dbDict['VISIBLE'] = 'HIDDEN'
-            self.__persistence1.updateDb(dbDict, [['NSE_SYMBOL', dbDict['NSE_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            newDict = dbDict.copy()
+            newDict.pop('OPEN_ORDERS')
+            newDict.pop('CLOSE_ORDERS')
+            newDict.pop('CMP')
+
+            newDict['LATE_ADD'] = False
+            newDict['MKT'] = 'NSE'
+            newDict['OPEN_ORDERS'] = dbDict['OPEN_ORDERS']
+            newDict['CLOSE_ORDERS'] = dbDict['CLOSE_ORDERS']
+
+            status = self.__persistence1a.insertDb(newDict, [['MKT_SYMBOL', newDict['MKT_SYMBOL']], ['STRATEGY', newDict['STRATEGY']], ['REC_DATE', newDict['REC_DATE']], ['REC_TIME', newDict['REC_TIME']]])
+            if not status:
+                print("Problem inserting %s", newDict)
+            print("Inserting ", count, " entry")
+            count = count + 1
 
 
     def checkPayTmInIcici(self):
@@ -88,6 +149,6 @@ if __name__ == '__main__':
     #trade = app('./payTmMoney.ini')
     #trade.changePayTmSchema()
 
-    #trade = app('./payTmMoney.ini', './iciciDirect.ini')
-    #trade.cleanSpecificStocks()
+    trade = app('./payTmMoney.ini', './iciciDirect.ini')
+    trade.cleanSpecificStocks()
 
