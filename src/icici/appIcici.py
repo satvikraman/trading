@@ -64,6 +64,8 @@ class app():
             self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
             self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
             self.__timeToRefreshTradeIeas = int(self.__config['APP']['TIMES_TO_REFRESH_TRADE_IDEAS'])
+            # changeme
+            self.__timeToRefreshTradeIeas = 1
             
             # Download the latest ICICI dataset once every day
             dotenv.load_dotenv('.env', override=True)
@@ -450,20 +452,24 @@ class app():
                 persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
-    def runPeriodicChecks(self, marketCloseMinusDelta):
+    def runPeriodicChecks(self, marketOpen, marketCloseMinusDelta):
         # Send all recommendations in DB that haven't be ACK'ed
-        self.__sendNonAckedRecsFromDb()
+        # changeme
+        #self.__sendNonAckedRecsFromDb()
 
         invRecDicts = []
         if True:
             # Scrape recommendations from iClick2Invest
             actionableKeys = ['INV_PERIOD']
             otherKeys = []
+            self.__iciciDirect.browseResearchToClick_2_Invest()
             invRecDicts = self.__iciciDirect.scrapeiClick2Invest()         
             self.__mergeNonLeverageRecsToDb(invRecDicts, actionableKeys, otherKeys)
 
         # Scrape recommendations from iClick2Gain
-        for i in range(self.__timeToRefreshTradeIeas):
+        self.__iciciDirect.browseResearchToClick_2_Gain()
+        timesRefresh = self.__timeToRefreshTradeIeas if marketOpen else 1
+        for i in range(timesRefresh):
             gainRecDicts = []
             actionableKeys = ['LOW_REC_PRICE']
             otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
@@ -472,8 +478,8 @@ class app():
             self.__updateLeverageRecStatus(gainRecDicts)
             self.__mergeNonLeverageRecsToDb(gainRecDicts, actionableKeys, otherKeys)
 
-            self.__closeLeverageRecsNotVisible(gainRecDicts)
-            self.__updateMismatchedVisibilityNonLeverageRecs(invRecDicts, gainRecDicts)
+            #self.__closeLeverageRecsNotVisible(gainRecDicts)
+            #self.__updateMismatchedVisibilityNonLeverageRecs(invRecDicts, gainRecDicts)
 
             time.sleep(1)
 
@@ -484,7 +490,6 @@ class app():
 
     def openIciciSession(self):
         self.__iciciDirect.browseICICIDirect()
-        self.__iciciDirect.duplicateTabBrowseClick_2_Invest()
 
 
 if __name__ == '__main__':
@@ -493,13 +498,19 @@ if __name__ == '__main__':
     trade.closeExpiredRecs('FnO', dryRun=True)
     trade.openIciciSession()
 
+    while True:
+        trade.runPeriodicChecks(True, False)
+        time.sleep(15)
+
+"""
     marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
     marketClose = False
     marketCloseMinusDelta = False
     while not marketClose:
-        trade.runPeriodicChecks(marketCloseMinusDelta)
+        trade.runPeriodicChecks(marketOpen, marketCloseMinusDelta)
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
         marketCloseMinusDelta = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=20)
         while not marketOpen:
             marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
             time.sleep(15)
+"""

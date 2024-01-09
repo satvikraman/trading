@@ -1,25 +1,36 @@
 import logging
+import csv
+import dotenv
 import os
 import re
 import sys
 import time
 import datetime
+from dateutil.relativedelta import relativedelta
 import configparser
+import urllib
+
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 sys.path.append('./src/common')
-import mapIciciToNseStock
+from pushbullet import PushBullet
+from googleWorkspace import googleWorkspace
 
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
+from breeze_connect import BreezeConnect
 
 class iciciDirect():
     def __init__(self, configFile):
         if(os.path.isfile(configFile)):
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
-            self.__mapIciciToNseStock = mapIciciToNseStock.mapIciciToNseStock(configFile)
             
             if(self.__config['ICICI-DIRECT']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
@@ -33,39 +44,320 @@ class iciciDirect():
                 level = logging.CRITICAL
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
+
             self.__browserEngine = self.__config['DEFAULT']['BROWSER']
             if self.__browserEngine == 'CHROME':
                 self.__browserDriver = self.__config['DEFAULT']['CHROME_DRIVER']
             elif self.__browserEngine == 'EDGE':
                 self.__browserDriver = self.__config['DEFAULT']['EDGE_DRIVER']
 
-    def __browseResearchToClick_2_Gain(self):
-        # Click on Research
-        menu1 = self.__browser.find_element_by_id("pnlmnuprod")
-        element = menu1.find_element_by_partial_link_text("Research")
-        element.click()
-        time.sleep(5)
+            # Initialize PushBullet to enable mobile notifications
+            self.__pushbullet = None
+            if self.__config['ICICI-DIRECT']['USE_PUSHBULLET'] == 'YES':
+                dotenv.load_dotenv('./.env', override=True)
+                pb_api_key = os.environ.get('pb_api_key', '')
 
-        # Click on IClick2Gain
-        menu2 = self.__browser.find_element_by_id("pnlmnudsp")
-        iClick2Gain = menu2.find_element_by_partial_link_text("Trading Ideas (iCLICK-2-GAIN)")
-        iClick2Gain.click()
-        time.sleep(5)
+                self.__pushbullet = PushBullet(pb_api_key)
+                self.__pushbulletDev = self.__pushbullet.getDevices()
+
+            # Connect to Google sheets
+            spreadsheetID = self.__config['ICICI-DIRECT']['SPREADSHEET_ID']
+            sheetName = self.__config['ICICI-DIRECT']['SHEET_NAME']
+            self.__google = googleWorkspace(spreadsheetID, sheetName)
+            self.__google.authorize()
+            self.__google.buildSheets()
+            self.__google.buildDrive()
 
 
-    def __browseResearchToClick_2_Invest(self):
-        self.__browser.switch_to.window(self.__iclick2investHdl)
-        # Click on Research
-        menu1 = self.__browser.find_element_by_id("pnlmnuprod")
-        element = menu1.find_element_by_partial_link_text("Research")
-        element.click()
-        time.sleep(5)
+    def __uploadPNGToDriv(self):
+        self.__service = build('sheets', 'v4', credentials=self.__creds)
 
-        # Click on IClick2Gain
-        menu2 = self.__browser.find_element_by_id("pnlmnudsp")
-        iClick2Invest = menu2.find_element_by_partial_link_text("Investment Ideas (iCLICK 2 INVEST)")
-        iClick2Invest.click()
-        time.sleep(5)
+
+    def browseResearchToClick_2_Gain(self):
+        status = False
+        while not status:
+            try:
+                # Click on Research
+                menu1 = self.__browser.find_element_by_id("pnlmnuprod")
+                element = menu1.find_element_by_partial_link_text("Research")
+                element.click()
+                time.sleep(5)
+
+                # Click on IClick2Gain
+                menu2 = self.__browser.find_element_by_id("pnlmnudsp")
+                iClick2Gain = menu2.find_element_by_partial_link_text("Trading Ideas (iCLICK-2-GAIN)")
+                iClick2Gain.click()
+                time.sleep(5)
+                status = True
+            except Exception as err:
+                time.sleep(1)
+
+    def browseResearchToClick_2_Invest(self):
+        status = False
+        while not status:
+            try:
+                # Click on Research
+                menu1 = self.__browser.find_element_by_id("pnlmnuprod")
+                element = menu1.find_element_by_partial_link_text("Research")
+                element.click()
+                time.sleep(5)
+
+                # Click on IClick2Gain
+                menu2 = self.__browser.find_element_by_id("pnlmnudsp")
+                iClick2Invest = menu2.find_element_by_partial_link_text("Investment Ideas (iCLICK 2 INVEST)")
+                iClick2Invest.click()
+                time.sleep(5)
+                status = True
+            except Exception as err:
+                time.sleep(1)
+
+
+    def loginICICIDirect(self):
+        loginNotSuccessful = True
+        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
+        self.__google.writeToCell('A1', 'B4', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
+        while loginNotSuccessful:
+            self.__browser.refresh()
+
+            self.__google.writeToCell('A1', 'B3', [[' ', ' '], [' ', ' '], [' ', ' ']])
+            self.__google.writeToCell('C3', 'C3', [[' ']])
+
+            if self.__pushbullet != None:
+                self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Attention: Starting ICICI Direct login sequence")
+
+            self.__google.writeToCell('A1', 'A1', [['Ready for login sequence']])
+            goahead = False
+            while not goahead:
+                status, value = self.__google.readFromCell('B1', 'B1')
+                if status and value[0][0].upper() == 'YES':
+                    goahead = True
+                else:
+                    time.sleep(1)
+
+            self.__google.writeToCell('A2', 'A2', [['QRCODE or 2FA']])
+            loginOption = False
+            while not loginOption:
+                status, value = self.__google.readFromCell('B2', 'B2')
+                if status and value[0][0].upper() in ['QRCODE', '2FA']:
+                    loginOption = value[0][0].upper()
+                else:
+                    time.sleep(1)
+
+            if loginOption == 'QRCODE':
+                try:
+                    qrcode = self._iciciDirect__browser.find_element_by_xpath("//a[@href='javascript://']")
+                except Exception as err:
+                    time.sleep(1)
+                qrcode.click()
+
+                try:
+                    qrcode = self._iciciDirect__browser.find_element_by_id("dvQRCode")
+                except Exception as err:
+                    time.sleep(1)
+
+                self._iciciDirect__browser.save_screenshot('qrcode.png')
+                _, fileId = self.__google.uploadMediaFile('qrcode.png', 'image/png')
+
+                self.__google.writeToCell('A3', 'A3', [['Scanned the QR code?']])
+                scannedQR = False
+                while not scannedQR:
+                    status, value = self.__google.readFromCell('B3', 'B3')
+                    if status and value[0][0].upper() == 'YES':
+                        scannedQR = True
+                        self.__google.deleteMediaFile(fileId)
+                    else:
+                        time.sleep(1)
+            else:
+                dotenv.load_dotenv('./.env', override=True)
+                uid = os.environ.get('icici_direct_uid', '')
+                pwd = os.environ.get('icici_direct_pwd', '')            
+
+                try:
+                    rememberUserName=False
+                    userName = self.__browser.find_element_by_id("dvudtxt")
+                    if len(userName.text) > 0:
+                        rememberUserName = True
+                except Exception as err:
+                    rememberUserName=False
+
+                if not rememberUserName:
+                    userID = self.__browser.find_element_by_id('dvusrin')
+                    userName = userID.find_element_by_id('txtu')
+                    userName.send_keys(uid)
+
+                userPwd = self.__browser.find_element_by_id('txtp')
+                userPwd.send_keys(pwd)
+                loginBtn = self._iciciDirect__browser.find_element_by_id('btnlogin')
+                loginBtn.click()
+
+                self.__google.writeToCell('A3', 'A3', [['Enter the 6 digit OTP']])
+                OTPnotrecv = True
+                while OTPnotrecv:
+                    status, value = self.__google.readFromCell('B3', 'C3')
+                    if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
+                        OTPnotrecv = False
+                    else:
+                        time.sleep(1)
+
+                otpForm = self.__browser.find_element_by_id('frmotp')
+                otpIn = otpForm.find_elements_by_tag_name('input')
+                for i in range(len(value[0][0])):
+                    otpIn[i].send_keys(int(value[0][0][i]))
+            
+            # Check if we have progressed
+            time.sleep(5)
+            if self.__browser.current_url != self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+                self.__google.writeToCell('A4', 'A4', [['Login successful']])
+                loginNotSuccessful = False
+                
+                # Check if we have successfully logged in
+                okgotit = None
+                while not okgotit:
+                    try:
+                        okgotit = self.__browser.find_element_by_xpath("//a[@onclick='clickgotit();']")
+                        okgotit.click()
+                    except Exception as err:
+                        time.sleep(1)
+            else:
+                self.__google.writeToCell('A4', 'A4', [['Login not successful']])
+
+
+    def browseICICIDirect(self):
+        # Open ICICI Direct and let the user login
+        if self.__browserEngine == 'CHROME':
+            self.__browser = webdriver.Chrome(self.__browserDriver)
+        else:
+            self.__browser = webdriver.Edge(self.__browserDriver)
+
+        self.loginICICIDirect()
+
+
+    def closeBrowser(self):  
+        self.__browser.quit()
+
+
+    def openBreezeSession(self, on_ticks):
+        dotenv.load_dotenv('./.env', override=True)
+        brz_api_key = os.environ.get('brz_api_key', '')
+        brz_api_secret = os.environ.get('brz_api_secret', '')
+        breeze = BreezeConnect(api_key=brz_api_key)
+
+        valid_until_date = os.environ.get('brz_session_token_valid_until', '')
+        valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
+        if(valid_until_date.lower() != valid_today):            
+            # Obtain your session key from https://api.icicidirect.com/apiuser/login?api_key=YOUR_API_KEY
+            # Incase your api-key has special characters(like +,=,!) then encode the api key before using in the url as shown below.
+            loginURL = "https://api.icicidirect.com/apiuser/login?api_key="+urllib.parse.quote_plus(brz_api_key)
+            session_token = input("Enter the request token after logging into {} : ".format(loginURL))
+            dotenv.set_key('./.env', "brz_session_token", session_token)
+            dotenv.set_key('./.env', "brz_session_token_valid_until", valid_today)
+
+            # Generate Session
+            res = breeze.generate_session(api_secret=brz_api_secret, session_token=session_token)
+        # Connect to websocket(it will connect to tick-by-tick data server)
+        res = breeze.ws_connect()
+        breeze.on_ticks = on_ticks
+
+        breeze.subscribe_feeds(get_order_notification=True)
+        res = breeze.subscribe_feeds(stock_token = "i_click_2_gain")
+        self.__logger.info(res)
+        self.__breeze = breeze
+    
+
+    def __getProduct(self, product):
+        productHash = {'OPTION': 'options', 'FUTURE': 'futures', 'DELIVERY': 'cash', 'INTRADAY': 'margin'}
+        return productHash[product]
+
+
+    def findOrderStatusAndQtyInfo(self, orderNo):
+        exchange = 'NFO'
+        res = self.__breeze.get_order_detail(exchange_code=exchange, order_id=orderNo)
+        status = True if res['Status'] == 200 else False
+        qty = trdQty = None
+        if status:
+            qty = res['Success']['quantity']
+            trdQty = qty - res['Success']['pending_quantity']
+        return status, qty, trdQty
+
+
+    def placeOrder(self, stk, product, action, orderTyp, qty, price):
+        exchange = 'NFO'
+        validity = 'day'
+        validityDate = datetime.datetime.now().isoformat()[:10] + 'T06:00:00.000Z'
+
+        stk = stk.split('-')
+        stkCode = stk[0]
+        expDate = stk[1]+'-'+stk[2]+'-'+stk[3]
+        strikePrice = stk[4]
+        right = 'call' if stk[5] == 'CE' else 'put'
+
+        expDate = datetime.datetime(expDate, "%d-%b-%Y").isoformat()[:10] + 'T06:00:00.000Z'
+        action = 'buy' if action == 'BUY' else 'sell'
+        orderTyp = 'limit' if orderTyp == 'LMT' else 'market'
+
+        res = self.__breeze(stock_code=stkCode, exchange_code=exchange, product=self.__getProduct(product), action=action, order_type=orderTyp, stoploss='0', 
+                            quantity=str(qty), price=str(price), validity=validity, validity_date=validityDate, disclosed_quantity='0', expiry_date=expDate, right=right, strike_price=strikePrice)
+        status = True if res['Status'] == 200 else False
+        message = res['Success']['message'] if status else res['Error']
+        orderNum = ''
+        if status:
+            orderNum = re.search(r'\d.*$', res['Success']['order_id'])
+            if orderNum != None:
+                orderNum = orderNum.group(0)
+        return status, message, orderNum
+
+
+    def mapICICSymbolToMktSymbol(self, strategy, stkName=None, shortName=None):
+        status = False
+        rowDict = {'SECURITY_ID': '', 'MKT': '', 'MKT_SYMBOL': '', 'ICICI_SYMBOL': ''}
+        if strategy == "OPTIONS":
+            splitShortName = shortName.split('-')
+            shortName = splitShortName[1]
+            expiryDate = splitShortName[2]+'-'+splitShortName[3]+'-'+splitShortName[4]
+            strikePrice = splitShortName[5]
+            optionType = splitShortName[6]
+
+            with(open(self.__config['MAP-ICICI-2-NSE']['FNO_DATASET'], 'r')) as icicicsv:
+                iciciReader = csv.DictReader(icicicsv)
+                for iciciRow in iciciReader:
+                    if (iciciRow["ShortName"].upper() == shortName.upper() and 
+                        iciciRow["Series"] == 'OPTION' and 
+                        iciciRow["ExpiryDate"].upper() == expiryDate.upper() and 
+                        iciciRow["StrikePrice"] == strikePrice and 
+                        iciciRow["OptionType"].upper() == optionType.upper()):
+
+                        status = True
+                        rowDict['SECURITY_ID'] = iciciRow["Token"]
+                        rowDict['MKT'] = 'NSE'
+                        rowDict['MKT_SYMBOL'] = shortName + '-' + expiryDate + '-' + strikePrice + '-' + optionType
+                        rowDict['ICICI_SYMBOL'] = rowDict['MKT_SYMBOL']
+                        rowDict["LOT_SIZE"] = iciciRow["LotSize"]
+                        break
+            self.__logger.debug('Generated dictionary %s', rowDict)            
+        elif strategy == "FUTURE":
+            self.__logger.debug("Symbol: %s Yet to add support for Futures", shortName)
+        elif 'OPTION' not in strategy and 'FUTURE' not in strategy:
+            # Equity investment. Could be intraday as well
+            #datasets = [[self.__config['MAP-ICICI-2-NSE']['NSE_DATASET'], 'NSE', ['Token', ' "ExchangeCode"', ' "ShortName"', ' "CompanyName"']], 
+            #            [self.__config['MAP-ICICI-2-NSE']['BSE_DATASET'], 'BSE', ['Token', '"ExchangeCode"', '"ShortName"', '"CompanyName"']]]
+            datasets = [[self.__config['MAP-ICICI-2-NSE']['NSE_DATASET'], 'NSE', ['Token', ' "ExchangeCode"', ' "ShortName"', ' "CompanyName"']]]
+
+            for dataset in datasets:
+                with(open(dataset[0], 'r')) as icicicsv:
+                    iciciReader = csv.DictReader(icicicsv)
+                    for iciciRow in iciciReader:
+                        if iciciRow[dataset[2][3]].upper() == stkName.upper():
+                            status = True
+                            rowDict['SECURITY_ID'] = iciciRow[dataset[2][0]]
+                            rowDict['MKT'] = dataset[1]
+                            rowDict['MKT_SYMBOL'] = iciciRow[dataset[2][1]]
+                            rowDict['ICICI_SYMBOL'] = iciciRow[dataset[2][2]]
+                            break
+                if status:
+                    break
+
+            self.__logger.debug('Generated dictionary %s', rowDict)
+        return status, rowDict['SECURITY_ID'], rowDict['ICICI_SYMBOL'], rowDict['MKT_SYMBOL'], rowDict['MKT']
 
 
     def __halfCloseRec(self, updateAction1):
@@ -91,7 +383,7 @@ class iciciDirect():
     def __suggestInvPeriod(self, strategy, iciciSymbol, recDate):
         invPeriod = ''
         if strategy == 'MARGIN':
-            invPeriod  = '0 DAYS*'
+            invPeriod  = '0 DAYS'
         elif strategy == 'OPTIONS':
             spliticiciSymbol = iciciSymbol.split('-')
             expiryDate = spliticiciSymbol[1]+'-'+spliticiciSymbol[2]+'-'+spliticiciSymbol[3]
@@ -99,16 +391,24 @@ class iciciDirect():
             expDate    = datetime.datetime.strptime(expiryDate, "%d-%b-%Y")
             invPeriod  = (expDate - recDate).days
             invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
-        elif strategy == 'MOMENTUM PICK':
-            invPeriod  = '14 DAYS*'
-        elif strategy == 'QUANT PICKS':
-            invPeriod  = '3 MONTHS*'
-        elif strategy == 'GLADIATOR STOCKS':
-            invPeriod  = '3 MONTHS*'
         else:
-            invPeriod  = '14 DAYS*'
-            self.__logger.error("Handle suggestion of investment period for this strategy %s", strategy)
-        return invPeriod
+            invDays = invMonths = 0
+            if strategy == 'MOMENTUM PICK':
+                invPeriod  = '14 DAYS*'
+                invDays    = 14
+            elif strategy == 'QUANT PICKS':
+                invPeriod  = '3 MONTHS*'
+                invMonths  = 3
+            elif strategy == 'GLADIATOR STOCKS':
+                invPeriod  = '3 MONTHS*'
+                invMonths  = 3
+            else:
+                invPeriod  = '14 DAYS*'
+                invDays    = 14
+                self.__logger.error("Handle suggestion of investment period for this strategy %s", strategy)
+            expDate = datetime.datetime.strftime(datetime.datetime.strptime(recDate, '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
+        return invPeriod, expDate
+
 
     def prepareRecDict(self, rowDict):
         mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
@@ -119,7 +419,7 @@ class iciciDirect():
         importantKeys = ['INV_PERIOD', 'MKT']
         priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
         
-        otherLevkeys = ['INV_PERIOD', 'PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
+        otherLevkeys = ['PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
         otherNonLevkeys = otherLevkeys + ['REC_TIME']
         
         recDict = {}
@@ -127,9 +427,9 @@ class iciciDirect():
         if rowDict['STRATEGY'] == 'OPTIONS':
             keysToSend = mandatoryKeys + mandatoryPriceKeys + mandatoryDervKeys + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
         elif rowDict['STRATEGY'] == 'MARGIN':
-            keysToSend = mandatoryKeys + mandatoryPriceKeys + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
+            keysToSend = mandatoryKeys + mandatoryPriceKeys                     + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
         else:
-            keysToSend = mandatoryKeys + mandatoryPriceKeys + importantKeys + priceKeys + otherNonLevkeys
+            keysToSend = mandatoryKeys + mandatoryPriceKeys                                        + importantKeys + priceKeys + otherNonLevkeys
 
         for key in keysToSend:
             if key in rowDict:
@@ -142,13 +442,99 @@ class iciciDirect():
                 return {}
             elif key in importantKeys:
                 if key == 'INV_PERIOD':
-                    rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'])
+                    recDict['INV_PERIOD'], _ = self.__suggestInvPeriod(rowDict['STRATEGY'], rowDict['ICICI_SYMBOK'], rowDict['REC_DATE'])
             elif key in priceKeys:
                 recDict[key] = 0
             elif key in otherNonLevkeys:
                 recDict[key] = ''        
         return recDict
 
+
+    def mapBreezeUpdateInfoToRecStatus(self, update):
+        splitUpdate = re.split('\d\d:\d\d:\d\d', update)
+        fullClose = ['Book Full Profit', 'TGT1', 'Exit', 'SLTP']
+        partialClose = ['Book Partial Profit']
+
+        updateAction1 = updateAction2 = updateAction1Time = updateAction2Time = ''
+        if len(splitUpdate) >= 3:
+            updateAction1 = re.search(r'Book Partial Profit.*', update)
+            updateAction1 = '' if updateAction1 == None else updateAction1.group(0)
+            updateAction2 = re.search(r'^.*?\d\d:\d\d:\d\d', update)
+            updateAction2 = '' if updateAction2 == None else updateAction2.group(0)
+        elif len(splitUpdate) == 2:
+            updateAction1 = update
+        
+        updateAction1Time = re.search(r'\d\d:\d\d:\d\d', updateAction1)
+        updateAction1Time = '' if updateAction1Time == None else updateAction1Time.group(0)
+        updateAction2Time = re.search(r'\d\d:\d\d:\d\d', updateAction2)
+        updateAction2Time = '' if updateAction2Time == None else updateAction2Time.group(0)
+
+        recStatus = 'OPEN'
+        for action in partialClose:
+            if action in update:
+                recStatus = 'PARTIAL_CLOSE'
+        for action in fullClose:
+            if action in update:
+                recStatus = 'CLOSE'
+        return recStatus, updateAction1, updateAction1Time, updateAction2, updateAction2Time
+
+
+    def getRecDictFromTick(self, ticks):
+        self.__logger.info("Tick: %s", ticks)
+        tickDict = {}
+        # Mandatory keys
+        tickDict['STOCK'] = re.sub('\(.*$', '', ticks['stock_name'])
+        tickDict['SOURCE'] = 'iCLICK-2-GAIN'
+        tickDict['STRATEGY'] = ticks['stock_description'].upper()
+        tickDict['BUY_SELL'] = ticks['action_type'].upper()
+        if not self.strategiesToInvest('iCLICK-2-GAIN', tickDict['STRATEGY'], tickDict['BUY_SELL']):
+            return
+
+        recDateTime = ticks['recommended_date'].split(' ')
+        tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
+        tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.mapUpdateInfoToRecStatus(ticks['recommended_update'])
+        if ticks['iclick_status'] == 'closed':
+            tickDict['REC_STATUS'] = 'CLOSE'
+
+        iciciSymbol = re.sub('^.*\(', '', ticks['stock_name'])
+        iciciSymbol = re.sub('\).*$', '', iciciSymbol)
+        if tickDict['STRATEGY'] == 'OPTIONS':
+            spliticiciSymbol = iciciSymbol.split('-')
+            iciciSymbol = spliticiciSymbol[1]+'-'+spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
+        invPeriod, tickDict['EXP_DATE'] = self.__suggestInvPeriod(tickDict['STRATEGY'], iciciSymbol, tickDict['REC_DATE'])
+        tickDict['VISIBLE'] = 'VISIBLE'
+
+        iciciSymbol = re.sub('^.*\(', '', ticks['stock_name'])
+        iciciSymbol = re.sub('\).*$', '', iciciSymbol)
+        if tickDict['STRATEGY'] == 'OPTIONS':
+            iciciSymbol = iciciSymbol.split('-')[1]
+        status, securityID, iciciSymbol, mktSymbol, mkt = self.mapICICSymbolToMktSymbol(tickDict['STRATEGY'], tickDict['STOCK'], iciciSymbol)
+        # Mandatory keys
+        tickDict['MKT_SYMBOL'] = mktSymbol
+        tickDict['SECURITY_ID'] = securityID
+        # Important keys
+        tickDict['MKT'] = mkt
+
+        # Mandatory price keys
+        tickDict['LOW_REC_PRICE'] = ticks['recommended_price_from']
+        tickDict['HIGH_REC_PRICE'] = ticks['recommended_price_to']
+        tickDict['TARGET'] = ticks['target_price']
+        tickDict['STOP_LOSS'] = ticks['sltp_price']
+        
+        # Mandatory leverage keys
+        tickDict['REC_TIME'] = re.sub(':\d\d$', '', recDateTime[1])
+
+        # Other leverage keys
+        tickDict['INV_PERIOD'] = invPeriod
+
+        # Price keys
+        tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
+        tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
+        tickDict['EXIT_PRICE'] = ticks['exit_price']
+        
+        recDict = self.prepareRecDict(tickDict)
+        return recDict
+    
 
     def __formatStockCell(self, cell):
         cellDict = {}
@@ -167,7 +553,7 @@ class iciciDirect():
             cellDict['STRATEGY'] = data[2].split(' - ')[0]
             cellDict['BUY_SELL'] = data[2].split(' - ')[1]
             # Find the corresponding NSE symbol
-            status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.__mapIciciToNseStock.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'], cellDict['ICICI_SYMBOL'])
+            status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'], cellDict['ICICI_SYMBOL'])
             self.__logger.debug('ICICI_SYMBOL = %s <=> MKT_SYMBOL = %s', cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'])
             self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
@@ -187,7 +573,7 @@ class iciciDirect():
         cellDict['STRATEGY'] = re.sub(r'^\W+', '', recDetails[0])
         cellDict['INV_PERIOD'] = recDetails[1]
         cellDict['BUY_SELL'] = recDetails[2]
-        status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.__mapIciciToNseStock.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'])
+        status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'])
 
         self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
@@ -382,37 +768,19 @@ class iciciDirect():
         return rowDict
 
 
-    def browseICICIDirect(self):
-        # Open ICICI Direct and let the user login
-        if self.__browserEngine == 'CHROME':
-            self.__browser = webdriver.Chrome(self.__browserDriver)
-        else:
-            self.__browser = webdriver.Edge(self.__browserDriver)
-        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
-        input("Wait for the user to login...")
-        self.__iclick2gainHdl = self.__browser.current_window_handle
-        while len(self.__browser.window_handles) == 1:
-            input("Please duplicate the tab and hit any key...")
-        self.__browseResearchToClick_2_Gain()
-    
-
-    def duplicateTabBrowseClick_2_Invest(self):
-        hdls = self.__browser.window_handles
-        for hdl in hdls:
-            if hdl != self.__iclick2gainHdl:
-                self.__iclick2investHdl = hdl    
-        self.__browseResearchToClick_2_Invest()
-
-
     def scrapeiClick2Gain(self):
-        tblRowsArrOfDict = []
+        if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+            self.loginICICIDirect()
+        elif self.__browser.current_url != 'https://secure.icicidirect.com/trading/equity/click2gain':
+            self.browseResearchToClick_2_Gain()
 
-        menuVals = ["ALL", "MRGN", "MMNT", "GLDR", "QANT"]
+        tblRowsArrOfDict = []
+        #menuVals = ["ALL", "MRGN", "MMNT", "GLDR", "QANT"]
+        menuVals = ["ALL"]
         for menuVal in menuVals:
             loadPgAttempts = 0
             while loadPgAttempts < 3:
                 try:
-                    self.__browser.switch_to.window(self.__iclick2gainHdl)
                     # Select Margin as the recommendation type
                     menu3 = self.__browser.find_element_by_id("iclick_gain")
                     self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
@@ -473,14 +841,18 @@ class iciciDirect():
     
 
     def scrapeiClick2Invest(self):
-        tblRowsArrOfDict = []
+        if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+            self.loginICICIDirect()
+        elif self.__browser.current_url != 'https://secure.icicidirect.com/trading/equity/click2invest':
+            self.browseResearchToClick_2_Invest()
 
-        menuVals = ["ALL", "Long Term", "Medium Term", "Short Term"]
+        tblRowsArrOfDict = []
+        #menuVals = ["ALL", "Long Term", "Medium Term", "Short Term"]
+        menuVals = ["ALL"]
         for menuVal in menuVals:
             loadPgAttempts = 0
             while loadPgAttempts < 3:
                 try:
-                    self.__browser.switch_to.window(self.__iclick2investHdl)
                     # Select Margin as the recommendation type
                     menu3 = self.__browser.find_element_by_id("iclick_invest")
                     self.__browser.execute_script("document.getElementById('ddlinvestmenttype').style.display='inline-block';")
@@ -522,6 +894,3 @@ class iciciDirect():
                 break
         return tblRowsArrOfDict
 
-
-    def closeBrowser(self):  
-        self.__browser.quit()

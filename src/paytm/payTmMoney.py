@@ -10,6 +10,7 @@ import dotenv
 
 sys.path.append('../pyPMClient')
 from pmClient import PMClient
+from pmClient import WebSocketClient
 
 class payTmMoney:
     def __init__(self, configFile):
@@ -75,6 +76,18 @@ class payTmMoney:
                 self.__logger.error("Error: {}".format(e))
                 time.sleep(1)
         return True
+
+
+    def payTmWebSocket(self, on_open, on_message, on_close, on_error):
+        dotenv.load_dotenv('./.env', override=True)
+        public_access_token = os.environ.get('public_access_token', '')
+        wsclient = WebSocketClient.WebSocketClient(public_access_token)
+        wsclient.set_on_open_listener(on_open)
+        wsclient.set_on_message_listener(on_message)
+        wsclient.set_on_close_listener(on_close)
+        wsclient.set_on_error_listener(on_error)
+        wsclient.set_reconnect_config(True, 5)
+        return wsclient
 
 
     def edisValidateTpin(self, isinList):
@@ -183,6 +196,7 @@ class payTmMoney:
 
 
     def findOrderStatusAndQtyInfo(self, orderNo):
+        self.getOrderBookUpdate()
         status = False
         qty = trdQty = None
         for resOrder in self.__orderBook['data']:
