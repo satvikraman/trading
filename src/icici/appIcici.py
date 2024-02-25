@@ -510,7 +510,7 @@ if __name__ == '__main__':
         trade.runPeriodicChecks(marketOpen, marketCloseMinusDelta)
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
         marketCloseMinusDelta = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=20)
-        while not marketOpen:
+        if not marketOpen:
             marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
             time.sleep(15)
 """
