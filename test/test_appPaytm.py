@@ -3,6 +3,7 @@ sys.path.append('./src/paytm')
 import configparser
 import datetime
 from dateutil.relativedelta import relativedelta
+from pathlib import Path
 import os
 import logging
 import pytest
@@ -79,34 +80,42 @@ def getOfflineRec(recDict=None, addDbDictKeys=None, idx=0, offline=True, changeD
     mockDict['OPEN_BUY_SELL'] = 'BUY'
     return retDict, mockDict
 
-
-# Base test. All open orders close. Square off happens at 3:00PM
-def test_Margin1():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+def setup():
+    dbInv='./test/testTrade.json'
+    dbIntraDay='./test/testTradeIntraDay.json'
+    dbFnO='./test/testTradeFnO.json'
+    Path(dbInv).touch()
+    Path(dbIntraDay).touch()
+    Path(dbFnO).touch()
+    trade = app('./payTmMoney.ini', dbInv=dbInv, dbIntraDay=dbIntraDay, dbFnO=dbFnO, dryRun=True)
     trade.setAmountPerOrder(50000)    
     trade._app__persistenceIntraDay.removeAll()
     trade._app__persistenceInv.removeAll()
     trade._app__persistenceFnO.removeAll()
-    
+    return trade
+
+# Base test. All open orders close. Square off happens at 3:00PM
+def test_Margin1():
+    trade = setup()    
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
     trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
     
     # If new recommendations have come in (True)
-    # Place orders (1st - 33%)
+    # Place orders
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDict[0]['QTY'] == 9
+    assert dbDict[0]['QTY'] == 45
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 9
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 45
     assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
@@ -129,9 +138,9 @@ def test_Margin1():
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'POSITION'
-    assert dbDict[0]['POS_QTY'] == 9
-    assert dbDict[0]['POS_HOLD_QTY'] == 9
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 9
+    assert dbDict[0]['POS_QTY'] == 45
+    assert dbDict[0]['POS_HOLD_QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 45
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
@@ -147,9 +156,9 @@ def test_Margin1():
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 9
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 9
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -174,17 +183,14 @@ def test_Margin1():
 
 # Late addition of Margin stock. 
 def test_Margin2():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
-    trade._app__persistenceIntraDay.removeAll()
-
+    trade = setup() 
     trade.getHoldingsData()
     # Late addition of Margin stock. Only 1 order to buy and that should be at HIGH_REC_PRICE
     recDict = setTodaysDate(0, offsetTime=180)
     trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
 
-    # If new recommendations have come in (True) # Place orders (1st - 25%)
+    # If new recommendations have come in (True) # Place orders
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -222,6 +228,11 @@ def test_Margin2():
     
     # When the next runPeriodicChecks is done, the 1st order will be partially completed and after a few iterations within
     # __distributePosAmongSameStockRecs gets closed
+    trade.runPeriodicChecks()
+    dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
+    assert dbDict[0]['REC_STATUS'] == 'OPEN'
+    assert dbDict[0]['POS_HOLD_STATUS'] == 'OPEN'
+
     trade.runPeriodicChecks()
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'OPEN'
@@ -273,10 +284,7 @@ def test_Margin2():
 
 # Even before an order is partially completed the recommendation is closed
 def test_Margin3a():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
-    trade._app__persistenceIntraDay.removeAll()
-    
+    trade = setup() 
     trade.getHoldingsData()
 
     recDict = setTodaysDate(0)
@@ -294,8 +302,8 @@ def test_Margin3a():
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == min(recDict['CMP'], recDict['HIGH_REC_PRICE'])
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
@@ -306,7 +314,6 @@ def test_Margin3a():
     recDict['UPDATE_ACTION_1'] = 'Book Full Profit'
     
     # Turn off autoCloseOpenOrders
-    trade._app__payTmMoney.setAutoCloseOpenOrders(False, False)
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -332,14 +339,11 @@ def test_Margin3a():
 
 # Even before an order is partially completed the recommendation is closed
 def test_Margin3b():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
-    trade._app__persistenceIntraDay.removeAll()
-    
+    trade = setup() 
     trade.getHoldingsData()
 
     recDict = setTodaysDate(0)
-    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['HIGH_REC_PRICE'])
     trade.setMarketTimer(False, True)
 
     trade.handleRec(recDict)
@@ -353,8 +357,8 @@ def test_Margin3b():
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
@@ -367,7 +371,7 @@ def test_Margin3b():
     # Turn on incomplete orders. Set to 2 steps
     trade._app__payTmMoney.setIncompleteOrders(True, 2)
     # Turn off autoCloseOpenOrders but set closeOpenOrders to True so that orders are closed partially (because setIncompleteOrders is True)
-    trade._app__payTmMoney.setAutoCloseOpenOrders(False, True)
+    #trade._app__payTmMoney.setAutoCloseOpenOrders(False, True)
     trade.handleRec(recDict)
 
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -375,7 +379,7 @@ def test_Margin3b():
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 7
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 22
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -393,13 +397,10 @@ def test_Margin3b():
 
 # Test that the recommendation closes by itself if it reached TGT1 in a buy order
 def test_Margin4a():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
-    trade._app__persistenceIntraDay.removeAll()
-    
+    trade = setup() 
     trade.getHoldingsData()
     recDict = setTodaysDate(0)
-    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['LOW_REC_PRICE'])
     trade.setMarketTimer(False, True)
     trade.handleRec(recDict)
 
@@ -412,21 +413,20 @@ def test_Margin4a():
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['LOW_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 0
 
-    # When the runPeriodicChecks runs the 1st open order will be completed and a 2nd order for the remaining quantity will be placed
+    # When the runPeriodicChecks runs the order woud have completed
     trade.runPeriodicChecks()
 
     # However the prices shoots up and CMP of the stock hits TGT1
     trade._app__payTmMoney.setCMP(recDict, recDict['TARGET'])
 
-    # When the runPeriodicChecks runs next it will automatically close the recommendation and the position. The 2nd open order would 
-    # not have been able to execute at all
+    # When the runPeriodicChecks runs next it will automatically close the recommendation and the position.
     trade.runPeriodicChecks()
     
     dbDict = trade._app__persistenceIntraDay.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
@@ -434,32 +434,24 @@ def test_Margin4a():
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
 
-    assert dbDict[0]['OPEN_ORDERS'][1]['PRODUCT'] == 'INTRADAY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_TYPE'] == 'LMT'
-    assert dbDict[0]['OPEN_ORDERS'][1]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][1]['QTY'] == 31
-    assert dbDict[0]['OPEN_ORDERS'][1]['LIMIT'] == recDict['HIGH_REC_PRICE']
-    assert dbDict[0]['OPEN_ORDERS'][1]['TRADED_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][1]['ORDER_STATUS'] == 'CLOSE'
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 14
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 14
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
-    assert len(dbDict[0]['OPEN_ORDERS']) == 2
+    assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
 
 
 # Test that the recommendation closes by itself if it reached STOP_LOSS in a buy order
 def test_Margin4b():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
+    trade = setup() 
     trade._app__persistenceIntraDay.removeAll()
     
     trade.getHoldingsData()
@@ -477,8 +469,8 @@ def test_Margin4b():
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 14
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 45
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['HIGH_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
@@ -495,16 +487,16 @@ def test_Margin4b():
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 14
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 45
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 14
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 14
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 45
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -512,11 +504,9 @@ def test_Margin4b():
 
 # Test that the recommendation closes by itself if it reaches TGT1 in a SELL order
 def test_Margin5a():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
-    trade._app__persistenceIntraDay.removeAll()
-    
+    trade = setup() 
     trade.getHoldingsData()
+
     recDict = setTodaysDate(1)
     trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
@@ -531,8 +521,8 @@ def test_Margin5a():
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 188
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 570
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['LOW_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
@@ -556,11 +546,9 @@ def test_Margin5a():
 
 # Test that the recommendation closes by itself if it reaches stop loss in a SELL order
 def test_Margin5b():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
-    trade._app__persistenceIntraDay.removeAll()
-    
+    trade = setup() 
     trade.getHoldingsData()
+
     recDict = setTodaysDate(1)
     trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
     trade.setMarketTimer(False, True)
@@ -575,8 +563,8 @@ def test_Margin5b():
     assert dbDict[0]['OPEN_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_TYPE'] == 'LMT'
     assert dbDict[0]['OPEN_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 188
-    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['CMP']
+    assert dbDict[0]['OPEN_ORDERS'][0]['QTY'] == 570
+    assert dbDict[0]['OPEN_ORDERS'][0]['LIMIT'] == recDict['LOW_REC_PRICE']
     assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
@@ -592,15 +580,15 @@ def test_Margin5b():
     assert dbDict[0]['POS_HOLD_STATUS'] == 'CLOSE'
     assert dbDict[0]['POS_QTY'] == 0
     assert dbDict[0]['POS_HOLD_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 188
+    assert dbDict[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 570
     assert dbDict[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
 
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'INTRADAY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'BUY'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 188
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 570
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 188
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 570
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 1
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -611,12 +599,7 @@ def test_Margin5b():
 # + if recStatus changes to PARTIAL_CLOSE its acted upon
 # + if recStatus changes to exit all remain positions excluding whats in the core is sold
 def test_NonMargin1():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
-    trade.setAmountPerOrder(50000)    
-    trade._app__persistenceIntraDay.removeAll()
-    trade._app__persistenceInv.removeAll()
-    trade._app__persistenceFnO.removeAll()
-
+    trade = setup()
 
     recDict, mockDict = getOfflineRec(offline=True)
     trade._app__payTmMoney.cheatAddStockDictArr(mockDict)
@@ -654,17 +637,18 @@ def test_NonMargin1():
     dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'PARTIAL_CLOSE'
-    assert dbDict[0]['POS_QTY'] == -1
-    assert dbDict[0]['POS_HOLD_QTY'] == 1
+    assert dbDict[0]['POS_QTY'] == 1
+    assert dbDict[0]['POS_HOLD_QTY'] == 3
     idx = len(dbDict[0]['OPEN_ORDERS']) - 1
-    assert dbDict[0]['OPEN_ORDERS'][idx]['TRADED_QTY'] == 0
+    assert dbDict[0]['OPEN_ORDERS'][idx]['TRADED_QTY'] == 4
     assert dbDict[0]['OPEN_ORDERS'][idx]['ORDER_STATUS'] == 'CLOSE'
+
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'DELIVERY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 3
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 3
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -675,17 +659,14 @@ def test_NonMargin1():
     dbDict = trade._app__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']]])
     assert dbDict[0]['REC_STATUS'] == 'PARTIAL_CLOSE'
     assert dbDict[0]['POS_HOLD_STATUS'] == 'PARTIAL_CLOSE'
-    assert dbDict[0]['POS_QTY'] == -1
-    assert dbDict[0]['POS_HOLD_QTY'] == 1
-    idx = len(dbDict[0]['OPEN_ORDERS']) - 1
-    assert dbDict[0]['OPEN_ORDERS'][idx]['TRADED_QTY'] == 0
-    assert dbDict[0]['OPEN_ORDERS'][idx]['ORDER_STATUS'] == 'CLOSE'
+    assert dbDict[0]['POS_QTY'] == 1
+    assert dbDict[0]['POS_HOLD_QTY'] == 3
     assert dbDict[0]['CLOSE_ORDERS'][0]['PRODUCT'] == 'DELIVERY'
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][0]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['QTY'] == 3
     assert dbDict[0]['CLOSE_ORDERS'][0]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][0]['TRADED_QTY'] == 3
     assert dbDict[0]['CLOSE_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 1
@@ -705,20 +686,20 @@ def test_NonMargin1():
     assert dbDict[0]['CLOSE_ORDERS'][idx]['PRODUCT'] == 'DELIVERY'
     assert dbDict[0]['CLOSE_ORDERS'][idx]['ORDER_TYPE'] == 'MKT'
     assert dbDict[0]['CLOSE_ORDERS'][idx]['BUY_SELL'] == 'SELL'
-    assert dbDict[0]['CLOSE_ORDERS'][idx]['QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][idx]['QTY'] == 3
     assert dbDict[0]['CLOSE_ORDERS'][idx]['LIMIT'] == 0
-    assert dbDict[0]['CLOSE_ORDERS'][idx]['TRADED_QTY'] == 1
+    assert dbDict[0]['CLOSE_ORDERS'][idx]['TRADED_QTY'] == 3
     assert dbDict[0]['CLOSE_ORDERS'][idx]['ORDER_STATUS'] == 'CLOSE'
     assert len(dbDict[0]['OPEN_ORDERS']) == 2
     assert len(dbDict[0]['CLOSE_ORDERS']) == 2
 
 def test_NonMargin2():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade = setup()
     trade.setAmountPerOrder(50000)    
 
     #### Not in holding tests starts
     # # Old 'OPEN' rec (< 90% life left) --> Not in DB --> No stock should get added in DB 
-    # Don't intend to buy an old Open rec if not already in DB (not even holding)
+    # Don't intend to buy an old Open rec if not already in DB 
     trade._app__persistenceInv.removeAll()
     recDict, mockDict = getOfflineRec(offline=False, changeDate=False)
     trade.getHoldingsData()
@@ -741,7 +722,7 @@ def test_NonMargin2():
     # Old 'OPEN' rec (but with 90% life left) --> Not in DB --> Add to DB so that position can be invested in 
     # and later can be closed based on SL or TARGET because ICICI Direct may not update us when those limits are hit
     recDict, mockDict = getOfflineRec(offline=False, changeDate=True, daysOffset=-1)
-    trade._app__payTmMoney.setCMP(recDict, recDict['CMP'])
+    trade._app__payTmMoney.setCMP(recDict, recDict['LOW_REC_PRICE'])
     recDict['REC_STATUS'] = mockDict['REC_STATUS'] = 'OPEN'
     trade._app__persistenceInv.removeAll()
     trade.setMarketTimer(False, True)
@@ -818,7 +799,7 @@ def test_NonMargin2():
 
 # Same stock in 2 different strategies
 def test_NonMargin3():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade = setup()
     trade.setAmountPerOrder(50000)    
 
     # Insert the Gladiator stock recommendation first
@@ -852,7 +833,7 @@ def test_NonMargin3():
 
 # Check if 'HIDDEN' recommendations will close upon expiry
 def test_NonMargin4():
-    trade = app('./payTmMoney.ini', dbInv='./test/testTrade.json', dbIntraDay='./test/testTradeIntraDay.json', dbFnO='./test/testTradeFnO.json', dryRun=True)
+    trade = setup()
     trade.setAmountPerOrder(15000)    
     trade._app__persistenceInv.removeAll()
     recDict1, mockDict1 = getOfflineRec(idx=0, offline=True, changeDate=True, daysOffset=-365)

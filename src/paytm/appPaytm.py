@@ -55,17 +55,14 @@ class app():
             self.__lock = threading.Lock()
             if dbInv == None:
                 dbInv = self.__config['DATABASE']['DB_EQUITY']
-            self.__backupDb(dbInv)
             self.__persistenceInv = persistence(configFile, dbInv)
 
             if dbIntraDay == None:
                 dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
-            self.__backupDb(dbIntraDay)
             self.__persistenceIntraDay = persistence(configFile, dbIntraDay)
 
             if dbFnO == None:
                 dbFnO = self.__config['DATABASE']['DB_FNO']
-            self.__backupDb(dbFnO)
             self.__persistenceFnO = persistence(configFile, dbFnO)
 
             dotenv.load_dotenv('./.env', override=True)
@@ -76,6 +73,9 @@ class app():
             if dryRun:
                 self.__payTmMoney = payTmMoneyMock(configFile)
             else:
+                self.__backupDb(dbInv)
+                self.__backupDb(dbIntraDay)
+                self.__backupDb(dbFnO)
                 self.__payTmMoney = payTmMoney(configFile)
             
             self.__iciciDirect = iciciDirect(configFile)
@@ -86,6 +86,7 @@ class app():
             self.__createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
             self.__deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
             self.__lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
+            self.__checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
 
             self.__squareOff = False
             self.__cmp = {}
@@ -103,14 +104,15 @@ class app():
                             {'MKT_SYMBOL': 'JIOFIN', 'SECURITY_ID': '18143', 'QTY': 12}, 
                             {'MKT_SYMBOL': 'MARICO', 'SECURITY_ID': '4067', 'QTY': 126}, 
                             {'MKT_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
-                            {'MKT_SYMBOL': 'RELIANCE', 'SECURITY_ID': '2885', 'QTY': 12}, 
                             {'MKT_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
                             {'MKT_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
                             {'MKT_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
 
 
     def __backupDb(self, db):
-        backupDb = db + '-APP-' + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S")
+        dbName = re.sub(r'^.*/', '', db)
+        dbName = re.sub(r'.json', '', dbName)
+        backupDb = './db/backup/' + dbName + '-APP-' + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S") + '.json'
         self.__logger.info("Backing up DB as %s", backupDb)
         shutil.copyfile(db, backupDb)
 
@@ -134,17 +136,8 @@ class app():
         self.__wsclient = self.__payTmMoney.payTmWebSocket(on_open, on_msg, on_close, on_err)
 
 
-    def paytmWebsocketThread(self):
+    def paytmWebsocketConnect(self):
         self.__wsclient.connect()
-
-
-    def openBreezeSession(self, on_ticks):
-        self.__iciciDirect.openBreezeSession(on_ticks)
-
-
-    def breezeTicks(self, ticks):
-        recDict = self.__iciciDirect.getRecDictFromTick(ticks)
-        self.handleRec(recDict)
 
 
     def getHoldingsData(self):
@@ -159,6 +152,14 @@ class app():
         if not status:
             self.__logger.error("getHoldingsData function returned error")
     
+    def __findOrderStatusAndQtyInfoWrp(self, dbDict, orderNo):
+        if dbDict['STRATEGY'] not in ['OPTIONS', 'FUTURES']:
+            status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderNo)
+        else:
+            status, qty, trdQty = self.__iciciDirect.findOrderStatusAndQtyInfo(orderNo)
+        
+        return status, qty, trdQty
+
 
     def __placeOrderWrp(self, qty, buySell, orderType, limitPrice, product, segment, dbDict):
         if segment == 'EQUITY':
@@ -262,8 +263,7 @@ class app():
                     status = False
                     self.__logger.critical("Instrument = %s Stock = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
                                             instrument, dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
-        assert(status)
-        return status
+        assert status, 'Open orders check failed'
     
 
     def __moveOldPosToHolding(self):
@@ -286,19 +286,18 @@ class app():
 
 
     def startupCheck(self):
+        self.getHoldingsData()
+
         # Transfer any position until yesterday to holding and set position to 0
         self.__moveOldPosToHolding()
 
         # Check if all the holding stocks - core are in DB
         # Check if all the DB stocks are in holding and in the same quantity
         status = self.__checkDbHoldingSynch()
-        return status
+        assert status, 'Startup check failed. Exiting'
 
 
     def printMilestones(self):
-        # Get the CMP once at the start. This initializes the self.__cmp structure and the websocket subscription, if in use
-        self.__refreshCMP()
-
         instruments = ['EQUITY', 'FnO']
         for instrument in instruments:
             if instrument == 'EQUITY':
@@ -353,20 +352,13 @@ class app():
         recDict['TARGET'] = float(recDict['TARGET'])
         recDict['STOP_LOSS'] = float(recDict['STOP_LOSS'])
 
-        # Qty of stock that can be bought
-        if recDict['STRATEGY'] == 'MARGIN':
-            maxAmount = self.__amountPerOrder if not self.__dryRun else self.__amountPerOrder
-            #margin = self.__timesMargin
-        else:
-            maxAmount = self.__amountPerOrder
-            #margin = 1
-
-        if recDict['STRATEGY'] == 'OPTIONS':
+        if recDict['STRATEGY'] == 'OPTIONS' or recDict['STRATEGY'] == 'FUTURES':
             qty = recDict['LOT_SIZE']
         else:
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
-            qty = max(int(maxAmount / avgPrice), 1)
-            #qty = qty * margin
+            qty = max(int(self.__amountPerOrder / avgPrice), 1)
+            margin = self.__timesMargin if recDict['STRATEGY'] == 'MARGIN' else 1
+            qty *= margin
 
         # Security ID of the stock 
         recDict['POS_QTY'] = 0
@@ -374,7 +366,7 @@ class app():
         recDict['HOLD_QTY'] = holdQty
         recDict['POS_HOLD_QTY'] = holdQty
         recDict['POS_HOLD_STATUS'] = 'OPEN' if posHoldStatus == None else posHoldStatus
-        recDict.update({'SECURITY_ID': recDict['SECURITY_ID'], 'QTY': qty, 'MAX_AMOUNT': maxAmount, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
+        recDict.update({'SECURITY_ID': recDict['SECURITY_ID'], 'QTY': qty, 'MAX_AMOUNT': self.__amountPerOrder, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
 
         res = persistenceInst.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
         if res > 0:
@@ -581,7 +573,12 @@ class app():
 
 
     def __updateRecStatus(self, persistenceInst, dbDict):
-        ltp = -1 if dbDict['SECURITY_ID'] not in self.__cmp else self.__cmp[dbDict['SECURITY_ID']]['LTP']
+        try:
+            ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
+        except Exception as e:
+            ltp = -1
+            self.__logger.critical("securityId %s not in self.__cmp. Error: %s", dbDict['SECURITY_ID'], e)
+        
         status = ltp > 0
         if status:
             self.__logger.debug("Stock %s LTP = %.2f", dbDict['MKT_SYMBOL'], ltp)
@@ -614,12 +611,11 @@ class app():
                     self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__marketOpen), 
                                     ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
-                # Act on SL on a closing basis if visibility is 'hidden'. If the price has significantly fallen below SL during trading hours the above condition handles that case
-                elif dbDict['VISIBLE'] == 'HIDDEN':
-                    if not self.__marketOpen and ltp <= dbDict['STOP_LOSS']:
-                        self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__marketOpen), 
-                                            ltp, dbDict['STOP_LOSS'])
-                        dbDict['REC_STATUS'] = 'CLOSE'
+                # Act on SL on a closing basis anyways. If the price has significantly fallen below SL during trading hours the above condition handles that case
+                elif not self.__marketOpen and ltp <= dbDict['STOP_LOSS']:
+                    self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__marketOpen), 
+                                        ltp, dbDict['STOP_LOSS'])
+                    dbDict['REC_STATUS'] = 'CLOSE'
 
             persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
@@ -640,10 +636,10 @@ class app():
 
 
     # This function updates the position of a stock and finds its status
-    def __getPosStatus(self, dbDict, forceGetPos=False):
+    def __getPosStatus(self, dbDict):
         thisOpenQty = 0
-        for closeOrders in dbDict['CLOSE_ORDERS']:
-            thisOpenQty += closeOrders['TRADED_QTY']
+        for openOrders in dbDict['OPEN_ORDERS']:
+            thisOpenQty += openOrders['TRADED_QTY']
 
         thisCloseQty = 0
         for closeOrders in dbDict['CLOSE_ORDERS']:
@@ -674,24 +670,14 @@ class app():
         status = True
         for orderDict in dbDict['OPEN_ORDERS']:
             if orderDict['ORDER_STATUS'] == 'OPEN':
-                orderStatus, orderMessage, orderNum = self.__cancelOrderWrp(orderDict['ORDER_NO'])
+                orderStatus, orderMessage, orderNum = self.__cancelOrderWrp(orderDict['ORDER_NO'], dbDict)
+                dbDict = self.__updateOrderStatus(dbDict, orderDict)
                 if orderStatus:
                     status = True
                     timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
                     orderDict['ORDER_STATUS'] = 'CLOSE'
                     orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': orderStatus, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
         return status, dbDict
-
-
-    def __investTight(self, dbDict):
-        if dbDict['STRATEGY'] in ['MARGIN', 'OPTIONS']:
-            return True
-        investTight = dbDict['LATE_ADD']
-        for strategy in []:
-            if dbDict['SOURCE'].lower() == strategy.lower():
-                investTight = True
-                break
-        return investTight
     
 
     def __getSegment(self, strategy):
@@ -715,122 +701,21 @@ class app():
             self.__logger.critical("Stock: %s totalQty %d is < 0", dbDict['MKT_SYMBOL'], totalQty)
             return False, 0, 0, 'LMT'
         
-        if segment == 'EQUITY':
-            if product == 'DELIVERY':
+        qty = remQty
+        cmp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
+        orderType = 'LMT'
+        canOrder = True
+        if dbDict['BUY_SELL'] == 'BUY':
+            limitPrice = min(dbDict['HIGH_REC_PRICE'], cmp) 
+            if limitPrice < dbDict['LOW_REC_PRICE']:
                 qty = 0
-                invPerc = posHoldQty * 100 / totalQty
-                investTight = self.__investTight(dbDict)
-                cmp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
-                invPeriod = dbDict['INV_PERIOD']
-                if len(dbDict['OPEN_ORDERS']) > 0:
-                    limitPrice = dbDict['OPEN_ORDERS'][0]['LIMIT'] 
-                else: 
-                    if cmp - dbDict['HIGH_REC_PRICE'] <= (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) * 0.2:
-                        limitPrice = cmp
-                    else:
-                        limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) * 0.2
-                limitPrice2 = dbDict['HIGH_REC_PRICE']
-                limitPrice3 = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-                limitPrice3 = round(round(int(limitPrice3 * 100) / 500, 2) * 5, 2)
-                limitPrice4 = dbDict['LOW_REC_PRICE']
-                if 'DAY' in invPeriod:                        
-                    if invPerc == 0 and not investTight:           
-                        qty = max(int(totalQty * 33 / 100) - posHoldQty, 1)
-                        orderType = 'LMT'
-                    if qty == 0 or cmp <=  limitPrice2:
-                        qty = remQty
-                        orderType = 'LMT'
-                        limitPrice = limitPrice2
-                        if cmp <= limitPrice4:
-                            limitPrice = limitPrice3
-                        elif cmp <= limitPrice3:
-                            limitPrice = limitPrice3
-                else:
-                    if invPerc == 0 and not investTight:           
-                        qty = max(int(totalQty * 12.5 / 100) - posHoldQty, 1)
-                        orderType = 'LMT'
-                    if invPerc <= 12.5 and (qty == 0 or cmp <= limitPrice2):
-                        qty = int(totalQty * 25 / 100) - posHoldQty
-                        orderType = 'LMT'
-                        limitPrice = limitPrice2
-                    if invPerc <= 25 and (qty == 0 or cmp <= limitPrice3):
-                        qty = int(totalQty * 50 / 100) - posHoldQty
-                        orderType = 'LMT'
-                        limitPrice = limitPrice3
-                    if qty == 0 or cmp <= limitPrice4:
-                        qty = remQty
-                        orderType = 'LMT'
-                        limitPrice = limitPrice4
-            elif product == 'INTRADAY':
+                canOrder = False
+        else:
+            limitPrice = max(dbDict['LOW_REC_PRICE'], cmp) 
+            if limitPrice > dbDict['HIGH_REC_PRICE']:
                 qty = 0
-                invPerc = posHoldQty * 100 / totalQty
-                investTight = self.__investTight(dbDict)
-                cmp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
-                if len(dbDict['OPEN_ORDERS']) > 0:
-                    limitPrice = dbDict['OPEN_ORDERS'][0]['LIMIT'] 
-                else: 
-                    if cmp - dbDict['HIGH_REC_PRICE'] <= (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) * 0.1:
-                        limitPrice = cmp
-                    else:
-                        limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) * 0.1
-                limitPrice2 = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-                limitPrice3 = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-                limitPrice3 = round(round(int(limitPrice3 * 100) / 500, 2) * 5, 2)
-                limitPrice4 = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
-
-                if invPerc == 0 and not investTight:           
-                    qty = int(totalQty * 33 / 100) - posHoldQty
-                    orderType = 'LMT'
-                if qty == 0 or (cmp <= limitPrice2 if dbDict['BUY_SELL'] == 'BUY' else cmp >= limitPrice2):
-                    qty = remQty
-                    orderType = 'LMT'
-                    limitPrice = limitPrice2
-                    if dbDict['BUY_SELL'] == 'BUY':
-                        if cmp <= limitPrice4:
-                            limitPrice = limitPrice4
-                        elif cmp <= limitPrice3:
-                            limitPrice = limitPrice3
-                    else:
-                        if cmp >= limitPrice4:
-                            limitPrice = limitPrice4
-                        elif cmp >= limitPrice3:
-                            limitPrice = limitPrice3
-        elif segment == 'OPTION':
-            qty = 0
-            invPerc = posHoldQty * 100 / totalQty
-            investTight = self.__investTight(dbDict)
-            cmp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
-            if len(dbDict['OPEN_ORDERS']) > 0:
-                limitPrice = dbDict['OPEN_ORDERS'][0]['LIMIT'] 
-            else: 
-                if cmp - dbDict['HIGH_REC_PRICE'] <= (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) * 0.05:
-                    limitPrice = cmp
-                else:
-                    limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['TARGET'] - dbDict['HIGH_REC_PRICE']) * 0.05
-            limitPrice2 = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-            limitPrice3 = (dbDict['HIGH_REC_PRICE'] + dbDict['LOW_REC_PRICE'])  / 2
-            limitPrice3 = round(round(int(limitPrice3 * 100) / 500, 2) * 5, 2)
-            limitPrice4 = dbDict['LOW_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['HIGH_REC_PRICE']
-            
-            if invPerc == 0 and not investTight:           
-                qty = int(totalQty * 33 / 100) - posHoldQty
-                orderType = 'LMT'               
-            if qty == 0 or (cmp <= limitPrice2 if dbDict['BUY_SELL'] == 'BUY' else cmp >= limitPrice2):
-                qty = remQty
-                orderType = 'LMT'
-                limitPrice = limitPrice2
-                if dbDict['BUY_SELL'] == 'BUY':
-                    if cmp <= limitPrice4:
-                        limitPrice = limitPrice4
-                    elif cmp <= limitPrice3:
-                        limitPrice = limitPrice3
-                else:
-                    if cmp >= limitPrice4:
-                        limitPrice = limitPrice4
-                    elif cmp >= limitPrice3:
-                        limitPrice = limitPrice3
-        
-        return True, qty, limitPrice, orderType
+                canOrder = False
+        return canOrder, qty, limitPrice, orderType
 
 
     def __openPosition(self, persistenceInst, dbDict):
@@ -840,11 +725,17 @@ class app():
 
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
         segment = self.__getSegment(dbDict['STRATEGY'])
-        status, qty, limitPrice, orderType = self.__getQtyLimitPrice(dbDict, product, segment)
+        canOrder, qty, limitPrice, orderType = self.__getQtyLimitPrice(dbDict, product, segment)
+        ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
+        if not canOrder:
+            if limitPrice != 0:
+                self.__logger.debug("Price not in recommendation range. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
+            else:
+                self.__logger.debug("Qty checks failed. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f QTY = %d POS_HOLD_QTY = %d", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice, dbDict['QTY'], dbDict['POS_HOLD_QTY'])
+            return False, dbDict
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
-            ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
             canOrder = False
             if dbDict['BUY_SELL'] == 'BUY':
                 if limitPrice * self.__createLtpDisFactor >= ltp:
@@ -878,7 +769,7 @@ class app():
 
     def __closePosition(self, persistenceInst, dbDict, partial=False):
         product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
-        status, dbDict = self.__getPosStatus(persistenceInst, dbDict)
+        dbDict = self.__getPosStatus(dbDict)
 
         if dbDict['POS_HOLD_STATUS'] == 'CLOSE':
             return True, dbDict, ''
@@ -889,36 +780,33 @@ class app():
             return True, dbDict, ''
 
         orderNum = ''
-        if status:
-            if dbDict['BUY_SELL'] == 'BUY':
-                openOp = 'BUY'
-                closeOp = 'SELL'
-            else:
-                openOp = 'SELL'
-                closeOp = 'BUY'
-
-            # Ideally posHoldQty will always be positive, unless we tinkered with the positions externally. If we did tinker and the posHoldQty becomes less than 0
-            # then we need to perform he open operation to close the position
-            buySell = openOp if posHoldQty < 0 else closeOp
-            orderType = 'MKT'
-            limitPrice = 0
-            trigger = 0
-            closeQty = (abs(posHoldQty) + 1) // 2 if partial else posHoldQty
-
-            segment = self.__getSegment(dbDict['STRATEGY'])
-            self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, product, orderType)
-            orderStatus, orderMessage, orderNum = self.__placeOrderWrp(closeQty, buySell, orderType, limitPrice, product, segment, dbDict)
-            if not orderStatus:
-                self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, 'INTRADAY', 'MKT')
-            status = orderStatus
-            
-            timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
-            orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': closeQty, 'TRADED_QTY': 0, 
-                         'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
-            dbDict['CLOSE_ORDERS'].append(orderDict)
-            persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+        if dbDict['BUY_SELL'] == 'BUY':
+            openOp = 'BUY'
+            closeOp = 'SELL'
         else:
-            self.__logger.critical("Unable to find order %s", dbDict['order_no'])
+            openOp = 'SELL'
+            closeOp = 'BUY'
+
+        # Ideally posHoldQty will always be positive, unless we tinkered with the positions externally. If we did tinker and the posHoldQty becomes less than 0
+        # then we need to perform he open operation to close the position
+        buySell = openOp if posHoldQty < 0 else closeOp
+        orderType = 'MKT'
+        limitPrice = 0
+        trigger = 0
+        closeQty = (abs(posHoldQty) + 1) // 2 if partial else posHoldQty
+
+        segment = self.__getSegment(dbDict['STRATEGY'])
+        self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, product, orderType)
+        orderStatus, orderMessage, orderNum = self.__placeOrderWrp(closeQty, buySell, orderType, limitPrice, product, segment, dbDict)
+        if not orderStatus:
+            self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, 'INTRADAY', 'MKT')
+        status = orderStatus
+        
+        timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
+        orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': closeQty, 'TRADED_QTY': 0, 
+                        'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
+        dbDict['CLOSE_ORDERS'].append(orderDict)
+        persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
         
         return status, dbDict, orderNum
 
@@ -930,45 +818,52 @@ class app():
                 limitPrice = orderDict['LIMIT']
                 openOrdersStateOpen = True
 
-        if openOrdersStateOpen:
-            delOrder = False
-            fetchOrderDetails = False
-            if dbDict['BUY_SELL'] == 'BUY':
-                if limitPrice * self.__deleteLtpDisFactor < ltp:
-                    delOrder = True
-                elif ltp <= limitPrice:
+                delOrder = False
+                fetchOrderDetails = False
+                
+                now = datetime.datetime.now()
+                nowStr = datetime.datetime.strftime(now, "%H:%M:%S")
+                if 'CHECK_TIME' not in dbDict:
                     fetchOrderDetails = True
-            else:
-                if limitPrice > ltp * self.__deleteLtpDisFactor:
-                    delOrder = True
-                elif ltp >= limitPrice:
-                    fetchOrderDetails = True
-            
-            if delOrder:
-                self.__logger.info("LTP far from limit price. Cancelling order %s for stock %s", orderDict['ORDER_NO'], dbDict['MKT_SYMBOL'])
-                _, dbDict = self.__cancelOrder(dbDict)
-            elif fetchOrderDetails:
-                _, dbDict = self.__updateOpenOrderStatus(dbDict)
+                else:
+                    lastCheckTime = datetime.datetime.strptime(datetime.datetime.strftime(now, "%d-%b-%Y") + ' ' + dbDict['CHECK_TIME'], "%d-%b-%Y %H:%M:%S")
+                    timeDiff = now - lastCheckTime
+                    if timeDiff.total_seconds() > self.__checkPeriodSecs:
+                        fetchOrderDetails = True
+                    else:
+                        if dbDict['BUY_SELL'] == 'BUY':
+                            if limitPrice * self.__deleteLtpDisFactor < ltp:
+                                fetchOrderDetails = delOrder = True
+                            elif ltp <= limitPrice:
+                                fetchOrderDetails = True
+                        else:
+                            if limitPrice > ltp * self.__deleteLtpDisFactor:
+                                fetchOrderDetails = delOrder = True
+                            elif ltp >= limitPrice:
+                                fetchOrderDetails = True
+                
+                if delOrder:
+                    self.__logger.info("LTP far from limit price. Cancelling order %s for stock %s", orderDict['ORDER_NO'], dbDict['MKT_SYMBOL'])
+                    _, dbDict = self.__cancelOrder(dbDict)
+                if fetchOrderDetails:
+                    dbDict = self.__updateOrderStatus(dbDict, orderDict)
+                    dbDict['CHECK_TIME'] = nowStr
 
         return dbDict
 
 
     # This function updates the order status
-    def __updateOpenOrderStatus(self, dbDict):
-        for orderDict in dbDict['OPEN_ORDERS']:
-            if orderDict['ORDER_STATUS'] == 'OPEN':
-                self.__logger.debug("Stock = %s has open order # = %s", dbDict['MKT_SYMBOL'], orderDict['ORDER_NO'])
-                if dbDict['BROKER'] == 'PAYTM':
-                    status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
-                else:
-                    status, qty, trdQty = self.__iciciDirect.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
-                self.__logger.debug("Order # = %s Qty = %d Traded Qty = %d", orderDict['ORDER_NO'], qty, trdQty)
-                if status:
-                    orderDict['TRADED_QTY'] = trdQty
-                    if trdQty == qty:
-                        orderDict['ORDER_STATUS'] = 'CLOSE'
-                else:
-                    self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
+    def __updateOrderStatus(self, dbDict, orderDict):
+        if orderDict['ORDER_STATUS'] == 'OPEN':
+            self.__logger.debug("Stock = %s has open order # = %s", dbDict['MKT_SYMBOL'], orderDict['ORDER_NO'])
+            status, qty, trdQty = self.__findOrderStatusAndQtyInfoWrp(dbDict, orderDict['ORDER_NO'])
+            self.__logger.debug("Order # = %s Qty = %d Traded Qty = %d", orderDict['ORDER_NO'], qty, trdQty)
+            if status:
+                orderDict['TRADED_QTY'] = trdQty
+                if trdQty == qty:
+                    orderDict['ORDER_STATUS'] = 'CLOSE'
+            else:
+                self.__logger.critical("Unable to find order info %s", orderDict['ORDER_NO'])
         return dbDict            
 
 
@@ -985,7 +880,7 @@ class app():
                 orderComplete = False
                 dbDict = closeDbDictOrderNum['DB_DICT']
                 orderNum = closeDbDictOrderNum['ORDER_NO']
-                if orderNum != '' and orderNum != None:
+                if orderNum != '' and orderNum != None and dbDict['POS_HOLD_STATUS'] != 'CLOSE':
                     status, qty, trdQty = self.__payTmMoney.findOrderStatusAndQtyInfo(orderNum)
                     if status:
                         if trdQty == qty:
@@ -994,15 +889,19 @@ class app():
                                 if closeOrderDict['ORDER_NO'] == orderNum and closeOrderDict['ORDER_STATUS'] != 'CLOSE':
                                     closeOrderDict['ORDER_STATUS'] = 'CLOSE'
                                     closeOrderDict['TRADED_QTY'] = trdQty
-                                    persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                         else:
+                            allCloseOrdersComplete = False
                             break
                     else:
                         self.__logger.critical("Unable to find order info %s", orderNum)
                 else:
                     orderComplete = True
                 
+                self.__getPosStatus(dbDict)
+                persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 allCloseOrdersComplete = allCloseOrdersComplete and orderComplete
+                if not allCloseOrdersComplete:
+                    break
         return True, closeDbDictOrderNumArr
 
 
@@ -1025,7 +924,7 @@ class app():
             _, closeDbDict, orderNum = self.__closePosition(persistenceInst, cancelDict, partial)
             closeDbDictOrderNumArr.append({'DB_DICT': closeDbDict, 'ORDER_NO': orderNum})
         
-        # Wait for all close orers to complete execution. All market orders. Shouldn't take that long
+        # Wait for all close orders to complete execution. All market orders. Shouldn't take that long
         status, closeDbDictOrderNumArr = self.__waitForCloseOrdersToComplete(persistenceInst, closeDbDictOrderNumArr)
 
 
@@ -1033,7 +932,7 @@ class app():
         # Cancel any open orders and place orders to close open positions
         for dbDict in dbDicts:
             _, cancelDict = self.__cancelOrder(persistenceInst, dbDict)
-            _, cancelDict = self.__getPosStatus(persistenceInst, cancelDict, forceGetPos=True)
+            cancelDict = self.__getPosStatus(persistenceInst, cancelDict, forceGetPos=True)
 
 
     def __followOrders(self, persistenceInst, dbDict):
@@ -1050,8 +949,8 @@ class app():
 
     def __reconcileRecs(self):
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
-        self.__logger.debug("Getting CMP data")
         if not self.useWebsocket:
+            self.__logger.debug("Getting CMP data")
             self.__refreshCMP()
 
         for instrument in ["EQUITY", "MARGIN", "FnO"]:
@@ -1196,16 +1095,7 @@ class app():
             self.__closeAllOpenDeliveryOrders()
 
 
-    def payTmThread(self):
-        self.getHoldingsData()
-        self.checkOpenOrders()
-        status = self.startupCheck()
-        if not status:
-            self.__logger.critical('Startup check failed. Exiting')
-            return
-        else:
-            self.__logger.info('Startup check passed!!!')
-        
+    def payTmThread(self):        
         trade.printMilestones()
         
         squareOffMinus15 = False
@@ -1228,23 +1118,32 @@ class app():
 trade = app('./payTmMoney.ini', dryRun=False)
 
 
-def breeze_ticks(ticks):
-    trade.breezeTicks(ticks)
-
 def on_paytm_sock_open():
     trade.useWebsocket = True
     trade._app__logger.info("websocket connection with PayTm opened")
+    # Get the CMP once at the start. This initializes the self.__cmp structure and the websocket subscription, if in use
+    trade.__cmp.clear()
+    trade.__refreshCMP()
+
 
 def on_paytm_sock_message(message):
     trade.setCMP(message)
     #trade._app__logger.debug("websocket message %s", message)
 
+
 def on_paytm_sock_close(close_status_code,close_message):
     trade.useWebsocket = False
-    trade._app__logger.info("websocket connection with PayTm closed")
+    trade._app__logger.error("websocket connection with PayTm closed")
+
+    if trade.__marketOpen:
+        trade._app__logger.error("PayTm websocket closed while market was open. Trying to open it again")
+        trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
+        trade.paytmWebsocketConnect()
+
 
 def on_paytm_sock_error(err):
     trade._app__logger.error("websocket error %s", err)
+
 
 @flask.route('/v1/rec', methods=['POST', 'PUT'])
 def rec():
@@ -1253,6 +1152,7 @@ def rec():
     statusCode = 200 if status else 500
     return "", statusCode
 
+
 @flask.route('/v1/max_amount', methods=['POST'])
 def max_amount_per_order():
     args = request.args
@@ -1260,24 +1160,29 @@ def max_amount_per_order():
     trade.setAmountPerOrder(maxAmount)
     return "", 201
 
+
 def flaskThread():
     flask.run()
 
 
 if __name__ == '__main__':
-    trade.openPayTmMoneySession()
-    trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
-    
-    trade.openBreezeSession(breeze_ticks)
+    # Check if there are any open pending orders from y'day
+    trade.checkOpenOrders()
 
-    # Open websocket connection with PayTm
-    websocketThr = threading.Thread(target=trade.paytmWebsocketThread)
-    websocketThr.daemon = True
-    websocketThr.start()
+    # Connect w/ PayTm's API gateway
+    trade.openPayTmMoneySession()
+
+    # Check if the DB and the PayTm portfolio are in synch
+    trade.startupCheck()
+
+    # Open and wait until the websocket w/ PayTm opens.
+    trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
+    trade.paytmWebsocketConnect()
     while not trade.useWebsocket:
         time.sleep(1)
 
-    # Start the threads
+
+    # Start the flask thread
     flaskThr = threading.Thread(target=flaskThread)
     flaskThr.daemon = True
     flaskThr.start()

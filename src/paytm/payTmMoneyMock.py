@@ -37,7 +37,7 @@ class payTmMoneyMock:
             self.__api_secret = os.environ.get('api_secret', '')
             self.__request_token = os.environ.get('request_token', '')
             self.__state_key = os.environ.get('state_key', '')
-            self.__closeOpenOrders = False
+            self.__closeOpenOrders = True
             self.__autoCloseOpenOrders = True
 
 
@@ -104,8 +104,7 @@ class payTmMoneyMock:
         for dict in self.__stockDictArr:
             if dict['SECURITY_ID'] == securityId and dict['PRODUCT'] == product:
                 status = True
-                if self.__autoCloseOpenOrders:
-                    self.__closeOpenOrders = True
+                self.__closeOpenOrders = False
                 for orderDict in dict['OPEN_ORDERS']:
                     self.findOrderStatusAndQtyInfo(orderDict['ORDER_NO'])
                     timeStr = orderDict['CREATE_TIME']
@@ -121,7 +120,7 @@ class payTmMoneyMock:
                         orderTime = datetime.datetime.strptime(timeStr, '%d-%b-%Y %H:%M')
                         if orderTime.date() == datetime.datetime.today().date():
                             closeQty += orderDict['TRADED_QTY']                
-                self.__closeOpenOrders = False
+                self.__closeOpenOrders = True
                 pos = openQty - closeQty
                 dict['POS_HOLD_QTY'] = pos
                 break
@@ -154,6 +153,9 @@ class payTmMoneyMock:
                         else:
                             trdQty = orderDict['TRADED_QTY'] + qtyToClose
                             orderDict['TRADED_QTY'] = trdQty
+                            if orderDict['QTY'] - trdQty < qtyToClose:
+                                trdQty = orderDict['TRADED_QTY'] = qty
+                                orderDict['ORDER_STATUS'] = 'CLOSE'
                     else:
                         trdQty = orderDict['TRADED_QTY']
                     break
@@ -171,7 +173,10 @@ class payTmMoneyMock:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
                             else:
                                 trdQty = orderDict['TRADED_QTY'] + qtyToClose
-                                orderDict['TRADED_QTY'] = trdQty
+                                trdQty = orderDict['TRADED_QTY'] = trdQty
+                                if orderDict['QTY'] - trdQty < qtyToClose:
+                                    orderDict['TRADED_QTY'] = qty
+                                    orderDict['ORDER_STATUS'] = 'CLOSE'
 
                             status = True
                         else:
@@ -189,7 +194,7 @@ class payTmMoneyMock:
             for orderDict in dict['OPEN_ORDERS']:
                 if orderDict['ORDER_NO'] == orderNo:
                     if orderDict['ORDER_STATUS'] == 'OPEN':
-                        status = True
+                        status, qty, trdQty = self.findOrderStatusAndQtyInfo(orderNo)
                         orderDict['ORDER_STATUS'] = 'CLOSE'
                         orderNum = str(self.__cancelOrderNum)
                         self.__cancelOrderNum += 1
