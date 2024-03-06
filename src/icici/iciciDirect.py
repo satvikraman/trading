@@ -62,13 +62,13 @@ class iciciDirect():
                 menu1 = self.__browser.find_element_by_id("pnlmnuprod")
                 element = menu1.find_element_by_partial_link_text("Research")
                 element.click()
-                time.sleep(5)
+                WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.ID, "pnlmnudsp")))
 
                 # Click on IClick2Gain
                 menu2 = self.__browser.find_element_by_id("pnlmnudsp")
                 iClick2Gain = menu2.find_element_by_partial_link_text("Trading Ideas (iCLICK-2-GAIN)")
                 iClick2Gain.click()
-                time.sleep(5)
+                WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.ID, "iclick_gain")))
                 status = True
             except Exception as err:
                 time.sleep(1)
@@ -447,7 +447,7 @@ class iciciDirect():
 
 
     def prepareRecDict(self, rowDict):
-        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
+        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'ICICI_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
         mandatoryDervKeys = ['LOT_SIZE']
         mandatoryLevKeys = ['REC_TIME']
@@ -478,7 +478,7 @@ class iciciDirect():
                 return {}
             elif key in importantKeys:
                 if key == 'INV_PERIOD':
-                    recDict['INV_PERIOD'], _ = self.__suggestInvPeriod(rowDict['STRATEGY'], rowDict['ICICI_SYMBOK'], rowDict['REC_DATE'])
+                    recDict['INV_PERIOD'], _ = self.__suggestInvPeriod(rowDict['STRATEGY'], rowDict['ICICI_SYMBOL'], rowDict['REC_DATE'])
             elif key in priceKeys:
                 recDict[key] = 0
             elif key in otherNonLevkeys:
@@ -695,7 +695,8 @@ class iciciDirect():
                 finalProfit = re.match(r'\D+(\d+)', cell)
                 if finalProfit != None:
                     resDict['FINAL_PROFIT_PRICE'] = self.__convPriceToFloat(finalProfit.groups()[0])
-        elif re.match("Exit", cell) or re.match("Square off", cell) or re.match("SLTP", cell):
+        elif re.match("Exit", cell) or re.match("Square off", cell) or re.match("SLTP", cell) or \
+             re.match("Trailing stoploss triggered", cell) or re.match("Stoploss Triggered", cell):
             resDict['REC_STATUS'] = 'CLOSE'
             stopLoss = re.match(r'^.*at\D*(\d+)\D*', cell)
             if stopLoss != None:
@@ -714,7 +715,7 @@ class iciciDirect():
     def getStrategiesToInvest(self, source, filter=None):
         if source == 'iCLICK-2-GAIN':
             allStrategies = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE']
-            strategiesToInvest = allStrategies
+            strategiesToInvest = ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
         elif source == 'iCLICK-2-INVEST':
             allStrategies = ['TOP PICKS', 'NANO NIVESH', 'QUANT DERIVATIVES PICK', 'MARGIN TRADING FUNDING (MTF)', 'STOCK TALES', 'RESULT UPDATE', 'IDIRECT INSTINCT', 'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 
                              'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'MARKET STRATEGY']
@@ -848,30 +849,43 @@ class iciciDirect():
 
 
     def getNextiCLICK_2_GAINTblRow(self):
-        tblRows = self.__iclick2GainTblRows
-        for i in range(0, len(tblRows), 2):
-            tblRow = tblRows[i]
-            tblExpandRow = tblRows[i+1]
-            tblRowCols = tblRow.find_elements_by_tag_name("td")
-            # If we find a row with 10 entries
-            if(len(tblRowCols) == 10):
-                rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRow, tblRowCols, tblExpandRow)
-                if rowDict != None:
-                    self.__logger.debug('Generated dictionary %s', rowDict)
-                    yield rowDict
+        parseAttempt = 0
+        while parseAttempt < 3:
+            try:
+                tblRows = self.__iclick2GainTblRows
+                for i in range(0, len(tblRows), 2):
+                    tblRow = tblRows[i]
+                    tblExpandRow = tblRows[i+1]
+                    tblRowCols = tblRow.find_elements_by_tag_name("td")
+                    # If we find a row with 10 entries
+                    if(len(tblRowCols) == 10):
+                        rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRow, tblRowCols, tblExpandRow)
+                        if rowDict != None:
+                            self.__logger.debug('Generated dictionary %s', rowDict)
+                            yield rowDict
+                break
+            except Exception as e:
+                self.__iclick2GainTblRows = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, "//*[@id='pnlclick2gain']/div/table[2]/tbody/tr")))
+                parseAttempt += 1
 
 
     def getNextiCLICK_2_INVESTTblRow(self):
-        tblRows = self.__iclick2InvestTblRows
-        for tblRow in tblRows:
-            tblRowCols = tblRow.find_elements_by_tag_name("td")
-            # If we find a row with 8 entries
-            if(len(tblRowCols) == 8):
-                rowDict = self.__formatiCLICK_2_INVESTTblRowToDict(tblRowCols)
-                if rowDict != None:
-                    self.__logger.debug('Generated dictionary %s', rowDict)
-                    yield rowDict
-
+        parseAttempt = 0
+        while parseAttempt < 3:
+            try:
+                tblRows = self.__iclick2InvestTblRows
+                for tblRow in tblRows:
+                    tblRowCols = tblRow.find_elements_by_tag_name("td")
+                    # If we find a row with 8 entries
+                    if len(tblRowCols) == 8:
+                        rowDict = self.__formatiCLICK_2_INVESTTblRowToDict(tblRowCols)
+                        if rowDict != None:
+                            self.__logger.debug('Generated dictionary %s', rowDict)
+                            yield rowDict
+                break
+            except Exception as e:
+                self.__iclick2InvestTblRows = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, "//*[@id='TABLE_1']/tbody/tr")))
+                parseAttempt += 1
 
     def scrapeiClick2Gain(self):
         if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
@@ -887,28 +901,16 @@ class iciciDirect():
             while loadPgAttempts < 3:
                 try:
                     # Select Margin as the recommendation type
-                    menu3 = self.__browser.find_element_by_id("iclick_gain")
+                    menu3 = WebDriverWait(self.__browser, 5).until(EC.visibility_of_element_located((By.ID, "iclick_gain")))
                     self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
                     recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
                     # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
                     recommendationType.select_by_value(menuVal)
 
                     # Click on view to see the results
-                    viewBtn = menu3.find_element_by_id("btnview")
-                    #viewBtn.send_keys(Keys.ENTER)
+                    viewBtn = WebDriverWait(self.__browser, 5).until(EC.element_to_be_clickable((By.ID, "btnview")))
                     viewBtn.click()
-
-                    # Scrape the data (header + body) from the webpage
-                    loadTblAttempts = 0
-                    while loadTblAttempts < 3:
-                        try:
-                            tbl = self.__browser.find_element_by_id("pnlclick2gain")
-                            tblBody = tbl.find_element_by_tag_name("tbody")
-                            self.__iclick2GainTblRows = tblBody.find_elements_by_tag_name("tr")
-                            break
-                        except Exception as e:
-                            loadTblAttempts += 1
-                            time.sleep(1)
+                    self.__iclick2GainTblRows = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, "//*[@id='pnlclick2gain']/div/table[2]/tbody/tr")))
                     break
                 except Exception as e:
                     self.__browser.refresh()
@@ -933,7 +935,6 @@ class iciciDirect():
             while loadPgAttempts < 3:
                 try:
                     # Select Margin as the recommendation type
-                    #menu3 = self.__browser.find_element_by_id("iclick_invest")
                     menu3 = WebDriverWait(self.__browser, 5).until(EC.visibility_of_element_located((By.ID, "iclick_invest")))
                     self.__browser.execute_script("document.getElementById('ddlinvestmenttype').style.display='inline-block';")
                     recommendationType = Select(menu3.find_element_by_id("ddlinvestmenttype"))
@@ -941,27 +942,9 @@ class iciciDirect():
                     recommendationType.select_by_value(menuVal)
 
                     # Click on view to see the results
-                    #viewBtn = menu3.find_element_by_id("btnview")
-                    viewBtn = WebDriverWait(self.__browser, 5).until(EC.element_to_be_clickable((By.ID, "iclick_invest")))
+                    viewBtn = WebDriverWait(self.__browser, 5).until(EC.element_to_be_clickable((By.ID, "btnview")))
                     viewBtn.click()
-                    #WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.ID, "Pnlclckinvest")))
-                    #WebDriverWait(self.__browser, 5).until(EC.visibility_of_element_located((By.TAG_NAME, "tbody")))
-
-                    # Scrape the data (header + body) from the webpage
-                    loadTblAttempts = 0
-                    while loadTblAttempts < 3:
-                        try:
-                            #tbl = self.__browser.find_element_by_id("Pnlclckinvest")
-                            #tblBody = tbl.find_element_by_tag_name("tbody")
-                            #WebDriverWait(self.__browser, 20).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "text-uppercase")))
-                            self.__iclick2InvestTblRows = WebDriverWait(self.__browser, 10).until(EC.visibility_of_all_elements_located((By.XPATH, "//*[@id='TABLE_1']/tbody/tr")))
-                            # Check if you are able to access the columns and that the element is not stale. 
-                            self.__iclick2InvestTblRows[0].find_elements_by_tag_name("td")
-                            #self.__iclick2InvestTblRows = tblBody.find_elements_by_tag_name("tr")
-                            break
-                        except Exception as e:
-                            loadTblAttempts += 1
-                            time.sleep(1)
+                    self.__iclick2InvestTblRows = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, "//*[@id='TABLE_1']/tbody/tr")))
                     break
                 except Exception as e:
                     self.__browser.refresh()

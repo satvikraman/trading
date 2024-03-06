@@ -64,8 +64,6 @@ class app():
             self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
             self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
             self.__timeToRefreshTradeIeas = int(self.__config['APP']['TIMES_TO_REFRESH_TRADE_IDEAS'])
-            # changeme
-            self.__timeToRefreshTradeIeas = 1
             
             # Download the latest ICICI dataset once every day
             dotenv.load_dotenv('.env', override=True)
@@ -344,13 +342,13 @@ class app():
                 recDict = self.__iciciDirect.prepareRecDict(dbDict)
                 status = self.__send2PayTm('UPDATE_REC', recDict)
                 dbDict['ACK'] = 'ACK' if status else 'NACK'
-                persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
             elif not visible and (dbDict['VISIBLE'] == 'VISIBLE'):
                 dbDict['VISIBLE'] = 'VISIBLE'
                 recDict = self.__iciciDirect.prepareRecDict(dbDict)
                 status = self.__send2PayTm('UPDATE_REC', recDict)
                 dbDict['ACK'] = 'ACK' if status else 'NACK'
-                persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
 
 
     def __sendNonAckedRecsFromDb(self):
@@ -376,7 +374,6 @@ class app():
 
     def runPeriodicChecks(self, marketOpen, marketCloseMinusDelta):
         # Send all recommendations in DB that haven't be ACK'ed
-        # changeme
         self.__sendNonAckedRecsFromDb()
 
         if True:

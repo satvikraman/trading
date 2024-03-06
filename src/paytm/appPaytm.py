@@ -117,6 +117,13 @@ class app():
         shutil.copyfile(db, backupDb)
 
 
+    def openPaytmWebsocket(self, on_open, on_msg, on_close, on_err):
+        trade.wsclient = self.__payTmMoney.payTmWebSocket(on_open, on_msg, on_close, on_err)
+
+
+    def clearCMPDict(self):
+        self.__cmp.clear()
+
     def setAmountPerOrder(self, maxAmount):
             self.__amountPerOrder = int(maxAmount)
             dotenv.set_key('./.env', "max_amount_per_order", str(maxAmount))
@@ -130,14 +137,6 @@ class app():
 
     def openPayTmMoneySession(self):
         self.__payTmMoney.payTmLogin()
-
-
-    def openPaytmWebsocket(self, on_open, on_msg, on_close, on_err):
-        self.__wsclient = self.__payTmMoney.payTmWebSocket(on_open, on_msg, on_close, on_err)
-
-
-    def paytmWebsocketConnect(self):
-        self.__wsclient.connect()
 
 
     def getHoldingsData(self):
@@ -489,7 +488,7 @@ class app():
                         "exchangeType": exchange,
                         "scripId": scriptId
                         }]
-        trade.wsclient.subscribe(preferences)
+        self.wsclient.subscribe(preferences)
 
 
     def __modifyCmpSubscription(self, persistenceInst, dbDict, actionType):
@@ -533,7 +532,7 @@ class app():
                 if self.useWebsocket:
                     trade.__websocketSubscription(actionType, 'LTP', securityType, dbDict['MKT'], dbDict['SECURITY_ID'])
 
-    def __refreshCMP(self):
+    def refreshCMP(self):
         for instrument in ["EQUITY", "MARGIN", "FnO"]:
             if instrument == "EQUITY":
                 persistenceInst = self.__persistenceInv
@@ -951,7 +950,7 @@ class app():
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
         if not self.useWebsocket:
             self.__logger.debug("Getting CMP data")
-            self.__refreshCMP()
+            self.refreshCMP()
 
         for instrument in ["EQUITY", "MARGIN", "FnO"]:
             self.__logger.debug("Working on instrument %s", instrument)
@@ -963,7 +962,7 @@ class app():
                 persistenceInst = self.__persistenceFnO
 
             self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', '!CLOSE']])
+            dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
                 self.__updateRecStatus(persistenceInst, dbDict)
             self.__lock.release()
@@ -1122,8 +1121,8 @@ def on_paytm_sock_open():
     trade.useWebsocket = True
     trade._app__logger.info("websocket connection with PayTm opened")
     # Get the CMP once at the start. This initializes the self.__cmp structure and the websocket subscription, if in use
-    trade.__cmp.clear()
-    trade.__refreshCMP()
+    trade.clearCMPDict()
+    trade.refreshCMP()
 
 
 def on_paytm_sock_message(message):
@@ -1143,6 +1142,10 @@ def on_paytm_sock_close(close_status_code,close_message):
 
 def on_paytm_sock_error(err):
     trade._app__logger.error("websocket error %s", err)
+
+
+def paytmWebsocketConnectThread():
+    trade.wsclient.connect()
 
 
 @flask.route('/v1/rec', methods=['POST', 'PUT'])
@@ -1177,7 +1180,9 @@ if __name__ == '__main__':
 
     # Open and wait until the websocket w/ PayTm opens.
     trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
-    trade.paytmWebsocketConnect()
+    paytmWebsocketConnectThr = threading.Thread(target=paytmWebsocketConnectThread)
+    paytmWebsocketConnectThr.daemon = True
+    paytmWebsocketConnectThr.start()
     while not trade.useWebsocket:
         time.sleep(1)
 
