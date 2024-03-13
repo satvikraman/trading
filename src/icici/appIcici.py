@@ -404,8 +404,8 @@ class app():
         self.__closeLeverageRecsNotVisible()
 
         if marketCloseMinusDelta:
-            self.__updateMismatchedVisibilityNonLeverageRecs()
-            self.closeExpiredRecs('EQUITY', dryRun=False)
+            #self.__updateMismatchedVisibilityNonLeverageRecs()
+            #self.closeExpiredRecs('EQUITY', dryRun=False)
             self.closeExpiredRecs('FnO', dryRun=False)
 
 

@@ -930,8 +930,9 @@ class app():
     def __executeEOMSeq(self, persistenceInst, dbDicts):
         # Cancel any open orders and place orders to close open positions
         for dbDict in dbDicts:
-            _, cancelDict = self.__cancelOrder(persistenceInst, dbDict)
-            cancelDict = self.__getPosStatus(persistenceInst, cancelDict, forceGetPos=True)
+            _, cancelDict = self.__cancelOrder(dbDict)
+            cancelDict = self.__getPosStatus(cancelDict)
+            persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
     def __followOrders(self, persistenceInst, dbDict):
@@ -1090,7 +1091,7 @@ class app():
 
         if not self.__marketOpen:
             self.__reconcileRecs()
-            self.__closeAllExpiredOrders()
+            #self.__closeAllExpiredOrders()
             self.__closeAllOpenDeliveryOrders()
 
 
