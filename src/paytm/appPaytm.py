@@ -10,7 +10,7 @@ from dateutil.relativedelta import relativedelta
 import time
 import configparser
 import threading
-from flask import Flask, request
+from flask import Flask, request, jsonify
 
 sys.path.append('./src/common')
 from persistence import persistence
@@ -329,6 +329,40 @@ class app():
                 if ltp != -1 and dbDict['STOP_LOSS'] * 1.01 >= ltp:
                     self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
                                        dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+
+
+    def setAllHidden(self):
+        for instrument in ["EQUITY", "MARGIN", "FnO"]:
+            if instrument == "EQUITY":
+                persistenceInst = self.__persistenceInv
+            elif instrument == "MARGIN":
+                persistenceInst = self.__persistenceIntraDay
+            elif instrument == "FnO":
+                persistenceInst = self.__persistenceFnO
+
+            self.__lock.acquire()
+            dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+            for dbDict in dbDicts:
+                dbDict['VISIBLE'] = 'HIDDEN'
+                persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            self.__lock.release()
+
+
+    def setHiddenState(self, mktSymbol, strategy, recDate, visible):
+        for instrument in ["EQUITY", "MARGIN", "FnO"]:
+            if instrument == "EQUITY":
+                persistenceInst = self.__persistenceInv
+            elif instrument == "MARGIN":
+                persistenceInst = self.__persistenceIntraDay
+            elif instrument == "FnO":
+                persistenceInst = self.__persistenceFnO
+
+            self.__lock.acquire()
+            dbDicts = persistenceInst.getDb([['MKT_SYMBOL', mktSymbol], ['STRATEGY', strategy], ['REC_DATE', recDate]])
+            for dbDict in dbDicts:
+                dbDict['VISIBLE'] = visible
+                persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            self.__lock.release()
 
 
     def __isLateAdd(self, recDict):
@@ -936,15 +970,15 @@ class app():
 
 
     def __followOrders(self, persistenceInst, dbDict):
-        if not self.__marketOpen:
-            return
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
             self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
             self.__updateRecStatus(persistenceInst, dbDict)
-            self.__openPosition(persistenceInst, dbDict)
+            if self.__marketOpen:
+                self.__openPosition(persistenceInst, dbDict)
         elif dbDict['REC_STATUS'] in ['PARTIAL_CLOSE', 'CLOSE']:
             cancelOrder = True if dbDict['POS_HOLD_STATUS'] == 'OPEN' else False
-            self.__executeClosureSeq(persistenceInst, [dbDict], cancelOrder=cancelOrder, forceCloseRec=False)
+            if self.__marketOpen:
+                self.__executeClosureSeq(persistenceInst, [dbDict], cancelOrder=cancelOrder, forceCloseRec=False)
 
 
     def __reconcileRecs(self):
@@ -1138,15 +1172,48 @@ def on_paytm_sock_close(close_status_code,close_message):
     if trade.__marketOpen:
         trade._app__logger.error("PayTm websocket closed while market was open. Trying to open it again")
         trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
-        trade.paytmWebsocketConnect()
+        trade.wsclient.connect()
 
 
 def on_paytm_sock_error(err):
+    trade.useWebsocket = False
     trade._app__logger.error("websocket error %s", err)
+
+    if trade.__marketOpen:
+        trade._app__logger.error("PayTm websocket closed while market was open. Trying to open it again")
+        trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
+        trade.wsclient.connect()
 
 
 def paytmWebsocketConnectThread():
     trade.wsclient.connect()
+
+
+@flask.route('/v1/hidden', methods=['POST', 'PUT'])
+def rec():
+    hiddenDict = request.get_json()
+    if not trade.hiddenFlow:
+        if hiddenDict['STATE'].upper() == 'START':
+            data = { 
+                "STATE" : 'STATE', 
+            }
+            trade.setAllHidden()
+        elif hiddenDict['STATE'].upper() == 'RUNNING':
+            data = { 
+                "STATE" : 'END', 
+            } 
+            trade.setHiddenState()
+        elif hiddenDict['STATE'].upper() == 'END':
+            data = { 
+                "STATE" : 'END', 
+            } 
+    else:
+        data = { 
+            "STATE" : 'END', 
+        } 
+
+    statusCode = 200
+    return jsonify(data), statusCode
 
 
 @flask.route('/v1/rec', methods=['POST', 'PUT'])
