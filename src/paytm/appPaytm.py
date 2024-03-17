@@ -90,7 +90,7 @@ class app():
 
             self.__squareOff = False
             self.__cmp = {}
-            self.__marketOpen = False
+            self.marketOpen = False
 
             self.__core = [ {'MKT_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
                             {'MKT_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
@@ -131,7 +131,7 @@ class app():
 
     def setMarketTimer(self, squareOff, marketOpen):
         self.__squareOff = squareOff
-        self.__marketOpen = marketOpen
+        self.marketOpen = marketOpen
         return
 
 
@@ -641,12 +641,12 @@ class app():
                     self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['TARGET'])
                     dbDict['REC_STATUS'] = 'CLOSE'
                 elif ltp * 1.01 <= dbDict['STOP_LOSS']:
-                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__marketOpen), 
+                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.marketOpen), 
                                     ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
                 # Act on SL on a closing basis anyways. If the price has significantly fallen below SL during trading hours the above condition handles that case
-                elif not self.__marketOpen and ltp <= dbDict['STOP_LOSS']:
-                    self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__marketOpen), 
+                elif not self.marketOpen and ltp <= dbDict['STOP_LOSS']:
+                    self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.marketOpen), 
                                         ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
 
@@ -681,6 +681,7 @@ class app():
         delta = (thisOpenQty - thisCloseQty) - dbDict['POS_HOLD_QTY']
         dbDict['POS_HOLD_QTY'] += delta
         dbDict['POS_QTY'] += delta
+        dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
 
         posHoldQty = dbDict['POS_HOLD_QTY']
         if (thisCloseQty > 0 and posHoldQty == 0) or (dbDict['REC_STATUS'] != 'OPEN' and posHoldQty == 0):
@@ -973,11 +974,11 @@ class app():
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
             self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
             self.__updateRecStatus(persistenceInst, dbDict)
-            if self.__marketOpen:
+            if self.marketOpen:
                 self.__openPosition(persistenceInst, dbDict)
         elif dbDict['REC_STATUS'] in ['PARTIAL_CLOSE', 'CLOSE']:
             cancelOrder = True if dbDict['POS_HOLD_STATUS'] == 'OPEN' else False
-            if self.__marketOpen:
+            if self.marketOpen:
                 self.__executeClosureSeq(persistenceInst, [dbDict], cancelOrder=cancelOrder, forceCloseRec=False)
 
 
@@ -1114,7 +1115,7 @@ class app():
 
 
     def runPeriodicChecks(self):
-        if self.__marketOpen:
+        if self.marketOpen:
             if self.__squareOff:
                 self.__closeAllOpenIntraDayPositions()
                     
@@ -1123,7 +1124,7 @@ class app():
             if self.__dryRun:
                 return
 
-        if not self.__marketOpen:
+        if not self.marketOpen:
             self.__reconcileRecs()
             #self.__closeAllExpiredOrders()
             self.__closeAllOpenDeliveryOrders()
@@ -1156,7 +1157,6 @@ def on_paytm_sock_open():
     trade.useWebsocket = True
     trade._app__logger.info("websocket connection with PayTm opened")
     # Get the CMP once at the start. This initializes the self.__cmp structure and the websocket subscription, if in use
-    trade.clearCMPDict()
     trade.refreshCMP()
 
 
@@ -1165,11 +1165,11 @@ def on_paytm_sock_message(message):
     #trade._app__logger.debug("websocket message %s", message)
 
 
-def on_paytm_sock_close(close_status_code,close_message):
+def on_paytm_sock_close(close_status_code, close_message):
     trade.useWebsocket = False
-    trade._app__logger.error("websocket connection with PayTm closed")
+    trade._app__logger.error("on_paytm_sock_close: websocket connection with PayTm closed. code: %s. reason: %s", close_status_code, close_message)
 
-    if trade.__marketOpen:
+    if trade.marketOpen:
         trade._app__logger.error("PayTm websocket closed while market was open. Trying to open it again")
         trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
         trade.wsclient.connect()
@@ -1177,9 +1177,9 @@ def on_paytm_sock_close(close_status_code,close_message):
 
 def on_paytm_sock_error(err):
     trade.useWebsocket = False
-    trade._app__logger.error("websocket error %s", err)
+    trade._app__logger.error("on_paytm_sock_error: websocket error %s", err)
 
-    if trade.__marketOpen:
+    if False:
         trade._app__logger.error("PayTm websocket closed while market was open. Trying to open it again")
         trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
         trade.wsclient.connect()
@@ -1190,7 +1190,7 @@ def paytmWebsocketConnectThread():
 
 
 @flask.route('/v1/hidden', methods=['POST', 'PUT'])
-def rec():
+def visibility():
     hiddenDict = request.get_json()
     if not trade.hiddenFlow:
         if hiddenDict['STATE'].upper() == 'START':
