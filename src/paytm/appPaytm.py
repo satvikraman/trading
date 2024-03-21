@@ -94,6 +94,7 @@ class app():
 
             self.__core = [ {'MKT_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
                             {'MKT_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
+                            {'MKT_SYMBOL': 'AXISBANK', 'SECURITY_ID': '5900', 'QTY': 10}, 
                             {'MKT_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': 8}, 
                             {'MKT_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY':127}, 
                             {'MKT_SYMBOL': 'CDSL', 'SECURITY_ID': '21174', 'QTY': 33}, 
@@ -377,7 +378,7 @@ class app():
         return status
 
 
-    def __addNewRec(self, persistenceInst, recDict, holdQty=0, posHoldStatus=None):
+    def __addNewRec(self, persistenceInst, recDict, holdQty=0):
         status = False
         recDict['LATE_ADD'] = self.__isLateAdd(recDict)
         recDict['HIGH_REC_PRICE'] = float(recDict['HIGH_REC_PRICE'])
@@ -398,7 +399,7 @@ class app():
         recDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
         recDict['HOLD_QTY'] = holdQty
         recDict['POS_HOLD_QTY'] = holdQty
-        recDict['POS_HOLD_STATUS'] = 'OPEN' if posHoldStatus == None else posHoldStatus
+        recDict['POS_HOLD_STATUS'] = 'OPEN'
         recDict.update({'SECURITY_ID': recDict['SECURITY_ID'], 'QTY': qty, 'MAX_AMOUNT': self.__amountPerOrder, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
 
         res = persistenceInst.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
@@ -477,6 +478,16 @@ class app():
         return status
         
 
+    def __investForSatvik(self, strategy):
+        # Define the list of strategies that should be invested for Satvik
+        satvikStrategies = ['MOMENTUM PICK']
+        # If the current recommendation's strategy is in the list above, return True
+        invest = False
+        if strategy in satvikStrategies: 
+            invest = True
+        return invest
+
+
     def handleRec(self, recDict):
         if self.__squareOff and recDict['STRATEGY'] == 'MARGIN':
             return True
@@ -488,27 +499,49 @@ class app():
         else:
             persistenceInst = self.__persistenceInv
 
+        # Check if we need to freshly invest for Satvik? If yes, set the variable addForSatvik to True
+        addForSatvik = self.__investForSatvik(recDict['STRATEGY'])
+        loopForSatvik = False
+        # Create a list of strategies to loop over including the one for Satvik
+        strategyList = [recDict['STRATEGY'], 'SR-' + recDict['STRATEGY']]
+
         self.__lock.acquire()
-        today = self.__today.strftime("%d-%b-%Y").lower()
-        isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-        # If rec not in DB, check without the time criteria once. Offline recommendations (which are all non-margin) don't have correct timestamps
-        if not isInDb and recDict['STRATEGY'] != 'MARGIN':
-            isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
-        
-        # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
-        if recDict['REC_DATE'].lower() == today:
-            status, dbDict = self.__updateRec(persistenceInst, recDict, dbDict) if isInDb else self.__addNewRec(persistenceInst, recDict)
-        # else if in holdings (- any holding in the core portfolio), 
-        elif isInDb:
-            status, dbDict = self.__updateRec(persistenceInst, recDict, dbDict)
-        # else i.e. old recommendation i.e. not in DB --> if >= 90% investment period left then investment else send ACK anyways
-        elif recDict['REC_STATUS'] == 'OPEN':
-            if self.__isInvPeriodLeft(recDict):
-                status, dbDict = self.__addNewRec(persistenceInst, recDict)
+
+        # Loop over all strategies
+        for strategy in strategyList:
+            # Initialize the recDict['STRATEGY] to the strategy for which this loop is running
+            recDict['STRATEGY'] = strategy
+            # Note: We will alwyas try and call updateRec if the recommendation is found in DB
+
+            today = self.__today.strftime("%d-%b-%Y").lower()
+            isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+            # If rec not in DB, check without the time criteria once. Offline recommendations (which are all non-margin) don't have correct timestamps
+            if not isInDb and recDict['STRATEGY'] != 'MARGIN':
+                isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+            
+            # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
+            if recDict['REC_DATE'].lower() == today:
+                if isInDb:
+                    status, dbDict = self.__updateRec(persistenceInst, recDict, dbDict)
+                else:
+                    if not loopForSatvik or addForSatvik:
+                        status, dbDict = self.__addNewRec(persistenceInst, recDict)
+            # else if in holdings (- any holding in the core portfolio), 
+            elif isInDb:
+                status, dbDict = self.__updateRec(persistenceInst, recDict, dbDict)
+            # else i.e. old recommendation i.e. not in DB --> if >= 90% investment period left then investment else send ACK anyways
+            elif recDict['REC_STATUS'] == 'OPEN':
+                if self.__isInvPeriodLeft(recDict):
+                    if not loopForSatvik or addForSatvik:
+                        status, dbDict = self.__addNewRec(persistenceInst, recDict)
+                else:
+                    status = True
             else:
                 status = True
-        else:
-            status = True
+            
+            loopForSatvik = True
+
+        # Loop ends here
         self.__lock.release()
 
         return status

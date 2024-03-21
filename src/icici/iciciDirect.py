@@ -865,7 +865,10 @@ class iciciDirect():
                             yield rowDict
                 break
             except Exception as e:
-                self.__iclick2GainTblRows = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, "//*[@id='pnlclick2gain']/div/table[2]/tbody/tr")))
+                try:
+                    self.__iclick2GainTblRows = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, "//*[@id='pnlclick2gain']/div/table[2]/tbody/tr")))
+                except Exception as e:
+                    time.sleep(1)
                 parseAttempt += 1
 
 
@@ -884,7 +887,10 @@ class iciciDirect():
                             yield rowDict
                 break
             except Exception as e:
-                self.__iclick2InvestTblRows = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, "//*[@id='TABLE_1']/tbody/tr")))
+                try:
+                    self.__iclick2InvestTblRows = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, "//*[@id='TABLE_1']/tbody/tr")))
+                except Exception as e:
+                    time.sleep(1)
                 parseAttempt += 1
 
     def scrapeiClick2Gain(self):
