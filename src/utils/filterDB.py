@@ -37,8 +37,8 @@ if __name__ == '__main__':
     # Backup DB. We will work on the original DB
     filter = app('./payTmMoney.ini')
 
-    start = datetime.date(2023, 12, 24)
-    end = datetime.date(2024, 1, 2)
+    start = datetime.date(2024, 3, 11)
+    end = datetime.date(2024, 3, 15)
     filterDate = start
     while filterDate <= end:
         print("Filtering txs on : ", filterDate)

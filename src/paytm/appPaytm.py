@@ -1198,7 +1198,7 @@ def on_paytm_sock_message(message):
     #trade._app__logger.debug("websocket message %s", message)
 
 
-def on_paytm_sock_close(close_status_code, close_message):
+def on_paytm_sock_close(close_status_code = "-NA-", close_message = "-NA-"):
     trade.useWebsocket = False
     trade._app__logger.error("on_paytm_sock_close: websocket connection with PayTm closed. code: %s. reason: %s", close_status_code, close_message)
 
