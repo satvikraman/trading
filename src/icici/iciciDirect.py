@@ -21,6 +21,7 @@ from pushbullet import PushBullet
 from googleWorkspace import googleWorkspace
 
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
@@ -207,13 +208,13 @@ class iciciDirect():
         self.__browserEngine = self.__config['DEFAULT']['BROWSER']
         if self.__browserEngine == 'CHROME':
             self.__browserDriver = self.__config['DEFAULT']['CHROME_DRIVER']
+            #options = webdriver.ChromeOptions()
+            #options.add_argument(r'--user-data-dir=C:\\Users\\araman\\AppData\\Local\\Google\\Chrome\\User Data') #e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
+            #options.add_argument(r'--profile-directory=Default')
+            #self.__browser = webdriver.Chrome(self.__browserDriver, chrome_options=options)
+            self.__browser = webdriver.Chrome(self.__browserDriver)
         elif self.__browserEngine == 'EDGE':
             self.__browserDriver = self.__config['DEFAULT']['EDGE_DRIVER']
-
-        # Open ICICI Direct and let the user login
-        if self.__browserEngine == 'CHROME':
-            self.__browser = webdriver.Chrome(self.__browserDriver)
-        else:
             self.__browser = webdriver.Edge(self.__browserDriver)
 
         # Initialize PushBullet to enable mobile notifications
@@ -440,7 +441,7 @@ class iciciDirect():
             if key in self.__iclick2GainDict:
                 visible = self.__iclick2GainDict[key]['VISIBLE'] == 'VISIBLE'
         else:
-            key = (iciciSymbol, strategy)
+            key = (iciciSymbol, strategy, buySell)
             if key in self.__iclick2InvestDict:
                 visible = self.__iclick2InvestDict[key]['VISIBLE'] == 'VISIBLE'
         return visible
@@ -714,27 +715,30 @@ class iciciDirect():
 
     def getStrategiesToInvest(self, source, filter=None):
         if source == 'iCLICK-2-GAIN':
-            allStrategies = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE']
+            allStrategies = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS']
             strategiesToInvest = ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
         elif source == 'iCLICK-2-INVEST':
-            allStrategies = ['TOP PICKS', 'NANO NIVESH', 'QUANT DERIVATIVES PICK', 'MARGIN TRADING FUNDING (MTF)', 'STOCK TALES', 'RESULT UPDATE', 'IDIRECT INSTINCT', 'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 
-                             'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'MARKET STRATEGY']
+            allStrategies = ['CONVICTION IDEAS', 'EQUITY MODEL PORTFOLIO', 'GLADIATOR STOCKS', 'IDIRECT INSTINCT', 'INITIATING COVERAGE', 'MARGIN TRADING FUNDING (MTF)', 'MARKET STRATEGY', 
+                             'MOMENTUM PICK', 'QUANT DERIVATIVES PICK', 'RESULT UPDATE', 'SHUBH NIVESH', 'STOCK TALES', 'STOCKS ON THE MOVE', 'TECHNO FUNDA', 'TOP PICKS', 
+                             'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS']
             strategiesToInvest = allStrategies
         
         if filter == 'ALL':
             strategiesToInvest = allStrategies
 
-        return strategiesToInvest
+        return strategiesToInvest, allStrategies
 
     def strategiesToInvest(self, source, strategy, buySell='BUY'):
         status = False
-        strategiesToInvest = self.getStrategiesToInvest(source)
+        strategiesToInvest, allStrategies = self.getStrategiesToInvest(source)
         if strategy in strategiesToInvest:
             status = True
             if strategy == "OPTIONS" and buySell == 'SELL':
                 status = False
             if strategy == 'FUTURE':
                 status = False
+        elif strategy not in allStrategies:
+            self.__logger.error("Strategy: %s was not found in allStrategies of: %s", strategy, source)
         return status
     
 
@@ -758,7 +762,7 @@ class iciciDirect():
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatStockCell(tblRowCols[0].text)
 
-        if self.strategiesToInvest('iCLICK-2-INVEST', cell1Dict['STRATEGY'], cell1Dict['BUY_SELL']):
+        if self.strategiesToInvest('iCLICK-2-GAIN', cell1Dict['STRATEGY'], cell1Dict['BUY_SELL']):
             cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
             # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
             # i.e. it has been struck-through, it means that recommendation has been dicarded
@@ -923,8 +927,6 @@ class iciciDirect():
                     loadPgAttempts += 1
                     time.sleep(1)
             if menuVal == 'ALL' and len(self.__iclick2GainTblRows) > 0:
-                for key in self.__iclick2GainDict.keys():
-                    self.__iclick2GainDict[key]['VISIBLE'] = 'HIDDEN'
                 break
     
 
@@ -956,8 +958,6 @@ class iciciDirect():
                     self.__browser.refresh()
                     loadPgAttempts += 1
                     time.sleep(1)
-            if menuVal == 'ALL' and len(self.__iclick2InvestTblRows) > 0:
-                for key in self.__iclick2InvestDict.keys():
-                    self.__iclick2InvestDict[key]['VISIBLE'] = 'HIDDEN'            
+            if menuVal == 'ALL' and len(self.__iclick2InvestTblRows) > 0:        
                 break
 
