@@ -1219,6 +1219,7 @@ def on_paytm_sock_error(err):
 
 
 def paytmWebsocketConnectThread():
+    trade.wsclient.set_reconnect_config(True, 5)
     trade.wsclient.connect()
 
 
