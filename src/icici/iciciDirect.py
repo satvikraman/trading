@@ -95,8 +95,8 @@ class iciciDirect():
 
 
     def loginICICIDirect(self):
+        return
         loginNotSuccessful = True
-        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
         self.__google.writeToCell('A1', 'B4', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
         while loginNotSuccessful:
             self.__browser.refresh()
@@ -227,14 +227,15 @@ class iciciDirect():
             self.__pushbulletDev = self.__pushbullet.getDevices()
 
         # Connect to Google sheets
-        spreadsheetID = self.__config['ICICI-DIRECT']['SPREADSHEET_ID']
-        sheetName = self.__config['ICICI-DIRECT']['SHEET_NAME']
-        self.__google = googleWorkspace(spreadsheetID, sheetName)
-        self.__google.authorize()
-        self.__google.buildSheets()
-        self.__google.buildDrive()
+        #spreadsheetID = self.__config['ICICI-DIRECT']['SPREADSHEET_ID']
+        #sheetName = self.__config['ICICI-DIRECT']['SHEET_NAME']
+        #self.__google = googleWorkspace(spreadsheetID, sheetName)
+        #self.__google.authorize()
+        #self.__google.buildSheets()
+        #self.__google.buildDrive()
 
-        self.loginICICIDirect()
+        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
+        #self.loginICICIDirect()
 
 
     def closeBrowser(self):  

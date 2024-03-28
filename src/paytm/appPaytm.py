@@ -92,22 +92,12 @@ class app():
             self.__cmp = {}
             self.marketOpen = False
 
-            self.__core = [ {'MKT_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
-                            {'MKT_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
-                            {'MKT_SYMBOL': 'AXISBANK', 'SECURITY_ID': '5900', 'QTY': 10}, 
-                            {'MKT_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': 8}, 
-                            {'MKT_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY':127}, 
-                            {'MKT_SYMBOL': 'CDSL', 'SECURITY_ID': '21174', 'QTY': 33}, 
-                            {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 90}, 
+            self.__core = [ {'MKT_SYMBOL': 'AXISBANK', 'SECURITY_ID': '5900', 'QTY': 10}, 
+                            {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}, 
                             {'MKT_SYMBOL': 'HDFCBANK', 'SECURITY_ID': '1333', 'QTY': 91}, 
-                            {'MKT_SYMBOL': 'HINDUNILVR', 'SECURITY_ID': '1394', 'QTY': 14}, 
                             {'MKT_SYMBOL': 'INFY', 'SECURITY_ID': '1594', 'QTY': 18}, 
-                            {'MKT_SYMBOL': 'JIOFIN', 'SECURITY_ID': '18143', 'QTY': 12}, 
-                            {'MKT_SYMBOL': 'MARICO', 'SECURITY_ID': '4067', 'QTY': 126}, 
                             {'MKT_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
-                            {'MKT_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
-                            {'MKT_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
-                            {'MKT_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
+                            {'MKT_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}]            
 
 
     def __backupDb(self, db):
@@ -1140,7 +1130,7 @@ class app():
             # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
             self.__lock.acquire()
             # Some orders are still open --> cancel them and close position
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATYS', '!CLOSE']])
+            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
             # Cancel open order & Get final position
             if len(dbDicts) > 0:
                 self.__executeEOMSeq(persistenceInst, dbDicts)

@@ -209,19 +209,20 @@ class app():
         if not isInDb:
             if(recDict['REC_STATUS'] != 'CLOSE'):
                 recDict = self.__iciciDirect.prepareRecDict(recDict)
+                self.__logger.info('New Recommendation %s', recDict)
                 status = self.__send2PayTm('NEW_REC', recDict)
                 recDict['ACK'] = 'ACK' if status else 'NACK'
                 res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-                self.__logger.info('New Recommendation %s', recDict)
             else:
                 recDict['ACK'] = 'ACK'
-                res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
                 self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['MKT_SYMBOL'], recDict)
+                res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
         elif isInDb:
                 # If the recommendation has changed then
                 isChange, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
                 if isChange:
                     recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                    self.__logger.info('Existing recommendation changed %s', recDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
                     persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
@@ -411,6 +412,7 @@ class app():
 
     def openIciciSession(self):
         self.__iciciDirect.browseICICIDirect()
+        input("Wait for the user to login")
 
 
     def openBreezeSession(self, on_ticks):
