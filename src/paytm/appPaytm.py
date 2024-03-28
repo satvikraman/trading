@@ -295,9 +295,16 @@ class app():
             else:
                 persistenceInst = self.__persistenceFnO
 
+            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
+            # Stocks that are hidden
+            self.__logger.info("\n\nFollowing stocks are hidden and will be closed today")
+            for dbDict in dbDicts:
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
+                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+
             dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
             # Stocks that will expire today
-            self.__logger.info("Following stocks will expire today")
+            self.__logger.info("\n\nFollowing stocks will expire today")
             for dbDict in dbDicts:
                 expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
                 if expDate <= self.__today.date():
@@ -305,7 +312,7 @@ class app():
                                        dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
                     
             perc = 1
-            self.__logger.info("Following stocks are trading %.1f%% away from their target price", perc)
+            self.__logger.info("\n\nFollowing stocks are trading %.1f%% away from their target price", perc)
             # Stocks very close to target
             for dbDict in dbDicts:
                 ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
@@ -313,7 +320,7 @@ class app():
                     self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
                                     dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
-            self.__logger.info("Following stocks are trading %.1f%% away from their stop loss price", perc)
+            self.__logger.info("\n\nFollowing stocks are trading %.1f%% away from their stop loss price", perc)
             # Stocks very close to stop-loss
             for dbDict in dbDicts:
                 ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
@@ -322,7 +329,7 @@ class app():
                                        dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
 
-    def setAllHidden(self):
+    def setVisibility(self, hiddenDict):
         for instrument in ["EQUITY", "MARGIN", "FnO"]:
             if instrument == "EQUITY":
                 persistenceInst = self.__persistenceInv
@@ -331,28 +338,22 @@ class app():
             elif instrument == "FnO":
                 persistenceInst = self.__persistenceFnO
 
-            self.__lock.acquire()
+            self .__lock.acquire()
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
-                dbDict['VISIBLE'] = 'HIDDEN'
-                persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-            self.__lock.release()
+                # Handle the visibility of Satvik's strategy
+                strategy = dbDict['STRATEGY']
+                strategy = re.sub(r'^SR-', '', strategy)
+                val = dbDict['MKT_SYMBOL'] + '-' + strategy + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
+                if val in hiddenDict['VISIBLE']:
+                    visibility = 'VISIBLE'
+                else:
+                    visibility = 'HIDDEN'
 
-
-    def setHiddenState(self, mktSymbol, strategy, recDate, visible):
-        for instrument in ["EQUITY", "MARGIN", "FnO"]:
-            if instrument == "EQUITY":
-                persistenceInst = self.__persistenceInv
-            elif instrument == "MARGIN":
-                persistenceInst = self.__persistenceIntraDay
-            elif instrument == "FnO":
-                persistenceInst = self.__persistenceFnO
-
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['MKT_SYMBOL', mktSymbol], ['STRATEGY', strategy], ['REC_DATE', recDate]])
-            for dbDict in dbDicts:
-                dbDict['VISIBLE'] = visible
-                persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                if dbDict['VISIBLE'] !=  visibility:
+                    self.__logger.info("Changing visibility of dbDict %s from %s => %s", dbDict, dbDict['VISIBLE'], visibility)
+                    dbDict['VISIBLE'] = visibility
+                    persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                
             self.__lock.release()
 
 
@@ -478,6 +479,28 @@ class app():
         return invest
 
 
+    def __isInDb(self, persistenceInst, recDict):
+        isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+
+        if not isInDb:
+            # If SOURCE = ICICI, rec not in DB, and stategy has QUANT PICKS or QUANT DERIVATIVES PICK or YEARLY DERIVATIVES  then do the seach a little differently
+            if re.match(r'iCLICK-2', recDict['SOURCE']) and bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
+                recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")                            
+                dbDicts = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']]])
+                for dbDict in dbDicts:
+                    dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
+                    daysDiff = abs((dbDate - recDate).days)
+                    if bool(re.match(r'.*QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
+                        isInDb = True
+                        break
+
+        if not isInDb:
+            # If rec not in DB, check without the time criteria once. Offline recommendations (which are all non-margin) don't have correct timestamps
+            if recDict['STRATEGY'] != 'MARGIN':
+                isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+        return isInDb, dbDict
+
+
     def handleRec(self, recDict):
         if self.__squareOff and recDict['STRATEGY'] == 'MARGIN':
             return True
@@ -504,10 +527,7 @@ class app():
             # Note: We will alwyas try and call updateRec if the recommendation is found in DB
 
             today = self.__today.strftime("%d-%b-%Y").lower()
-            isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-            # If rec not in DB, check without the time criteria once. Offline recommendations (which are all non-margin) don't have correct timestamps
-            if not isInDb and recDict['STRATEGY'] != 'MARGIN':
-                isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+            isInDb, dbDict = self.__isInDb(persistenceInst, recDict)
             
             # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
             if recDict['REC_DATE'].lower() == today:
@@ -1077,24 +1097,22 @@ class app():
 
     def __closeAllOpenIntraDayPositions(self):
         # Get all open positions
-        self.__logger.info("Closing all open intra-day positions")
-
         # Check for all orders in 'OPEN' state
         # Some orders may be still open --> cancel them and close position
         self.__lock.acquire()
         persistenceInst = self.__persistenceIntraDay
         dbDicts = persistenceInst.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
-        self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=True)
+        if len(dbDicts) > 0:
+            self.__logger.info("Closing all open intra-day positions")
+            self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=True)
         self.__lock.release()
 
         # Check for all orders in 'CLOSE' state.
         # Do nothing
 
 
-    def __closeAllExpiredOrders(self):
+    def __closeAllHiddenRecs(self):
         # Get all open positions
-        self.__logger.info("Closing all expired non-margin orders")
-
         for instrument in ["EQUITY", "FnO"]:
             self.__logger.debug("Working on instrument %s", instrument)
             if instrument == "EQUITY":
@@ -1106,13 +1124,9 @@ class app():
             self.__lock.acquire()
             # Some orders may be still open --> cancel them and close position
             dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
-            expDbDicts = []
-            for dbDict in dbDicts:
-                expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
-                if self.__today.date() >= expDate:
-                    expDbDicts.append(dbDict)
-
-            self.__executeClosureSeq(persistenceInst, expDbDicts, cancelOrder=True, forceCloseRec=True)
+            if len(dbDicts) > 0:
+                self.__logger.info("Closing all hidden non-margin orders")
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=True)
             self.__lock.release()
 
 
@@ -1141,6 +1155,7 @@ class app():
         if self.marketOpen:
             if self.__squareOff:
                 self.__closeAllOpenIntraDayPositions()
+                self.__closeAllHiddenRecs()
                     
             self.__logger.debug("Starting reconciliation")
             self.__reconcileRecs()
@@ -1149,7 +1164,6 @@ class app():
 
         if not self.marketOpen:
             self.__reconcileRecs()
-            #self.__closeAllExpiredOrders()
             self.__closeAllOpenDeliveryOrders()
 
 
@@ -1165,7 +1179,7 @@ class app():
         while marketOpen:
             # Start closing all intraday positions as soon as it is 3:00PM
             squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15) 
-            marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25) 
+            marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=30) 
             trade.setMarketTimer(squareOffMinus15, marketOpen)
             trade.runPeriodicChecks()
             time.sleep(1)
@@ -1188,24 +1202,14 @@ def on_paytm_sock_message(message):
     #trade._app__logger.debug("websocket message %s", message)
 
 
-def on_paytm_sock_close(close_status_code = "-NA-", close_message = "-NA-"):
+def on_paytm_sock_close(close_code, close_reason):
     trade.useWebsocket = False
-    trade._app__logger.error("on_paytm_sock_close: websocket connection with PayTm closed. code: %s. reason: %s", close_status_code, close_message)
-
-    if trade.marketOpen:
-        trade._app__logger.error("PayTm websocket closed while market was open. Trying to open it again")
-        trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
-        trade.wsclient.connect()
+    trade._app__logger.error("on_paytm_sock_close: websocket connection with PayTm closed. code: %s. reason: %s", close_code, close_reason)
 
 
 def on_paytm_sock_error(err):
     trade.useWebsocket = False
     trade._app__logger.error("on_paytm_sock_error: websocket error %s", err)
-
-    if False:
-        trade._app__logger.error("PayTm websocket closed while market was open. Trying to open it again")
-        trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
-        trade.wsclient.connect()
 
 
 def paytmWebsocketConnectThread():
@@ -1213,31 +1217,12 @@ def paytmWebsocketConnectThread():
     trade.wsclient.connect()
 
 
-@flask.route('/v1/hidden', methods=['POST', 'PUT'])
+@flask.route('/v1/visibility', methods=['POST', 'PUT'])
 def visibility():
     hiddenDict = request.get_json()
-    if not trade.hiddenFlow:
-        if hiddenDict['STATE'].upper() == 'START':
-            data = { 
-                "STATE" : 'STATE', 
-            }
-            trade.setAllHidden()
-        elif hiddenDict['STATE'].upper() == 'RUNNING':
-            data = { 
-                "STATE" : 'END', 
-            } 
-            trade.setHiddenState()
-        elif hiddenDict['STATE'].upper() == 'END':
-            data = { 
-                "STATE" : 'END', 
-            } 
-    else:
-        data = { 
-            "STATE" : 'END', 
-        } 
-
+    trade.setVisibility(hiddenDict)
     statusCode = 200
-    return jsonify(data), statusCode
+    return "", statusCode
 
 
 @flask.route('/v1/rec', methods=['POST', 'PUT'])
@@ -1278,13 +1263,16 @@ if __name__ == '__main__':
     while not trade.useWebsocket:
         time.sleep(1)
 
-
     # Start the flask thread
     flaskThr = threading.Thread(target=flaskThread)
     flaskThr.daemon = True
     flaskThr.start()
 
     trade.payTmThread()
+
+    exitTime = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=45)
+    while not exitTime:
+        time.sleep(15)
 
     # Wait for the paytm thread to complete execution
     while threading.active_count() > 0:
