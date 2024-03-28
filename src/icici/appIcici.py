@@ -94,11 +94,16 @@ class app():
         status = False
 
         while not status and retries >= 0:
-            url = self.__paytmBaseURL + 'v1/rec'
             try:
+                url = self.__paytmBaseURL
                 if endPoint == 'NEW_REC':
+                    url = url + 'v1/rec'
                     res = requests.post(url, json=recDict)
                 elif endPoint == 'UPDATE_REC':
+                    url = url + 'v1/rec'
+                    res = requests.put(url, json=recDict)
+                elif endPoint == 'VISIBILITY':
+                    url = url + 'v1/visibility'
                     res = requests.put(url, json=recDict)
                 if int(res.status_code / 100) == 2:
                     status = True
@@ -329,27 +334,29 @@ class app():
 
 
     def __updateMismatchedVisibilityNonLeverageRecs(self):
+        visibilityDict = {'SOURCE': 'ICICI', 'VISIBLE': []}
+
         # Find all strategyToCheck (MARGIN|OPTIONS|FUTURE) recommendations in DB that are not closed
         dbDicts = self.__persistenceInv.getDb([['REC_STATUS', '!CLOSE']])
 
         # If they are not found in the recommendations on the web page --> close them 
         for dbDict in dbDicts:
             visible = self.__iciciDirect.isVisible(dbDict['SOURCE'], dbDict['ICICI_SYMBOL'], dbDict['STRATEGY'], dbDict['BUY_SELL'])
-
             # Close the recommendation that was not found
-            if visible and (dbDict['VISIBLE'] != 'VISIBLE'):
-                dbDict['VISIBLE'] = 'VISIBLE'
-                recDict = self.__iciciDirect.prepareRecDict(dbDict)
-                status = self.__send2PayTm('UPDATE_REC', recDict)
-                dbDict['ACK'] = 'ACK' if status else 'NACK'
+            if visible:
+                val = dbDict['MKT_SYMBOL'] + '-' + dbDict['STRATEGY'] + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
+                visibilityDict['VISIBLE'].append(val)
+                if (dbDict['VISIBLE'] != 'VISIBLE'):
+                    dbDict['VISIBLE'] = 'VISIBLE'
+                    self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                    self.__logger.info("Changing rec's visibility to visible => %s", dbDict)
+            elif (dbDict['VISIBLE'] == 'VISIBLE') or dbDict['REC_STATUS'] != 'CLOSE':
+                dbDict['VISIBLE'] = 'HIDDEN'
+                dbDict['REC_STATUS'] = 'CLOSE'
                 self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
-            elif not visible and (dbDict['VISIBLE'] == 'VISIBLE'):
-                dbDict['VISIBLE'] = 'VISIBLE'
-                recDict = self.__iciciDirect.prepareRecDict(dbDict)
-                status = self.__send2PayTm('UPDATE_REC', recDict)
-                dbDict['ACK'] = 'ACK' if status else 'NACK'
-                self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                self.__logger.info("Changing the visibility to hidden and closing the rec => %s", dbDict)
 
+        self.__send2PayTm('VISIBILITY', visibilityDict)
 
     def __sendNonAckedRecsFromDb(self):
         # Find open recommendations matching the condition in DB
@@ -372,7 +379,7 @@ class app():
                 persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
-    def runPeriodicChecks(self, marketOpen, marketCloseMinusDelta):
+    def runPeriodicChecks(self, marketOpen):
         # Send all recommendations in DB that haven't be ACK'ed
         self.__sendNonAckedRecsFromDb()
 
@@ -403,10 +410,11 @@ class app():
 
         self.__closeLeverageRecsNotVisible()
 
-        if marketCloseMinusDelta:
-            #self.__updateMismatchedVisibilityNonLeverageRecs()
-            #self.closeExpiredRecs('EQUITY', dryRun=False)
-            self.closeExpiredRecs('FnO', dryRun=False)
+
+    def runPostMarketCloseChecks(self):
+        self.__updateMismatchedVisibilityNonLeverageRecs()
+        #self.closeExpiredRecs('EQUITY', dryRun=False)
+        #self.closeExpiredRecs('FnO', dryRun=False)
 
 
     def openIciciSession(self):
@@ -426,19 +434,21 @@ def breezeTicks(ticks):
 
 if __name__ == '__main__':
     trade = app('./iciciDirect.ini')
-    #trade.closeExpiredRecs('EQUITY', dryRun=True)
-    #trade.closeExpiredRecs('FnO', dryRun=True)
 
     # Open a websocket with ICICI Direct
     #trade.openBreezeSession(breezeTicks)
 
     trade.openIciciSession()
+
     marketClose = False
     while not marketClose:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) 
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
         marketClose = False
         marketCloseMinusDelta = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=20)
-        trade.runPeriodicChecks(marketOpen and not marketClose, marketCloseMinusDelta)
+        trade.runPeriodicChecks(marketOpen and not marketClose)
         if not marketOpen:
             time.sleep(15)
+
+    if marketClose:
+        trade.runPostMarketCloseChecks()
