@@ -92,12 +92,7 @@ class app():
             self.__cmp = {}
             self.marketOpen = False
 
-            self.__core = [ {'MKT_SYMBOL': 'AXISBANK', 'SECURITY_ID': '5900', 'QTY': 10}, 
-                            {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}, 
-                            {'MKT_SYMBOL': 'HDFCBANK', 'SECURITY_ID': '1333', 'QTY': 91}, 
-                            {'MKT_SYMBOL': 'INFY', 'SECURITY_ID': '1594', 'QTY': 18}, 
-                            {'MKT_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
-                            {'MKT_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}]            
+            self.__core = [ {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
 
 
     def __backupDb(self, db):
@@ -486,7 +481,7 @@ class app():
             # If SOURCE = ICICI, rec not in DB, and stategy has QUANT PICKS or QUANT DERIVATIVES PICK or YEARLY DERIVATIVES  then do the seach a little differently
             if re.match(r'iCLICK-2', recDict['SOURCE']) and bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
                 recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")                            
-                dbDicts = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']]])
+                dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']]])
                 for dbDict in dbDicts:
                     dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
                     daysDiff = abs((dbDate - recDate).days)
@@ -502,6 +497,7 @@ class app():
 
 
     def handleRec(self, recDict):
+        self.__logger.info("Recommendation received %s", recDict)
         if self.__squareOff and recDict['STRATEGY'] == 'MARGIN':
             return True
         
