@@ -685,7 +685,7 @@ class app():
                     dbDict['REC_STATUS'] = 'CLOSE'
                 # Act on SL on a closing basis anyways. If the price has significantly fallen below SL during trading hours the above condition handles that case
                 elif not self.marketOpen and ltp <= dbDict['STOP_LOSS']:
-                    self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.marketOpen), 
+                    self.__logger.info("Triggering STOP_LOSS on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.marketOpen), 
                                         ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
 

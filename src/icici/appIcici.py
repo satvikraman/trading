@@ -113,6 +113,7 @@ class app():
             except Exception as e:
                 self.__logger.error("Exception: %s. Attempt %d of %d: %s", e, self.__numRetries-retries, self.__numRetries, recDict)
                 retries -= 1
+
         return status
 
 
@@ -413,6 +414,7 @@ class app():
 
 
     def runPostMarketCloseChecks(self):
+        self.__logger.info("Checking for mismatched visibility")
         self.__updateMismatchedVisibilityNonLeverageRecs()
         #self.closeExpiredRecs('EQUITY', dryRun=False)
         #self.closeExpiredRecs('FnO', dryRun=False)
@@ -420,7 +422,6 @@ class app():
 
     def openIciciSession(self):
         self.__iciciDirect.browseICICIDirect()
-        input("Wait for the user to login")
 
 
     def openBreezeSession(self, on_ticks):
@@ -446,11 +447,10 @@ if __name__ == '__main__':
     while not marketClose:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) 
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
-        marketClose = False
-        marketCloseMinusDelta = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=20)
         trade.runPeriodicChecks(marketOpen and not marketClose)
         if not marketOpen:
             time.sleep(15)
-
+            
+    time.sleep(60)
     if marketClose:
         trade.runPostMarketCloseChecks()
