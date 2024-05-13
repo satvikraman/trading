@@ -334,7 +334,12 @@ class app():
                 persistenceInst = self.__persistenceFnO
 
             self .__lock.acquire()
-            dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+            if hiddenDict['SOURCE'] == 'ICICI':
+                source = 'iCLICK-2-GAIN|iCLICK-2-INVEST'
+            else:
+                source = 'PAYTM'
+
+            dbDicts = persistenceInst.getDb([['SOURCE', source], ['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
                 # Handle the visibility of Satvik's strategy
                 strategy = dbDict['STRATEGY']

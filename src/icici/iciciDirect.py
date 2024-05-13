@@ -145,7 +145,7 @@ class iciciDirect():
             if self.__google != None:
                 self.__google.writeToCell('A1', 'B4', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
             if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login on startup")              
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login into ICICI Direct on startup")              
 
         while loginNotSuccessful:
             self.__browser.refresh()
@@ -175,7 +175,7 @@ class iciciDirect():
             else:
                 loginOption = '2FA'
                 if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Attempting relogin via 2FA")
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Attempting relogin into ICICI Direct via 2FA")
 
 
             if loginOption == 'QRCODE' and self.__google != None:
@@ -237,7 +237,7 @@ class iciciDirect():
             if self.__browser.current_url != self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
                 self.__google.writeToCell('A4', 'A4', [['Login successful']])
                 if relogin and self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login successful")                
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Direct successful")                
                 loginNotSuccessful = False
                 
                 # Check if we have successfully logged in
@@ -245,7 +245,7 @@ class iciciDirect():
             else:
                 self.__google.writeToCell('A4', 'A4', [['Unable to login']])
                 if relogin and self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login")                
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login into ICICI Direct")                
 
 
     def browseICICIDirect(self):
