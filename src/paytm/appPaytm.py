@@ -780,9 +780,9 @@ class app():
         canOrder = True
         if dbDict['BUY_SELL'] == 'BUY':
             limitPrice = min(dbDict['HIGH_REC_PRICE'], cmp) 
-            if limitPrice < dbDict['LOW_REC_PRICE']:
-                qty = 0
-                canOrder = False
+            #if limitPrice < dbDict['LOW_REC_PRICE']:
+            #    qty = 0
+            #    canOrder = False
         else:
             limitPrice = max(dbDict['LOW_REC_PRICE'], cmp) 
             if limitPrice > dbDict['HIGH_REC_PRICE']:
@@ -1042,53 +1042,54 @@ class app():
                 self.__updateRecStatus(persistenceInst, dbDict)
             self.__lock.release()
 
-            # If recommendation (margin or otherwise) == 'OPEN' and order == 'OPEN'
-            # Check if more positions can be opened based on the CMP found above
-            self.__logger.debug("Trying to open more positions")
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', 'OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
-            for dbDict in dbDicts:
-                self.__openPosition(persistenceInst, dbDict)
-            self.__lock.release()
+            if self.marketOpen:
+                # If recommendation (margin or otherwise) == 'OPEN' and order == 'OPEN'
+                # Check if more positions can be opened based on the CMP found above
+                self.__logger.debug("Trying to open more positions")
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', 'OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
+                for dbDict in dbDicts:
+                    self.__openPosition(persistenceInst, dbDict)
+                self.__lock.release()
 
-            # If recommendation == 'OPEN' and order == 'POSITION'
-            # Do nothing. All orders have been placed. Wait for the recommendation to close
+                # If recommendation == 'OPEN' and order == 'POSITION'
+                # Do nothing. All orders have been placed. Wait for the recommendation to close
 
-            # If recommendation == 'OPEN' and order == 'PARTIAL_CLOSE'
-            # Do nothing. No more orders should be placed. No need to sell anything as well
+                # If recommendation == 'OPEN' and order == 'PARTIAL_CLOSE'
+                # Do nothing. No more orders should be placed. No need to sell anything as well
 
-            # If recommendation == 'OPEN' and order == 'CLOSE'
-            # Ideally should have not happened. Check if this is indeed true
+                # If recommendation == 'OPEN' and order == 'CLOSE'
+                # Ideally should have not happened. Check if this is indeed true
 
-            # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
-            # Cancel open orders. Exit open (partial) position immediately
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
-            self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=False)
-            self.__lock.release()
+                # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
+                # Cancel open orders. Exit open (partial) position immediately
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=False)
+                self.__lock.release()
 
-            # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
-            # Exit (partial) position immediately
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'POSITION']])
-            self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
-            self.__lock.release()
+                # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
+                # Exit (partial) position immediately
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'POSITION']])
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
+                self.__lock.release()
 
-            # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
-            # Do nothing. We had to sell half of the position and we have already done that
+                # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
+                # Do nothing. We had to sell half of the position and we have already done that
 
-            # If recommendation == 'PARTIAL_CLOSE' and order == 'CLOSE'
-            # Ideally should have not happened. Check if this is indeed true
+                # If recommendation == 'PARTIAL_CLOSE' and order == 'CLOSE'
+                # Ideally should have not happened. Check if this is indeed true
 
-            # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
-            # Exit positions immediately
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'PARTIAL_CLOSE']])
-            self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
-            self.__lock.release()
+                # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
+                # Exit positions immediately
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'PARTIAL_CLOSE']])
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
+                self.__lock.release()
 
-            # If recommendation == 'CLOSE' and order == 'CLOSE'
-            # Check if this is indeed true
+                # If recommendation == 'CLOSE' and order == 'CLOSE'
+                # Check if this is indeed true
 
 
     def __closeAllOpenIntraDayPositions(self):

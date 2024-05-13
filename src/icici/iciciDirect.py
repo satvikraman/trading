@@ -707,7 +707,7 @@ class iciciDirect():
         self.__logger.debug('Cell data to format \n%s', cell)
         data = cell.split('\n')
         cellDict['HIGH_REC_PRICE'] = self.__convPriceToFloat(data[0])
-        cellDict['LOW_REC_PRICE'] = round(round(int(cellDict['HIGH_REC_PRICE'] * 0.97 * 100) / 500, 2) * 5, 2)
+        cellDict['LOW_REC_PRICE'] = cellDict['HIGH_REC_PRICE']
         cellDict['REC_DATE'] = data[1]
         cellDict['REC_TIME'] = 'xx:xx'
         self.__logger.debug('Generated dictionary %s', cellDict)

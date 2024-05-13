@@ -350,12 +350,12 @@ class app():
                 visibilityDict['VISIBLE'].append(val)
                 if (dbDict['VISIBLE'] != 'VISIBLE'):
                     dbDict['VISIBLE'] = 'VISIBLE'
-                    self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                    self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                     self.__logger.info("Changing rec's visibility to visible => %s", dbDict)
             elif (dbDict['VISIBLE'] == 'VISIBLE') or dbDict['REC_STATUS'] != 'CLOSE':
                 dbDict['VISIBLE'] = 'HIDDEN'
                 dbDict['REC_STATUS'] = 'CLOSE'
-                self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 self.__logger.info("Changing the visibility to hidden and closing the rec => %s", dbDict)
 
         self.__send2PayTm('VISIBILITY', visibilityDict)
