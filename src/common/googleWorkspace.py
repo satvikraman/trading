@@ -61,7 +61,7 @@ class googleWorkspace():
                                                                  range=writeRange, 
                                                                  valueInputOption="USER_ENTERED", 
                                                                  body=body).execute()
-            if result.get('updatedCells') == 1:
+            if result.get('updatedCells') > 0:
                 status = True
         except HttpError as error:
             self.__logger.error("Error: %s", error)

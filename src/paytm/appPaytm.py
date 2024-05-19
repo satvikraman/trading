@@ -496,7 +496,7 @@ class app():
             # If SOURCE = ICICI, rec not in DB, and stategy has QUANT PICKS or QUANT DERIVATIVES PICK or YEARLY DERIVATIVES  then do the seach a little differently
             if re.match(r'iCLICK-2', recDict['SOURCE']) and bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
                 recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")                            
-                dbDicts = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']]])
+                dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']]])
                 for dbDict in dbDicts:
                     dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
                     daysDiff = abs((dbDate - recDate).days)
