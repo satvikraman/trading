@@ -297,16 +297,15 @@ class app():
                 self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
                                     dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
-            # Stocks that will expire today
-            self.__logger.info("\n\nFollowing stocks will expire today")
+            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', '!CLOSE']])
+            # Stocks that will close today at the start
+            self.__logger.info("\n\nFollowing stocks will close today")
             for dbDict in dbDicts:
-                expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
-                if expDate <= self.__today.date():
-                    self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                       dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
+                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
                     
             perc = 1
+            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
             self.__logger.info("\n\nFollowing stocks are trading %.1f%% away from their target price", perc)
             # Stocks very close to target
             for dbDict in dbDicts:
@@ -381,7 +380,10 @@ class app():
             qty = recDict['LOT_SIZE']
         else:
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
-            qty = max(int(self.__amountPerOrder / avgPrice), 1)
+            if recDict['SOURCE'] == 'PAYTM':
+                qty = max(int(5000 / avgPrice), 1)
+            else:
+                qty = max(int(self.__amountPerOrder / avgPrice), 1)
             margin = self.__timesMargin if recDict['STRATEGY'] == 'MARGIN' else 1
             qty *= margin
 
