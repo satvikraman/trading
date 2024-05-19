@@ -25,24 +25,30 @@ class app():
         shutil.copyfile(db, backupDb)
 
 
-    def filterDb(self, source, filterDate):
-        dbDicts = self.__persistence.getDb([['SOURCE', source]])
+    def filterSROrder(self, strategy, filterDate):
+        dbDicts = self.__persistence.getDb([['STRATEGY', strategy ]])
         for dbDict in dbDicts:
             for orderDict in dbDict['OPEN_ORDERS'] + dbDict['CLOSE_ORDERS']:
                 if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
                     print('DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
 
 
+    def filterDb(self):
+        dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', 'OPEN']])
+        for dbDict in dbDicts:
+            print(dbDict)
+
+
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
     filter = app('./payTmMoney.ini')
+    #filter.filterDb()
 
-    start = datetime.date(2024, 3, 11)
-    end = datetime.date(2024, 3, 15)
+    start = datetime.date(2024, 4, 14)
+    end = datetime.date(2024, 4, 30)
     filterDate = start
     while filterDate <= end:
         print("Filtering txs on : ", filterDate)
-        filter.filterDb('SRMomentum', filterDate)
+        filter.filterSROrder('SR-MOMENTUM PICK', filterDate)
         filterDate += datetime.timedelta(days=1)
         print("----")
-
