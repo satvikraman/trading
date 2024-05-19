@@ -21,6 +21,7 @@ from pushbullet import PushBullet
 from googleWorkspace import googleWorkspace
 
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException, NoSuchWindowException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
@@ -49,93 +50,137 @@ class iciciDirect():
             self.__logger.setLevel(level)
             self.__iclick2GainDict = {}
             self.__iclick2InvestDict = {}
+            self.__pushbullet = None
+            self.__google = None
 
 
     def __uploadPNGToDriv(self):
         self.__service = build('sheets', 'v4', credentials=self.__creds)
 
+    
+    def __handleException(self, e):
+        pattern = r".*(disconnected: not connected to DevTools|no such window)"
+        if re.match(pattern,  str(e), re.IGNORECASE):
+            self.__logger.critical("ERROR: %s", e)
+            self.__logger.critical("EXITING")            
+            assert(False)
+        else:
+            self.__logger.error("ERROR: %s", e)
+        time.sleep(1)
+
+    
+    def __getWebElement(self, xpath, check, singular=True):
+        nextStep = False
+        attempts = 0
+        element = None
+        elements = []
+        while not nextStep and attempts < 3:
+            try:
+                if check == 'PRESENCE':
+                    if singular:
+                        element = WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.XPATH, xpath)))
+                    else:
+                        elements = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+                elif check == 'VISIBILITY':
+                    if singular:
+                        element = WebDriverWait(self.__browser, 5).until(EC.visibility_of_element_located((By.XPATH, xpath)))
+                    else:
+                        elements = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, xpath)))
+                elif check == 'CLICKABLE':
+                    element = WebDriverWait(self.__browser, 5).until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                    element.click()
+                    time.sleep(5)
+                else:
+                    assert(False)
+                nextStep = True
+            except Exception as e:
+                attempts += 1
+                self.__handleException(e)
+
+        return element if singular else elements
 
     def browseResearchToClick_2_Gain(self):
         status = False
-        while not status:
-            try:
-                # Click on Research
-                menu1 = self.__browser.find_element_by_id("pnlmnuprod")
-                element = menu1.find_element_by_partial_link_text("Research")
-                element.click()
-                WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.ID, "pnlmnudsp")))
+        attempts = 0
+        while not status and attempts < 3:
+            if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+                self.loginICICIDirect()
 
-                # Click on IClick2Gain
-                menu2 = self.__browser.find_element_by_id("pnlmnudsp")
-                iClick2Gain = menu2.find_element_by_partial_link_text("Trading Ideas (iCLICK-2-GAIN)")
-                iClick2Gain.click()
-                WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.ID, "iclick_gain")))
+            # Click on Research
+            research = self.__getWebElement("//*[@id='pnlmnuprod']/ul/li[12]/a", 'CLICKABLE')
+
+            # Click on IClick2Gain
+            iclick2gain = self.__getWebElement("//*[@id='pnlmnudsp']/div[1]/div/ul/li[2]/a", 'CLICKABLE')
+
+            if research == None or iclick2gain == None:
+                status = False
+            else:
                 status = True
-            except Exception as err:
-                time.sleep(1)
+
+            attempts += 1
 
     def browseResearchToClick_2_Invest(self):
         status = False
-        while not status:
-            try:
-                # Click on Research
-                menu1 = self.__browser.find_element_by_id("pnlmnuprod")
-                element = menu1.find_element_by_partial_link_text("Research")
-                element.click()
-                WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.ID, "pnlmnudsp")))
+        attempts = 0
+        while not status and attempts < 3:
+            if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+                self.loginICICIDirect()
 
-                # Click on IClick2Gain
-                menu2 = self.__browser.find_element_by_id("pnlmnudsp")
-                iClick2Invest = menu2.find_element_by_partial_link_text("Investment Ideas (iCLICK 2 INVEST)")
-                iClick2Invest.click()
-                WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.ID, "iclick_invest")))
+            # Click on Research
+            research = self.__getWebElement("//*[@id='pnlmnuprod']/ul/li[12]/a", 'CLICKABLE')
+            # Click on IClick2Invest
+            iclick2invest = self.__getWebElement("//*[@id='pnlmnudsp']/div[1]/div/ul/li[1]/a", 'CLICKABLE')
+            
+            if research == None or iclick2invest == None:
+                status = False
+            else:
                 status = True
-            except Exception as err:
-                time.sleep(1)
+
+            attempts += 1
 
 
-    def loginICICIDirect(self):
+    def loginICICIDirect(self, relogin=True):
         loginNotSuccessful = True
-        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
-        self.__google.writeToCell('A1', 'B4', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
+        if not relogin:
+            if self.__google != None:
+                self.__google.writeToCell('A1', 'B4', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
+            if self.__pushbullet != None:
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login into ICICI Direct on startup")              
+
         while loginNotSuccessful:
             self.__browser.refresh()
+            time.sleep(1)
 
-            self.__google.writeToCell('A1', 'B3', [[' ', ' '], [' ', ' '], [' ', ' ']])
-            self.__google.writeToCell('C3', 'C3', [[' ']])
+            if not relogin and self.__google != None:
+                self.__google.writeToCell('A1', 'B3', [[' ', ' '], [' ', ' '], [' ', ' ']])
+                self.__google.writeToCell('C3', 'C3', [[' ']])
 
-            if self.__pushbullet != None:
-                self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Attention: Starting ICICI Direct login sequence")
+                self.__google.writeToCell('A1', 'A1', [['Ready for login sequence']])
+                goahead = False
+                while not goahead:
+                    status, value = self.__google.readFromCell('B1', 'B1')
+                    if status and value[0][0].upper() == 'YES':
+                        goahead = True
+                    else:
+                        time.sleep(1)
 
-            self.__google.writeToCell('A1', 'A1', [['Ready for login sequence']])
-            goahead = False
-            while not goahead:
-                status, value = self.__google.readFromCell('B1', 'B1')
-                if status and value[0][0].upper() == 'YES':
-                    goahead = True
-                else:
-                    time.sleep(1)
+                self.__google.writeToCell('A2', 'A2', [['QRCODE or 2FA']])
+                loginOption = False
+                while not loginOption:
+                    status, value = self.__google.readFromCell('B2', 'B2')
+                    if status and value[0][0].upper() in ['QRCODE', '2FA']:
+                        loginOption = value[0][0].upper()
+                    else:
+                        time.sleep(1)
+            else:
+                loginOption = '2FA'
+                if self.__pushbullet != None:
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Attempting relogin into ICICI Direct via 2FA")
 
-            self.__google.writeToCell('A2', 'A2', [['QRCODE or 2FA']])
-            loginOption = False
-            while not loginOption:
-                status, value = self.__google.readFromCell('B2', 'B2')
-                if status and value[0][0].upper() in ['QRCODE', '2FA']:
-                    loginOption = value[0][0].upper()
-                else:
-                    time.sleep(1)
 
-            if loginOption == 'QRCODE':
-                try:
-                    qrcode = self._iciciDirect__browser.find_element_by_xpath("//a[@href='javascript://']")
-                except Exception as err:
-                    time.sleep(1)
-                qrcode.click()
-
-                try:
-                    qrcode = self._iciciDirect__browser.find_element_by_id("dvQRCode")
-                except Exception as err:
-                    time.sleep(1)
+            if loginOption == 'QRCODE' and self.__google != None:
+                self.__getWebElement("//a[@href='javascript://']", 'CLICKABLE')
+                self.__getWebElement("//*[@id='dvQRCode']", 'CLICKABLE')
 
                 self._iciciDirect__browser.save_screenshot('qrcode.png')
                 _, fileId = self.__google.uploadMediaFile('qrcode.png', 'image/png')
@@ -154,54 +199,53 @@ class iciciDirect():
                 uid = os.environ.get('icici_direct_uid', '')
                 pwd = os.environ.get('icici_direct_pwd', '')            
 
-                try:
-                    rememberUserName=False
-                    userName = self.__browser.find_element_by_id("dvudtxt")
-                    if len(userName.text) > 0:
-                        rememberUserName = True
-                except Exception as err:
-                    rememberUserName=False
+                rememberUserName=False
+                userName = self.__getWebElement("//*[@id='dvudtxt']", 'PRESENCE')
+                if len(userName.text) > 0:
+                    rememberUserName = True
 
                 if not rememberUserName:
-                    userID = self.__browser.find_element_by_id('dvusrin')
-                    userName = userID.find_element_by_id('txtu')
+                    userName = self.__getWebElement("//*[@id='txtu']", 'PRESENCE')
                     userName.send_keys(uid)
 
-                userPwd = self.__browser.find_element_by_id('txtp')
+                userPwd = self.__getWebElement("//*[@id='txtp']", 'PRESENCE')
                 userPwd.send_keys(pwd)
-                loginBtn = self._iciciDirect__browser.find_element_by_id('btnlogin')
-                loginBtn.click()
+                self.__getWebElement("//*[@id='btnlogin']", 'CLICKABLE')
 
-                self.__google.writeToCell('A3', 'A3', [['Enter the 6 digit OTP']])
-                OTPnotrecv = True
-                while OTPnotrecv:
-                    status, value = self.__google.readFromCell('B3', 'C3')
-                    if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
-                        OTPnotrecv = False
+                if (not rememberUserName or not relogin):
+                    if self.__google != None:
+                        self.__google.writeToCell('A3', 'A3', [['Enter the 6 digit OTP']])
+                        OTPnotrecv = True
+                        while OTPnotrecv:
+                            status, value = self.__google.readFromCell('B3', 'C3')
+                            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
+                                OTPnotrecv = False
+                            else:
+                                time.sleep(1)
+
+                        otpIn = self.__getWebElement("//*[@id='frmotp']/div/div[4]/div//input", 'PRESENCE', singular=False)
+                        for i in range(len(value[0][0])):
+                            otpIn[i].send_keys(int(value[0][0][i]))
                     else:
-                        time.sleep(1)
-
-                otpForm = self.__browser.find_element_by_id('frmotp')
-                otpIn = otpForm.find_elements_by_tag_name('input')
-                for i in range(len(value[0][0])):
-                    otpIn[i].send_keys(int(value[0][0][i]))
+                        input("Wait for the user to enter OTP")
+                else:
+                    self.__google.writeToCell('A3', 'A3', [['Relogin attempt. User name remembered. No need for OTP']])
+                    self.__logger.info("Relogin attempt. User name remembered. No need for OTP")
             
             # Check if we have progressed
             time.sleep(5)
             if self.__browser.current_url != self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
                 self.__google.writeToCell('A4', 'A4', [['Login successful']])
+                if relogin and self.__pushbullet != None:
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Direct successful")                
                 loginNotSuccessful = False
                 
                 # Check if we have successfully logged in
-                okgotit = None
-                while not okgotit:
-                    try:
-                        okgotit = self.__browser.find_element_by_xpath("//a[@onclick='clickgotit();']")
-                        okgotit.click()
-                    except Exception as err:
-                        time.sleep(1)
+                self.__getWebElement("//a[@onclick='clickgotit();']", 'CLICKABLE')
             else:
-                self.__google.writeToCell('A4', 'A4', [['Login not successful']])
+                self.__google.writeToCell('A4', 'A4', [['Unable to login']])
+                if relogin and self.__pushbullet != None:
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login into ICICI Direct")                
 
 
     def browseICICIDirect(self):
@@ -217,24 +261,30 @@ class iciciDirect():
             self.__browserDriver = self.__config['DEFAULT']['EDGE_DRIVER']
             self.__browser = webdriver.Edge(self.__browserDriver)
 
+        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
+
         # Initialize PushBullet to enable mobile notifications
-        self.__pushbullet = None
         if self.__config['ICICI-DIRECT']['USE_PUSHBULLET'] == 'YES':
-            dotenv.load_dotenv('./.env', override=True)
-            pb_api_key = os.environ.get('pb_api_key', '')
+            if self.__pushbullet == None:
+                dotenv.load_dotenv('./.env', override=True)
+                pb_api_key = os.environ.get('pb_api_key', '')
 
-            self.__pushbullet = PushBullet(pb_api_key)
-            self.__pushbulletDev = self.__pushbullet.getDevices()
+                self.__pushbullet = PushBullet(pb_api_key)
+                self.__pushbulletDev = self.__pushbullet.getDevices()
 
-        # Connect to Google sheets
-        spreadsheetID = self.__config['ICICI-DIRECT']['SPREADSHEET_ID']
-        sheetName = self.__config['ICICI-DIRECT']['SHEET_NAME']
-        self.__google = googleWorkspace(spreadsheetID, sheetName)
-        self.__google.authorize()
-        self.__google.buildSheets()
-        self.__google.buildDrive()
+            # Connect to Google sheets
+        if self.__config['ICICI-DIRECT']['USE_SPREADSHEET'] == 'YES':
+            if self.__google == None:
+                spreadsheetID = self.__config['ICICI-DIRECT']['SPREADSHEET_ID']
+                sheetName = self.__config['ICICI-DIRECT']['SHEET_NAME']
+                self.__google = googleWorkspace(spreadsheetID, sheetName)
+                self.__google.authorize()
+                self.__google.buildSheets()
+                self.__google.buildDrive()
 
-        self.loginICICIDirect()
+            self.loginICICIDirect(relogin=False)
+        else:
+            self.loginICICIDirect(relogin=False)
 
 
     def closeBrowser(self):  
@@ -657,7 +707,7 @@ class iciciDirect():
         self.__logger.debug('Cell data to format \n%s', cell)
         data = cell.split('\n')
         cellDict['HIGH_REC_PRICE'] = self.__convPriceToFloat(data[0])
-        cellDict['LOW_REC_PRICE'] = round(round(int(cellDict['HIGH_REC_PRICE'] * 0.97 * 100) / 500, 2) * 5, 2)
+        cellDict['LOW_REC_PRICE'] = cellDict['HIGH_REC_PRICE']
         cellDict['REC_DATE'] = data[1]
         cellDict['REC_TIME'] = 'xx:xx'
         self.__logger.debug('Generated dictionary %s', cellDict)
@@ -684,29 +734,29 @@ class iciciDirect():
 
     def __formatInvRemarkCell(self, cell):
         resDict = {'REC_STATUS': 'OPEN'}
-        if re.match("Book 50%", cell) or re.match("Book Partial Profit", cell):
+        if re.match("Book 50%", cell, re.IGNORECASE) or re.match("Book Partial Profit", cell, re.IGNORECASE):
             # Extract part profit price & %
             resDict['REC_STATUS'] = 'PARTIAL_CLOSE'
-            stopLoss = re.match(r'^.*trail\D*(\d+)\D*', cell)
+            stopLoss = re.match(r'^.*trail\D*(\d+)\D*', cell, re.IGNORECASE)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])
-        elif re.match("Book profit", cell) or re.match('Target 1', cell) or re.match('TGT1', cell) or re.match('Book Full Profit', cell):
+        elif re.match("Book profit", cell, re.IGNORECASE) or re.match('Target 1', cell, re.IGNORECASE) or re.match('TGT1', cell, re.IGNORECASE) or re.match('Book Full Profit', cell, re.IGNORECASE):
             resDict['REC_STATUS'] = 'CLOSE'
-            if re.match("Book profit", cell):
-                finalProfit = re.match(r'\D+(\d+)', cell)
+            if re.match("Book profit", cell, re.IGNORECASE):
+                finalProfit = re.match(r'\D+(\d+)', cell, re.IGNORECASE)
                 if finalProfit != None:
                     resDict['FINAL_PROFIT_PRICE'] = self.__convPriceToFloat(finalProfit.groups()[0])
-        elif re.match("Exit", cell) or re.match("Square off", cell) or re.match("SLTP", cell) or \
-             re.match("Trailing stoploss triggered", cell) or re.match("Stoploss Triggered", cell):
+        elif re.match("Exit", cell, re.IGNORECASE) or re.match("Square off", cell, re.IGNORECASE) or re.match("SLTP", cell, re.IGNORECASE) or \
+             re.match("Trailing stoploss triggered", cell, re.IGNORECASE) or re.match("Stoploss Triggered", cell, re.IGNORECASE):
             resDict['REC_STATUS'] = 'CLOSE'
-            stopLoss = re.match(r'^.*at\D*(\d+)\D*', cell)
+            stopLoss = re.match(r'^.*at\D*(\d+)\D*', cell, re.IGNORECASE)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])            
-        elif re.match('.*revised stoploss', cell):
-            stopLoss = re.match(r'.*revised stoploss\D*(\d+)', cell)
+        elif re.match('.*revised stoploss', cell, re.IGNORECASE):
+            stopLoss = re.match(r'.*revised stoploss\D*(\d+)', cell, re.IGNORECASE)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])
-        elif re.match('Others', cell) or re.match('', cell):
+        elif re.match('Others', cell, re.IGNORECASE) or re.match('', cell, re.IGNORECASE):
             self.__logger.debug("Nothing to be done: %s", cell)
         else:
             self.__logger.error("Haven't handled this remark: %s", cell)
@@ -869,11 +919,9 @@ class iciciDirect():
                             yield rowDict
                 break
             except Exception as e:
-                try:
-                    self.__iclick2GainTblRows = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, "//*[@id='pnlclick2gain']/div/table[2]/tbody/tr")))
-                except Exception as e:
-                    time.sleep(1)
                 parseAttempt += 1
+                self.__handleException(e)
+                self.__iclick2GainTblRows = self.__getWebElement("//*[@id='pnlclick2gain']/div/table[2]/tbody/tr", 'PRESENCE', singular=False)
 
 
     def getNextiCLICK_2_INVESTTblRow(self):
@@ -891,18 +939,12 @@ class iciciDirect():
                             yield rowDict
                 break
             except Exception as e:
-                try:
-                    self.__iclick2InvestTblRows = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, "//*[@id='TABLE_1']/tbody/tr")))
-                except Exception as e:
-                    time.sleep(1)
                 parseAttempt += 1
+                self.__handleException(e)
+                self.__iclick2InvestTblRows = self.__getWebElement("//*[@id='TABLE_1']/tbody/tr", 'PRESENCE', singular=False)
+
 
     def scrapeiClick2Gain(self):
-        if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
-            self.loginICICIDirect()
-        elif self.__browser.current_url != 'https://secure.icicidirect.com/trading/equity/click2gain':
-            self.browseResearchToClick_2_Gain()
-
         self.__iclick2GainTblRows = []
         #menuVals = ["ALL", "MRGN", "MMNT", "GLDR", "QANT"]
         menuVals = ["ALL"]
@@ -911,31 +953,30 @@ class iciciDirect():
             while loadPgAttempts < 3:
                 try:
                     # Select Margin as the recommendation type
-                    menu3 = WebDriverWait(self.__browser, 5).until(EC.visibility_of_element_located((By.ID, "iclick_gain")))
+                    self.__getWebElement("//*[@id='iclick_gain']", 'VISIBILITY')
                     self.__browser.execute_script("document.getElementById('ddlrecommedation').style.display='inline-block';")
-                    recommendationType = Select(menu3.find_element_by_id("ddlrecommedation"))
+                    recommendationType = Select(self.__getWebElement("//*[@id='ddlrecommedation']", 'PRESENCE'))
+
                     # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
                     recommendationType.select_by_value(menuVal)
 
                     # Click on view to see the results
-                    viewBtn = WebDriverWait(self.__browser, 5).until(EC.element_to_be_clickable((By.ID, "btnview")))
-                    viewBtn.click()
-                    self.__iclick2GainTblRows = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, "//*[@id='pnlclick2gain']/div/table[2]/tbody/tr")))
+                    self.__getWebElement("//*[@id='btnview']", 'CLICKABLE')
+                    self.__iclick2GainTblRows = self.__getWebElement("//*[@id='pnlclick2gain']/div/table[2]/tbody/tr", 'PRESENCE', singular=False)
                     break
                 except Exception as e:
-                    self.__browser.refresh()
                     loadPgAttempts += 1
-                    time.sleep(1)
+                    self.__handleException(e)
+                    self.__browser.refresh()
+                    if self.__browser.current_url != 'https://secure.icicidirect.com/trading/equity/click2gain':
+                        self.browseResearchToClick_2_Gain()                    
+
             if menuVal == 'ALL' and len(self.__iclick2GainTblRows) > 0:
                 break
     
 
     def scrapeiClick2Invest(self):
-        if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
-            self.loginICICIDirect()
-        elif self.__browser.current_url != 'https://secure.icicidirect.com/trading/equity/click2invest':
-            self.browseResearchToClick_2_Invest()
-
+        self.__iclick2InvestTblRows = []
         #menuVals = ["ALL", "Long Term", "Medium Term", "Short Term"]
         menuVals = ["ALL"]
         for menuVal in menuVals:
@@ -943,21 +984,24 @@ class iciciDirect():
             while loadPgAttempts < 3:
                 try:
                     # Select Margin as the recommendation type
-                    menu3 = WebDriverWait(self.__browser, 5).until(EC.visibility_of_element_located((By.ID, "iclick_invest")))
+                    self.__getWebElement("//*[@id='iclick_invest']", 'VISIBILITY')
                     self.__browser.execute_script("document.getElementById('ddlinvestmenttype').style.display='inline-block';")
-                    recommendationType = Select(menu3.find_element_by_id("ddlinvestmenttype"))
+                    recommendationType = Select(self.__getWebElement("//*[@id='ddlinvestmenttype']", 'PRESENCE'))
+
                     # ALL - Everything; MRGN: Margin; MMNT: Momentum; GLDR: Gladiator; QANT: Quant
                     recommendationType.select_by_value(menuVal)
 
                     # Click on view to see the results
-                    viewBtn = WebDriverWait(self.__browser, 5).until(EC.element_to_be_clickable((By.ID, "btnview")))
-                    viewBtn.click()
-                    self.__iclick2InvestTblRows = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, "//*[@id='TABLE_1']/tbody/tr")))
+                    self.__getWebElement("//*[@id='btnview']", 'CLICKABLE')
+                    self.__iclick2InvestTblRows = self.__getWebElement("//*[@id='TABLE_1']/tbody/tr", 'PRESENCE', singular=False)
                     break
                 except Exception as e:
-                    self.__browser.refresh()
                     loadPgAttempts += 1
-                    time.sleep(1)
+                    self.__handleException(e)
+                    self.__browser.refresh()
+                    if self.__browser.current_url != 'https://secure.icicidirect.com/trading/equity/click2invest':
+                        self.browseResearchToClick_2_Invest()
+
             if menuVal == 'ALL' and len(self.__iclick2InvestTblRows) > 0:        
                 break
 

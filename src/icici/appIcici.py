@@ -113,6 +113,7 @@ class app():
             except Exception as e:
                 self.__logger.error("Exception: %s. Attempt %d of %d: %s", e, self.__numRetries-retries, self.__numRetries, recDict)
                 retries -= 1
+
         return status
 
 
@@ -214,19 +215,20 @@ class app():
         if not isInDb:
             if(recDict['REC_STATUS'] != 'CLOSE'):
                 recDict = self.__iciciDirect.prepareRecDict(recDict)
+                self.__logger.info('New Recommendation %s', recDict)
                 status = self.__send2PayTm('NEW_REC', recDict)
                 recDict['ACK'] = 'ACK' if status else 'NACK'
                 res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-                self.__logger.info('New Recommendation %s', recDict)
             else:
                 recDict['ACK'] = 'ACK'
-                res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
                 self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['MKT_SYMBOL'], recDict)
+                res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
         elif isInDb:
                 # If the recommendation has changed then
                 isChange, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
                 if isChange:
                     recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                    self.__logger.info('Existing recommendation changed %s', recDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
                     persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
@@ -348,12 +350,12 @@ class app():
                 visibilityDict['VISIBLE'].append(val)
                 if (dbDict['VISIBLE'] != 'VISIBLE'):
                     dbDict['VISIBLE'] = 'VISIBLE'
-                    self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                    self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                     self.__logger.info("Changing rec's visibility to visible => %s", dbDict)
             elif (dbDict['VISIBLE'] == 'VISIBLE') or dbDict['REC_STATUS'] != 'CLOSE':
                 dbDict['VISIBLE'] = 'HIDDEN'
                 dbDict['REC_STATUS'] = 'CLOSE'
-                self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
+                self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 self.__logger.info("Changing the visibility to hidden and closing the rec => %s", dbDict)
 
         self.__send2PayTm('VISIBILITY', visibilityDict)
@@ -412,6 +414,7 @@ class app():
 
 
     def runPostMarketCloseChecks(self):
+        self.__logger.info("Checking for mismatched visibility")
         self.__updateMismatchedVisibilityNonLeverageRecs()
         #self.closeExpiredRecs('EQUITY', dryRun=False)
         #self.closeExpiredRecs('FnO', dryRun=False)
@@ -444,11 +447,10 @@ if __name__ == '__main__':
     while not marketClose:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) 
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
-        marketClose = False
-        marketCloseMinusDelta = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=20)
         trade.runPeriodicChecks(marketOpen and not marketClose)
         if not marketOpen:
             time.sleep(15)
-
+            
+    time.sleep(60)
     if marketClose:
         trade.runPostMarketCloseChecks()

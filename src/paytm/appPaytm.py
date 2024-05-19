@@ -92,22 +92,7 @@ class app():
             self.__cmp = {}
             self.marketOpen = False
 
-            self.__core = [ {'MKT_SYMBOL': 'ABBOTINDIA', 'SECURITY_ID': '17903', 'QTY': 2}, 
-                            {'MKT_SYMBOL': 'ASIANPAINT', 'SECURITY_ID': '236', 'QTY': 35}, 
-                            {'MKT_SYMBOL': 'AXISBANK', 'SECURITY_ID': '5900', 'QTY': 10}, 
-                            {'MKT_SYMBOL': 'BAJFINANCE', 'SECURITY_ID': '317', 'QTY': 8}, 
-                            {'MKT_SYMBOL': 'BERGEPAINT', 'SECURITY_ID': '404', 'QTY':127}, 
-                            {'MKT_SYMBOL': 'CDSL', 'SECURITY_ID': '21174', 'QTY': 33}, 
-                            {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 90}, 
-                            {'MKT_SYMBOL': 'HDFCBANK', 'SECURITY_ID': '1333', 'QTY': 91}, 
-                            {'MKT_SYMBOL': 'HINDUNILVR', 'SECURITY_ID': '1394', 'QTY': 14}, 
-                            {'MKT_SYMBOL': 'INFY', 'SECURITY_ID': '1594', 'QTY': 18}, 
-                            {'MKT_SYMBOL': 'JIOFIN', 'SECURITY_ID': '18143', 'QTY': 12}, 
-                            {'MKT_SYMBOL': 'MARICO', 'SECURITY_ID': '4067', 'QTY': 126}, 
-                            {'MKT_SYMBOL': 'PIDILITIND', 'SECURITY_ID': '2664', 'QTY': 42}, 
-                            {'MKT_SYMBOL': 'SBILIFE', 'SECURITY_ID': '21808', 'QTY': 38}, 
-                            {'MKT_SYMBOL': 'TCS', 'SECURITY_ID': '11536', 'QTY': 31}, 
-                            {'MKT_SYMBOL': 'VGUARD', 'SECURITY_ID': '15362', 'QTY': 229} ]            
+            self.__core = [ {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
 
 
     def __backupDb(self, db):
@@ -312,16 +297,15 @@ class app():
                 self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
                                     dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
-            # Stocks that will expire today
-            self.__logger.info("\n\nFollowing stocks will expire today")
+            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', '!CLOSE']])
+            # Stocks that will close today at the start
+            self.__logger.info("\n\nFollowing stocks will close today")
             for dbDict in dbDicts:
-                expDate = datetime.datetime.strptime(dbDict['EXP_DATE'], '%d-%b-%Y').date()
-                if expDate <= self.__today.date():
-                    self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                       dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
+                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
                     
             perc = 1
+            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
             self.__logger.info("\n\nFollowing stocks are trading %.1f%% away from their target price", perc)
             # Stocks very close to target
             for dbDict in dbDicts:
@@ -349,7 +333,12 @@ class app():
                 persistenceInst = self.__persistenceFnO
 
             self .__lock.acquire()
-            dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+            if hiddenDict['SOURCE'] == 'ICICI':
+                source = 'iCLICK-2-GAIN|iCLICK-2-INVEST'
+            else:
+                source = 'PAYTM'
+
+            dbDicts = persistenceInst.getDb([['SOURCE', source], ['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
                 # Handle the visibility of Satvik's strategy
                 strategy = dbDict['STRATEGY']
@@ -391,7 +380,10 @@ class app():
             qty = recDict['LOT_SIZE']
         else:
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
-            qty = max(int(self.__amountPerOrder / avgPrice), 1)
+            if recDict['SOURCE'] == 'PAYTM':
+                qty = max(int(5000 / avgPrice), 1)
+            else:
+                qty = max(int(self.__amountPerOrder / avgPrice), 1)
             margin = self.__timesMargin if recDict['STRATEGY'] == 'MARGIN' else 1
             qty *= margin
 
@@ -512,6 +504,7 @@ class app():
 
 
     def handleRec(self, recDict):
+        self.__logger.info("Recommendation received %s", recDict)
         if self.__squareOff and recDict['STRATEGY'] == 'MARGIN':
             return True
         
@@ -699,7 +692,7 @@ class app():
                     dbDict['REC_STATUS'] = 'CLOSE'
                 # Act on SL on a closing basis anyways. If the price has significantly fallen below SL during trading hours the above condition handles that case
                 elif not self.marketOpen and ltp <= dbDict['STOP_LOSS']:
-                    self.__logger.info("Triggering STOP_LOSS for hidden rec on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.marketOpen), 
+                    self.__logger.info("Triggering STOP_LOSS on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.marketOpen), 
                                         ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
 
@@ -794,9 +787,9 @@ class app():
         canOrder = True
         if dbDict['BUY_SELL'] == 'BUY':
             limitPrice = min(dbDict['HIGH_REC_PRICE'], cmp) 
-            if limitPrice < dbDict['LOW_REC_PRICE']:
-                qty = 0
-                canOrder = False
+            #if limitPrice < dbDict['LOW_REC_PRICE']:
+            #    qty = 0
+            #    canOrder = False
         else:
             limitPrice = max(dbDict['LOW_REC_PRICE'], cmp) 
             if limitPrice > dbDict['HIGH_REC_PRICE']:
@@ -1056,53 +1049,54 @@ class app():
                 self.__updateRecStatus(persistenceInst, dbDict)
             self.__lock.release()
 
-            # If recommendation (margin or otherwise) == 'OPEN' and order == 'OPEN'
-            # Check if more positions can be opened based on the CMP found above
-            self.__logger.debug("Trying to open more positions")
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', 'OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
-            for dbDict in dbDicts:
-                self.__openPosition(persistenceInst, dbDict)
-            self.__lock.release()
+            if self.marketOpen:
+                # If recommendation (margin or otherwise) == 'OPEN' and order == 'OPEN'
+                # Check if more positions can be opened based on the CMP found above
+                self.__logger.debug("Trying to open more positions")
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', 'OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
+                for dbDict in dbDicts:
+                    self.__openPosition(persistenceInst, dbDict)
+                self.__lock.release()
 
-            # If recommendation == 'OPEN' and order == 'POSITION'
-            # Do nothing. All orders have been placed. Wait for the recommendation to close
+                # If recommendation == 'OPEN' and order == 'POSITION'
+                # Do nothing. All orders have been placed. Wait for the recommendation to close
 
-            # If recommendation == 'OPEN' and order == 'PARTIAL_CLOSE'
-            # Do nothing. No more orders should be placed. No need to sell anything as well
+                # If recommendation == 'OPEN' and order == 'PARTIAL_CLOSE'
+                # Do nothing. No more orders should be placed. No need to sell anything as well
 
-            # If recommendation == 'OPEN' and order == 'CLOSE'
-            # Ideally should have not happened. Check if this is indeed true
+                # If recommendation == 'OPEN' and order == 'CLOSE'
+                # Ideally should have not happened. Check if this is indeed true
 
-            # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
-            # Cancel open orders. Exit open (partial) position immediately
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
-            self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=False)
-            self.__lock.release()
+                # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
+                # Cancel open orders. Exit open (partial) position immediately
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=False)
+                self.__lock.release()
 
-            # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
-            # Exit (partial) position immediately
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'POSITION']])
-            self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
-            self.__lock.release()
+                # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
+                # Exit (partial) position immediately
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'POSITION']])
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
+                self.__lock.release()
 
-            # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
-            # Do nothing. We had to sell half of the position and we have already done that
+                # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
+                # Do nothing. We had to sell half of the position and we have already done that
 
-            # If recommendation == 'PARTIAL_CLOSE' and order == 'CLOSE'
-            # Ideally should have not happened. Check if this is indeed true
+                # If recommendation == 'PARTIAL_CLOSE' and order == 'CLOSE'
+                # Ideally should have not happened. Check if this is indeed true
 
-            # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
-            # Exit positions immediately
-            self.__lock.acquire()
-            dbDicts = persistenceInst.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'PARTIAL_CLOSE']])
-            self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
-            self.__lock.release()
+                # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
+                # Exit positions immediately
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'PARTIAL_CLOSE']])
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
+                self.__lock.release()
 
-            # If recommendation == 'CLOSE' and order == 'CLOSE'
-            # Check if this is indeed true
+                # If recommendation == 'CLOSE' and order == 'CLOSE'
+                # Check if this is indeed true
 
 
     def __closeAllOpenIntraDayPositions(self):
@@ -1154,7 +1148,7 @@ class app():
             # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
             self.__lock.acquire()
             # Some orders are still open --> cancel them and close position
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATYS', '!CLOSE']])
+            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
             # Cancel open order & Get final position
             if len(dbDicts) > 0:
                 self.__executeEOMSeq(persistenceInst, dbDicts)
