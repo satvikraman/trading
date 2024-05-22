@@ -28,7 +28,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from breeze_connect import BreezeConnect
 
 class iciciDirect():
     def __init__(self, configFile):
@@ -289,36 +288,6 @@ class iciciDirect():
 
     def closeBrowser(self):  
         self.__browser.quit()
-
-
-    def openBreezeSession(self, on_ticks):
-        dotenv.load_dotenv('./.env', override=True)
-        brz_api_key = os.environ.get('brz_api_key', '')
-        brz_api_secret = os.environ.get('brz_api_secret', '')
-        breeze = BreezeConnect(api_key=brz_api_key)
-
-        valid_until_date = os.environ.get('brz_session_token_valid_until', '')
-        valid_today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
-        if(valid_until_date.upper() != valid_today):
-            # Obtain your session key from https://api.icicidirect.com/apiuser/login?api_key=YOUR_API_KEY
-            # Incase your api-key has special characters(like +,=,!) then encode the api key before using in the url as shown below.
-            loginURL = "https://api.icicidirect.com/apiuser/login?api_key="+urllib.parse.quote_plus(brz_api_key)
-            session_token = input("Enter the request token after logging into {} : ".format(loginURL))
-            dotenv.set_key('./.env', "brz_session_token", session_token)
-            dotenv.set_key('./.env', "brz_session_token_valid_until", valid_today.upper())
-
-            # Generate Session
-            res = breeze.generate_session(api_secret=brz_api_secret, session_token=session_token)
-        # Connect to websocket(it will connect to tick-by-tick data server)
-        res = breeze.ws_connect()
-        breeze.on_ticks = on_ticks
-
-        breeze.subscribe_feeds(get_order_notification=True)
-        res = breeze.subscribe_feeds(stock_token = "i_click_2_gain")
-        self.__logger.info(res)
-        res = breeze.subscribe_feeds(stock_token = "one_click_fno")
-        self.__logger.info(res)
-        self.__breeze = breeze
     
 
     def __getProduct(self, product):
@@ -458,9 +427,10 @@ class iciciDirect():
         invPeriod = ''
         if strategy == 'MARGIN':
             invPeriod  = '0 DAYS'
+            expDate = recDate
         elif strategy == 'OPTIONS':
             spliticiciSymbol = iciciSymbol.split('-')
-            expiryDate = spliticiciSymbol[1]+'-'+spliticiciSymbol[2]+'-'+spliticiciSymbol[3]
+            expiryDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
             recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
             expDate    = datetime.datetime.strptime(expiryDate, "%d-%b-%Y")
             invPeriod  = (expDate - recDate).days
@@ -953,6 +923,9 @@ class iciciDirect():
                     cell1Dict['SECURITY_ID'] = '' 
                 else:
                     status, cell1Dict['SECURITY_ID'], cell1Dict['ICICI_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'] = self.mapICICSymbolToMktSymbol(cell1Dict['STRATEGY'], cell1Dict['STOCK'], cell1Dict['ICICI_SYMBOL'])
+                    if not status:
+                        self.__logger.error("Unable to map STRATEGY=%s STOCK=%s ICICI_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
+                        return rowDict
                 self.__logger.debug('ICICI_SYMBOL = %s <=> MKT_SYMBOL = %s', cell1Dict['ICICI_SYMBOL'], cell1Dict['MKT_SYMBOL'])
                 cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
                 cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)

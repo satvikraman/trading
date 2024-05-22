@@ -15,6 +15,7 @@ import zipfile
 sys.path.append('./src/common')
 from iciciDirect import iciciDirect
 from persistence import persistence
+from breeze_connect import BreezeConnect
 
 # Reommendation Status transitions as 
 # OPEN --> CLOSE
@@ -453,7 +454,33 @@ class app():
 
 
     def openBreezeSession(self, on_ticks):
-        self.__iciciDirect.openBreezeSession(on_ticks)
+        dotenv.load_dotenv('./.env', override=True)
+        brz_api_key = os.environ.get('brz_api_key', '')
+        brz_api_secret = os.environ.get('brz_api_secret', '')
+        breeze = BreezeConnect(api_key=brz_api_key)
+
+        #valid_until_date = os.environ.get('brz_session_token_valid_until', '')
+        #valid_today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
+        #if(valid_until_date.upper() != valid_today):
+        # Obtain your session key from https://api.icicidirect.com/apiuser/login?api_key=YOUR_API_KEY
+        # Incase your api-key has special characters(like +,=,!) then encode the api key before using in the url as shown below.
+        loginURL = "https://api.icicidirect.com/apiuser/login?api_key="+urllib.parse.quote_plus(brz_api_key)
+        session_token = input("Enter the request token after logging into {} : ".format(loginURL))
+        #dotenv.set_key('./.env', "brz_session_token", session_token)
+        #dotenv.set_key('./.env', "brz_session_token_valid_until", valid_today.upper())
+
+        # Generate Session
+        res = breeze.generate_session(api_secret=brz_api_secret, session_token=session_token)
+        # Connect to websocket(it will connect to tick-by-tick data server)
+        res = breeze.ws_connect()
+        breeze.on_ticks = on_ticks
+
+        breeze.subscribe_feeds(get_order_notification=True)
+        res = breeze.subscribe_feeds(stock_token = "i_click_2_gain")
+        self.__logger.info(res)
+        res = breeze.subscribe_feeds(stock_token = "one_click_fno")
+        self.__logger.info(res)
+        self.__breeze = breeze
 
 
     def getRecDictFromTick(self, ticks):
@@ -463,16 +490,17 @@ class app():
 
 
 def breezeTicks(ticks):
+    print(ticks)
     trade.getRecDictFromTick(ticks)
 
 
 if __name__ == '__main__':
     trade = app('./iciciDirect.ini')
 
+    trade.openIciciSession()
+
     # Open a websocket with ICICI Direct
     trade.openBreezeSession(breezeTicks)
-
-    trade.openIciciSession()
 
     marketClose = False
     while not marketClose:
