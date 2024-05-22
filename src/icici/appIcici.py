@@ -55,6 +55,10 @@ class app():
             self.__backupDb(dbIntraDay)                
             self.__persistenceIntraDay = persistence(configFile, dbIntraDay)
 
+            dbCommodityFnO = self.__config['DATABASE']['DB_COMM_FNO']
+            self.__backupDb(dbCommodityFnO)                
+            self.__persistenceCommodityFnO = persistence(configFile, dbCommodityFnO)
+
             if dbFnO == None:
                 dbFnO = self.__config['DATABASE']['DB_FNO']
             self.__backupDb(dbFnO)                
@@ -90,6 +94,9 @@ class app():
 
 
     def __send2PayTm(self, endPoint, recDict):
+        if recDict == None:
+            return True
+    
         retries = self.__numRetries
         status = False
 
@@ -167,18 +174,35 @@ class app():
         if status:
             dbDict['REC_STATUS'] = newRec
         return status, dbDict
+    
+
+    def __hasChanged(self, dbDict, rowDict):
+        status = False
+        if rowDict["REC_STATUS"] == 'CLOSE' and dbDict['REC_STATUS'] != 'CLOSE':
+            status = True
+        if rowDict["REC_STATUS"] == 'PARTIAL_CLOSE' and dbDict['REC_STATUS'] == 'OPEN':
+            status = True
+
+        keysToCheck = ['TARGET', 'STOP_LOSS', 'LOW_REC_PRICE', 'HIGH_REC_PRICE']
+        for keyToCheck in keysToCheck:
+            if rowDict[keyToCheck] != dbDict[keyToCheck]:
+                status = True
+
+        return status
 
 
     def __closeLeverageRecsNotVisible(self):
-        strategiesToCheck = ['MARGIN', 'OPTIONS']
-        for strategyToCheck in strategiesToCheck:
-            if strategyToCheck == 'MARGIN':
+        products = ['MARGIN', 'FnO', 'COMMODITY FnO']
+        for product in products:
+            if product == 'MARGIN':
                 persistence = self.__persistenceIntraDay
-            elif strategyToCheck == 'OPTIONS':
+            elif product == 'FnO':
                 persistence = self.__persistenceFnO
+            elif product == 'COMMODITY FnO':
+                persistence = self.__persistenceCommodityFnO
 
             # Find all strategyToCheck (MARGIN|OPTIONS|FUTURE) recommendations in DB that are not closed
-            dbDicts = persistence.getDb([['STRATEGY', strategyToCheck], ['REC_STATUS', '!CLOSE']])
+            dbDicts = persistence.getDb([['REC_STATUS', '!CLOSE']])
 
             # If they are not found in the recommendations on the web page --> close them 
             for dbDict in dbDicts:
@@ -194,56 +218,60 @@ class app():
                     persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
 
 
-    def __updateLeverageRecStatus(self, recDict):
-        recDict['VISIBLE'] = 'VISIBLE'
-        if recDict['STRATEGY'] == 'MARGIN':
+    def __updateLeverageRecStatus(self, rowDict):
+        rowDict['VISIBLE'] = 'VISIBLE'
+        if rowDict['STRATEGY'] == 'MARGIN':
             persistence = self.__persistenceIntraDay
-            recDict['EXP_DATE']  = recDict['REC_DATE']
-        else:
+            rowDict['EXP_DATE']  = rowDict['REC_DATE']
+        elif rowDict['STRATEGY'] in ['OPTIONS', 'FUTURE']:
             persistence = self.__persistenceFnO
-            spliticiciSymbol = recDict['ICICI_SYMBOL'].split('-')
-            recDict['EXP_DATE'] = spliticiciSymbol[2] + '-' + spliticiciSymbol[3] + '-' + spliticiciSymbol[4]
+            spliticiciSymbol = rowDict['ICICI_SYMBOL'].split('-')
+            rowDict['EXP_DATE'] = spliticiciSymbol[2] + '-' + spliticiciSymbol[3] + '-' + spliticiciSymbol[4]
+        else:
+            persistence = self.__persistenceCommodityFnO
+            spliticiciSymbol = rowDict['ICICI_SYMBOL'].split('-')
+            rowDict['EXP_DATE'] = spliticiciSymbol[2] + '-' + spliticiciSymbol[3] + '-' + spliticiciSymbol[4]
 
         # Find open recommendations matching the condition in DB
         self.__logger.debug("updateRecStatus: Finding in DB nseSym=%s, strategy=%s, date=%s, time=%s, recStatus=%s", 
-                            recDict['MKT_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'], 'None')
-        isInDb, dbDict = persistence.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+                            rowDict['MKT_SYMBOL'], rowDict['STRATEGY'], rowDict['REC_DATE'], rowDict['REC_TIME'], 'None')
+        isInDb, dbDict = persistence.isInDb([['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
         self.__logger.debug("Find results: status = %s & dbDict = %s", isInDb, dbDict)
 
         # If no recommendation found in DB and if the current recommendation is not close, then
         # Insert the recommendation in DB
         if not isInDb:
-            if(recDict['REC_STATUS'] != 'CLOSE'):
-                recDict = self.__iciciDirect.prepareRecDict(recDict)
-                self.__logger.info('New Recommendation %s', recDict)
+            if(rowDict['REC_STATUS'] != 'CLOSE'):
+                recDict = self.__iciciDirect.prepareRecDict(rowDict)
+                self.__logger.info('New Recommendation %s', rowDict)
                 status = self.__send2PayTm('NEW_REC', recDict)
-                recDict['ACK'] = 'ACK' if status else 'NACK'
-                res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+                rowDict['ACK'] = 'ACK' if status else 'NACK'
+                res = persistence.insertDb(rowDict, [['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
             else:
-                recDict['ACK'] = 'ACK'
-                self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['MKT_SYMBOL'], recDict)
-                res = persistence.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+                rowDict['ACK'] = 'ACK'
+                self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", rowDict['MKT_SYMBOL'], rowDict)
+                res = persistence.insertDb(rowDict, [['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
         elif isInDb:
                 # If the recommendation has changed then
-                isChange, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
+                isChange = self.__hasChanged(dbDict, rowDict)
                 if isChange:
-                    recDict = self.__iciciDirect.prepareRecDict(dbDict)
-                    self.__logger.info('Existing recommendation changed %s', recDict)
+                    recDict = self.__iciciDirect.prepareRecDict(rowDict)
+                    self.__logger.info('Existing recommendation changed %s', rowDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
-                    dbDict['ACK'] = 'ACK' if status else 'NACK'
-                    persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                    rowDict['ACK'] = 'ACK' if status else 'NACK'
+                    persistence.updateDb(rowDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 #else: Nothing to be done
 
 
-    def __mergeNonLeverageRecsToDb(self, recDict, actionableKeys, otherKeys):
+    def __mergeNonLeverageRecsToDb(self, rowDict, actionableKeys, otherKeys):
         # If the information was first added by iCLICK-2-INVEST, the following information can be merged in
         # REC_STATUS
         # LOW_REC_PRICE, STOP_LOSS, PART_PROFIT_PRICE, PART_PROFIT_PERC, FINAL_PROFIT_PRICE, EXIT_PRICE
         # REC_TIME, UPDATE_ACTION_1, UPDATE_TIME_1, UPDATE_ACTION_2, UPDATE_TIME_2
-        dbDicts = self.__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['REC_STATUS', '!CLOSE']])
+        dbDicts = self.__persistenceInv.getDb([['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['REC_STATUS', '!CLOSE']])
 
-        recDict['VISIBLE'] = 'VISIBLE'
-        recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
+        rowDict['VISIBLE'] = 'VISIBLE'
+        recDate = datetime.datetime.strptime(rowDict['REC_DATE'], "%d-%b-%Y")
         hasChanged = False
         updateDb = False
         found = False
@@ -251,24 +279,24 @@ class app():
             dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
             daysDiff = abs((dbDate - recDate).days)
 
-            if dbDict['STRATEGY'] == recDict['STRATEGY'] and dbDict['REC_DATE'] == recDict['REC_DATE']:
+            if dbDict['STRATEGY'] == rowDict['STRATEGY'] and dbDict['REC_DATE'] == rowDict['REC_DATE']:
                 found = True
-            elif bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
+            elif bool(re.match(r'QUANT|.*DERIVATIVE.', rowDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
                 found = True
             
             if found:
                 # Check if value of keys has changed
                 for key in actionableKeys:
                     if key in dbDict:
-                        if dbDict[key] != recDict[key]:
+                        if dbDict[key] != rowDict[key]:
                             hasChanged = True
-                            dbDict[key] = recDict[key]
+                            dbDict[key] = rowDict[key]
                     else:
                         hasChanged = True
-                        dbDict[key] = recDict[key]
+                        dbDict[key] = rowDict[key]
 
                     if key == 'INV_PERIOD':
-                        _, invPeriod, expDate = self.__computeExpDate(recDict, dbDict)
+                        _, invPeriod, expDate = self.__computeExpDate(rowDict, dbDict)
                         if invPeriod != dbDict['INV_PERIOD'] or expDate != dbDict['EXP_DATE']:
                             dbDict['INV_PERIOD'] = invPeriod
                             dbDict['EXP_DATE'] = expDate
@@ -276,23 +304,23 @@ class app():
 
                 for key in otherKeys:
                     if key in dbDict:
-                        if dbDict[key] != recDict[key]:
+                        if dbDict[key] != rowDict[key]:
                             updateDb = True
-                            dbDict[key] = recDict[key]
+                            dbDict[key] = rowDict[key]
                     else:
                         updateDb = True
-                        dbDict[key] = recDict[key]
+                        dbDict[key] = rowDict[key]
 
                 # Being conservative: Take the max of the STOP_LOSS and min of the TARGET
-                if dbDict['STOP_LOSS'] < recDict['STOP_LOSS']:
+                if dbDict['STOP_LOSS'] < rowDict['STOP_LOSS']:
                     hasChanged = True
-                    dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
-                if dbDict['TARGET'] > recDict['TARGET']:
+                    dbDict['STOP_LOSS'] = rowDict['STOP_LOSS']
+                if dbDict['TARGET'] > rowDict['TARGET']:
                     hasChanged = True
-                    dbDict['TARGET'] = recDict['TARGET']
+                    dbDict['TARGET'] = rowDict['TARGET']
 
                 # Check if REC_STATUS needs to change
-                recChanged, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
+                recChanged, dbDict = self.__transitionRec(dbDict, rowDict['REC_STATUS'])
                 hasChanged = hasChanged or recChanged
 
                 if updateDb: 
@@ -312,27 +340,27 @@ class app():
             # However, since the recommendation is already closed there is nothing that needs to be done. If we find the recommendation among the closed 
             # recommendations, no action will be taken
             found2 = False
-            dbDicts2 = self.__persistenceInv.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['REC_STATUS', 'CLOSE']])
+            dbDicts2 = self.__persistenceInv.getDb([['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['REC_STATUS', 'CLOSE']])
             for dbDict2 in dbDicts2:
                 dbDate = datetime.datetime.strptime(dbDict2['REC_DATE'], "%d-%b-%Y")
                 daysDiff = abs((dbDate - recDate).days)
-                if dbDict2['STRATEGY'] == recDict['STRATEGY'] and dbDict2['REC_DATE'] == recDict['REC_DATE']:
+                if dbDict2['STRATEGY'] == rowDict['STRATEGY'] and dbDict2['REC_DATE'] == rowDict['REC_DATE']:
                     found2 = True
-                elif bool(re.match(r'QUANT|.*DERIVATIVE.', recDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict2['STRATEGY'])) and daysDiff <= 7:
+                elif bool(re.match(r'QUANT|.*DERIVATIVE.', rowDict['STRATEGY'])) and bool(re.match(r'QUANT|.*DERIVATIVE.', dbDict2['STRATEGY'])) and daysDiff <= 7:
                     found2 = True
 
             if not found2:
-                if(recDict['REC_STATUS'] != 'CLOSE'):
-                    _, _, recDict['EXP_DATE'] = self.__computeExpDate(recDict, recDict)
-                    apiDict = self.__iciciDirect.prepareRecDict(recDict)
-                    status = self.__send2PayTm('NEW_REC', apiDict)
-                    recDict['ACK'] = 'ACK' if status else 'NACK'
-                    res = self.__persistenceInv.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
-                    self.__logger.info('New Recommendation %s', recDict)
+                if(rowDict['REC_STATUS'] != 'CLOSE'):
+                    _, _, rowDict['EXP_DATE'] = self.__computeExpDate(rowDict, rowDict)
+                    recDict = self.__iciciDirect.prepareRecDict(rowDict)
+                    status = self.__send2PayTm('NEW_REC', recDict)
+                    rowDict['ACK'] = 'ACK' if status else 'NACK'
+                    res = self.__persistenceInv.insertDb(rowDict, [['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']]])
+                    self.__logger.info('New Recommendation %s', rowDict)
                 else:
-                    recDict['ACK'] = 'ACK'
-                    res = self.__persistenceInv.insertDb(recDict, [['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
-                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", recDict['MKT_SYMBOL'], recDict)
+                    rowDict['ACK'] = 'ACK'
+                    res = self.__persistenceInv.insertDb(rowDict, [['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']]])
+                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", rowDict['MKT_SYMBOL'], rowDict)
 
 
     def __updateMismatchedVisibilityNonLeverageRecs(self):
@@ -402,7 +430,7 @@ class app():
             otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
                         'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
             self.__iciciDirect.scrapeiClick2Gain()    
-            leverageStrategies = ['MARGIN', 'OPTIONS', 'FUTURE']
+            leverageStrategies = ['MARGIN', 'OPTIONS', 'FUTURE', 'COMMODITY OPTIONS', 'COMMODITY FUTURES']
             for gainRecDict in self.__iciciDirect.getNextiCLICK_2_GAINTblRow():
                 if gainRecDict['STRATEGY'] in leverageStrategies:
                     self.__updateLeverageRecStatus(gainRecDict)
@@ -428,18 +456,21 @@ class app():
         self.__iciciDirect.openBreezeSession(on_ticks)
 
 
+    def getRecDictFromTick(self, ticks):
+        self.__logger.info("Ticks %s", ticks)
+        #recDict = self.__iciciDirect.getRecDictFromTick(ticks)
+        #self.__updateLeverageRecStatus(recDict)
+
+
 def breezeTicks(ticks):
-    print(ticks)
-    print(datetime.datetime.now())
-    #recDict = self.__iciciDirect.getRecDictFromTick(ticks)
-    #self.__updateLeverageRecStatus(recDict)
+    trade.getRecDictFromTick(ticks)
 
 
 if __name__ == '__main__':
     trade = app('./iciciDirect.ini')
 
     # Open a websocket with ICICI Direct
-    #trade.openBreezeSession(breezeTicks)
+    trade.openBreezeSession(breezeTicks)
 
     trade.openIciciSession()
 

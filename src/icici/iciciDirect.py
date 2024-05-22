@@ -364,15 +364,15 @@ class iciciDirect():
         return status, message, orderNum
 
 
-    def mapICICSymbolToMktSymbol(self, strategy, stkName=None, shortName=None):
+    def mapICICSymbolToMktSymbol(self, strategy, stkName=None, iciciSymbol=None):
         status = False
         rowDict = {'SECURITY_ID': '', 'MKT': '', 'MKT_SYMBOL': '', 'ICICI_SYMBOL': ''}
         if strategy == "OPTIONS":
-            splitShortName = shortName.split('-')
-            shortName = splitShortName[1]
-            expiryDate = splitShortName[2]+'-'+splitShortName[3]+'-'+splitShortName[4]
-            strikePrice = splitShortName[5]
-            optionType = splitShortName[6]
+            splitIciciSymbol = iciciSymbol.split('-')
+            shortName = splitIciciSymbol[1]
+            expiryDate = splitIciciSymbol[2]+'-'+splitIciciSymbol[3]+'-'+splitIciciSymbol[4]
+            strikePrice = splitIciciSymbol[5]
+            optionType = splitIciciSymbol[6]
 
             with(open(self.__config['MAP-ICICI-2-NSE']['FNO_DATASET'], 'r')) as icicicsv:
                 iciciReader = csv.DictReader(icicicsv)
@@ -387,14 +387,14 @@ class iciciDirect():
                         rowDict['SECURITY_ID'] = iciciRow["Token"]
                         rowDict['MKT'] = 'NSE'
                         rowDict['MKT_SYMBOL'] = shortName + '-' + expiryDate + '-' + strikePrice + '-' + optionType
-                        rowDict['ICICI_SYMBOL'] = rowDict['MKT_SYMBOL']
+                        rowDict['ICICI_SYMBOL'] = iciciSymbol
                         rowDict["LOT_SIZE"] = iciciRow["LotSize"]
                         break
             self.__logger.debug('Generated dictionary %s', rowDict)            
         elif strategy == "FUTURE":
-            splitShortName = shortName.split('-')
-            shortName = splitShortName[1]
-            expiryDate = splitShortName[2]+'-'+splitShortName[3]+'-'+splitShortName[4]
+            splitIciciSymbol = iciciSymbol.split('-')
+            shortName = splitIciciSymbol[1]
+            expiryDate = splitIciciSymbol[2]+'-'+splitIciciSymbol[3]+'-'+splitIciciSymbol[4]
             with(open(self.__config['MAP-ICICI-2-NSE']['FNO_DATASET'], 'r')) as icicicsv:
                 iciciReader = csv.DictReader(icicicsv)
                 for iciciRow in iciciReader:
@@ -405,8 +405,8 @@ class iciciDirect():
                         status = True
                         rowDict['SECURITY_ID'] = iciciRow["Token"]
                         rowDict['MKT'] = 'NSE'
-                        rowDict['MKT_SYMBOL'] = shortName + '-' + expiryDate + '-' + strikePrice + '-' + optionType
-                        rowDict['ICICI_SYMBOL'] = rowDict['MKT_SYMBOL']
+                        rowDict['MKT_SYMBOL'] = iciciRow["ExchangeCode"]
+                        rowDict['ICICI_SYMBOL'] = iciciSymbol
                         rowDict["LOT_SIZE"] = iciciRow["LotSize"]
                         break
             self.__logger.debug('Generated dictionary %s', rowDict)            
@@ -498,6 +498,9 @@ class iciciDirect():
 
 
     def prepareRecDict(self, rowDict):
+        if not self.strategiesToInvest(rowDict['SOURCE'], rowDict['STRATEGY'], rowDict['BUY_SELL']):
+            return None
+        
         mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'ICICI_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
         mandatoryDervKeys = ['LOT_SIZE']
@@ -537,7 +540,18 @@ class iciciDirect():
         return recDict
 
 
-    def mapBreezeUpdateInfoToRecStatus(self, update):
+    def __mapCallActiontoRecStatus(self, dbDict, callAction, modDateAndTime):
+        recStatus = None
+        if re.search(r'Exit|Stoploss hit|Book Profit', callAction, re.IGNORECASE):
+            recStatus = 'CLOSE'
+        elif re.search(r'Book part Profit', callAction, re.IGNORECASE):
+            recStatus = 'PARTIAL_CLOSE'
+        elif re.search(r'Book part Profit', callAction, re.IGNORECASE):
+            recStatus = 'OPEN'
+        return recStatus
+
+
+    def __mapBreezeUpdateInfoToRecStatus(self, update):
         splitUpdate = re.split(r'\d\d:\d\d:\d\d', update)
         fullClose = ['Book Full Profit', 'TGT1', 'Exit', 'SLTP']
         partialClose = ['Book Partial Profit']
@@ -568,56 +582,109 @@ class iciciDirect():
 
     def getRecDictFromTick(self, ticks):
         self.__logger.info("Tick: %s", ticks)
-        tickDict = {}
-        # Mandatory keys
-        tickDict['STOCK'] = re.sub(r'\(.*$', '', ticks['stock_name'])
-        tickDict['SOURCE'] = 'iCLICK-2-GAIN'
-        tickDict['STRATEGY'] = ticks['stock_description'].upper()
-        tickDict['BUY_SELL'] = ticks['action_type'].upper()
-        if not self.strategiesToInvest('iCLICK-2-GAIN', tickDict['STRATEGY'], tickDict['BUY_SELL']):
-            return
+        if 'stock_name' in ticks:
+            tickDict = {}
+            # Mandatory keys
+            tickDict['STOCK'] = re.sub(r'\(.*$', '', ticks['stock_name'])
+            tickDict['SOURCE'] = 'BREEZE-STOCK'
+            tickDict['STRATEGY'] = ticks['stock_description'].upper()
+            tickDict['BUY_SELL'] = ticks['action_type'].upper()
+            if not self.strategiesToInvest('iCLICK-2-GAIN', tickDict['STRATEGY'], tickDict['BUY_SELL']):
+                return
 
-        recDateTime = ticks['recommended_date'].split(' ')
-        tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
-        tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.mapUpdateInfoToRecStatus(ticks['recommended_update'])
-        if ticks['iclick_status'] == 'closed':
-            tickDict['REC_STATUS'] = 'CLOSE'
+            recDateTime = ticks['recommended_date'].split(' ')
+            tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
+            tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.__mapBreezeUpdateInfoToRecStatus(ticks['recommended_update'])
+            if ticks['iclick_status'] == 'closed':
+                tickDict['REC_STATUS'] = 'CLOSE'
 
-        iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
-        iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
-        if tickDict['STRATEGY'] == 'OPTIONS':
-            spliticiciSymbol = iciciSymbol.split('-')
-            iciciSymbol = spliticiciSymbol[1]+'-'+spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
-        invPeriod, tickDict['EXP_DATE'] = self.__suggestInvPeriod(tickDict['STRATEGY'], iciciSymbol, tickDict['REC_DATE'])
-        tickDict['VISIBLE'] = 'VISIBLE'
+            iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
+            iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
+            if tickDict['STRATEGY'] == 'OPTIONS':
+                spliticiciSymbol = iciciSymbol.split('-')
+                iciciSymbol = spliticiciSymbol[1]+'-'+spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
+            invPeriod, tickDict['EXP_DATE'] = self.__suggestInvPeriod(tickDict['STRATEGY'], iciciSymbol, tickDict['REC_DATE'])
+            tickDict['VISIBLE'] = 'VISIBLE'
 
-        iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
-        iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
-        if tickDict['STRATEGY'] == 'OPTIONS':
-            iciciSymbol = iciciSymbol.split('-')[1]
-        status, securityID, iciciSymbol, mktSymbol, mkt = self.mapICICSymbolToMktSymbol(tickDict['STRATEGY'], tickDict['STOCK'], iciciSymbol)
-        # Mandatory keys
-        tickDict['MKT_SYMBOL'] = mktSymbol
-        tickDict['SECURITY_ID'] = securityID
-        # Important keys
-        tickDict['MKT'] = mkt
+            iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
+            iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
+            if tickDict['STRATEGY'] == 'OPTIONS':
+                iciciSymbol = iciciSymbol.split('-')[1]
+            status, securityID, iciciSymbol, mktSymbol, mkt = self.mapICICSymbolToMktSymbol(tickDict['STRATEGY'], tickDict['STOCK'], iciciSymbol)
+            # Mandatory keys
+            tickDict['MKT_SYMBOL'] = mktSymbol
+            tickDict['SECURITY_ID'] = securityID
+            # Important keys
+            tickDict['MKT'] = mkt
 
-        # Mandatory price keys
-        tickDict['LOW_REC_PRICE'] = ticks['recommended_price_from']
-        tickDict['HIGH_REC_PRICE'] = ticks['recommended_price_to']
-        tickDict['TARGET'] = ticks['target_price']
-        tickDict['STOP_LOSS'] = ticks['sltp_price']
-        
-        # Mandatory leverage keys
-        tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
+            # Mandatory price keys
+            tickDict['LOW_REC_PRICE'] = ticks['recommended_price_from']
+            tickDict['HIGH_REC_PRICE'] = ticks['recommended_price_to']
+            tickDict['TARGET'] = ticks['target_price']
+            tickDict['STOP_LOSS'] = ticks['sltp_price']
+            
+            # Mandatory leverage keys
+            tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
 
-        # Other leverage keys
-        tickDict['INV_PERIOD'] = invPeriod
+            # Other leverage keys
+            tickDict['INV_PERIOD'] = invPeriod
 
-        # Price keys
-        tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
-        tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
-        tickDict['EXIT_PRICE'] = ticks['exit_price']
+            # Price keys
+            tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
+            tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
+            tickDict['EXIT_PRICE'] = ticks['exit_price']
+        else:
+            tickDict = {}
+            # Mandatory keys
+            tickDict['STOCK'] = ticks['underlying']
+            tickDict['SOURCE'] = 'BREEZE-STRATEGY'
+            tickDict['STRATEGY'] = re.sub('futures', 'future', ticks['product_type'], re.IGNORECASE).upper()
+            tickDict['BUY_SELL'] = ticks['action'].upper()
+            if not self.strategiesToInvest('iCLICK-2-GAIN', tickDict['STRATEGY'], tickDict['BUY_SELL']):
+                return
+
+            recDateTime = ticks['strategy_date'].split(' ')
+            tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
+            tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.__mapCallActiontoRecStatus(ticks['call_action'], tickDict['modification_date'])
+            if ticks['iclick_status'] == 'closed':
+                tickDict['REC_STATUS'] = 'CLOSE'
+
+            iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
+            iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
+            if tickDict['STRATEGY'] == 'OPTIONS':
+                spliticiciSymbol = iciciSymbol.split('-')
+                iciciSymbol = spliticiciSymbol[1]+'-'+spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
+            invPeriod, tickDict['EXP_DATE'] = self.__suggestInvPeriod(tickDict['STRATEGY'], iciciSymbol, tickDict['REC_DATE'])
+            tickDict['VISIBLE'] = 'VISIBLE'
+
+            iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
+            iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
+            if tickDict['STRATEGY'] == 'OPTIONS':
+                iciciSymbol = iciciSymbol.split('-')[1]
+            status, securityID, iciciSymbol, mktSymbol, mkt = self.mapICICSymbolToMktSymbol(tickDict['STRATEGY'], tickDict['STOCK'], iciciSymbol)
+            # Mandatory keys
+            tickDict['MKT_SYMBOL'] = mktSymbol
+            tickDict['SECURITY_ID'] = securityID
+            # Important keys
+            tickDict['MKT'] = mkt
+
+            # Mandatory price keys
+            tickDict['LOW_REC_PRICE'] = ticks['recommended_price_from']
+            tickDict['HIGH_REC_PRICE'] = ticks['recommended_price_to']
+            tickDict['TARGET'] = ticks['target_price']
+            tickDict['STOP_LOSS'] = ticks['sltp_price']
+            
+            # Mandatory leverage keys
+            tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
+
+            # Other leverage keys
+            tickDict['INV_PERIOD'] = invPeriod
+
+            # Price keys
+            tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
+            tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
+            tickDict['EXIT_PRICE'] = ticks['exit_price']
+
         
         recDict = self.prepareRecDict(tickDict)
         return recDict
@@ -631,7 +698,7 @@ class iciciDirect():
         # Extract the strategy
         cellDict['STRATEGY'] = data[2].split(' - ')[0]
         cellDict['BUY_SELL'] = data[2].split(' - ')[1]
-        if self.strategiesToInvest('iCLICK-2-GAIN', cellDict['STRATEGY'], cellDict['BUY_SELL']):
+        if True:
             # Remove trailing space from the stock name
             cellDict['STOCK'] = re.sub(r'\s+$', '', data[0])
             # Remove () from the ICICI Direct stock code
@@ -720,7 +787,11 @@ class iciciDirect():
         self.__logger.debug('Cell data to format \n%s', cell)
         data = cell.split(' : ')
         if(len(data) > 2):
-            # In this case, the 1st update wil always be 'Boot Partial Profit'
+            # In this case, the 1st update will always be 'Boot Partial Profit'
+            update1 = re.search(r'Book Partial Profit.*$', cell).group(0)
+            data = update1.split(' : ')
+            cellDict['UPDATE_ACTION_1'] = data[0]
+            cellDict['UPDATE_TIME_1'] = re.sub(r'\s+$', '', data[1])            
             update2 = re.sub(r'Book Partial Profit.*$', '', cell)
             data = update2.split(' : ')
             cellDict['UPDATE_ACTION_2'] = data[0]
@@ -807,12 +878,56 @@ class iciciDirect():
         return status, invPeriod
 
 
+    def __transitionRec(self, rowDict, newRec):
+        status = False
+        if 'REC_STATUS' in rowDict:
+            if newRec == 'CLOSE' and rowDict['REC_STATUS'] != 'CLOSE':
+                status = True
+            if newRec == 'PARTIAL_CLOSE' and rowDict['REC_STATUS'] == 'OPEN':
+                status = True
+            if status:
+                rowDict['REC_STATUS'] = newRec
+        else:
+            rowDict['REC_STATUS'] = newRec
+            status = newRec == 'PARTIAL_CLOSE' or newRec == 'CLOSE'
+
+        return status, rowDict
+    
+
+    def __extractRecCloseInfo(self, rowDict):
+        actions = ['Book Full Profit', 'TGT1', 'Exit', 'SLTP']
+        updateAction1 = rowDict['UPDATE_ACTION_1']
+        rowDict['REC_CLOSE_DATE'] = re.sub(r'\s+\d+:\d+.*$', '', rowDict['UPDATE_TIME_1'])
+
+        if updateAction1 == 'Book Partial Profit':
+            rowDict['CLOSE_PRICE'] = rowDict['PART_PROFIT_PRICE']
+            updateAction2 = rowDict['UPDATE_ACTION_2']
+            if updateAction2 in actions:
+                rowDict['REC_CLOSE2_DATE'] = re.sub(r'\s+\d+:\d+.*$', '', rowDict['UPDATE_TIME_2'])
+                if updateAction2 == 'Book Full Profit':
+                    rowDict['CLOSE2_PRICE'] = rowDict['FINAL_PROFIT_PRICE']
+                elif updateAction2 == 'TGT1':
+                    rowDict['CLOSE2_PRICE'] = rowDict['TARGET']
+                elif updateAction2 == 'Exit':
+                    rowDict['CLOSE2_PRICE'] = rowDict['EXIT_PRICE']
+                elif updateAction2 == 'SLTP':
+                    rowDict['CLOSE2_PRICE'] = rowDict['STOP_LOSS']
+        elif updateAction1 == 'Book Full Profit':
+            rowDict['CLOSE_PRICE'] = rowDict['FINAL_PROFIT_PRICE']
+        elif updateAction1 == 'TGT1':
+            rowDict['CLOSE_PRICE'] = rowDict['TARGET']
+        elif updateAction1 == 'Exit':
+            rowDict['CLOSE_PRICE'] = rowDict['EXIT_PRICE']
+        elif updateAction1 == 'SLTP':
+            rowDict['CLOSE_PRICE'] = rowDict['STOP_LOSS']
+
+
     def __formatiCLICK_2_GAINTblRowToDict(self, tblRow, tblRowCols, tblExpandRow):
         rowDict = None
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatStockCell(tblRowCols[0].text)
 
-        if self.strategiesToInvest('iCLICK-2-GAIN', cell1Dict['STRATEGY'], cell1Dict['BUY_SELL']):
+        if True:
             cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
             # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
             # i.e. it has been struck-through, it means that recommendation has been dicarded
@@ -832,7 +947,12 @@ class iciciDirect():
             key = (cell1Dict['ICICI_SYMBOL'], cell1Dict['STRATEGY'], cell1Dict['BUY_SELL'])
             if key not in self.__iclick2GainDict:
                 # Find the corresponding NSE symbol
-                status, cell1Dict['SECURITY_ID'], cell1Dict['ICICI_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'] = self.mapICICSymbolToMktSymbol(cell1Dict['STRATEGY'], cell1Dict['STOCK'], cell1Dict['ICICI_SYMBOL'])
+                if cell1Dict['STRATEGY'] in ['COMMODITY OPTIONS', 'COMMODITY FUTURES']:
+                    cell1Dict['MKT_SYMBOL'] = cell1Dict['ICICI_SYMBOL']
+                    cell1Dict['MKT'] = 'MCX'
+                    cell1Dict['SECURITY_ID'] = '' 
+                else:
+                    status, cell1Dict['SECURITY_ID'], cell1Dict['ICICI_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'] = self.mapICICSymbolToMktSymbol(cell1Dict['STRATEGY'], cell1Dict['STOCK'], cell1Dict['ICICI_SYMBOL'])
                 self.__logger.debug('ICICI_SYMBOL = %s <=> MKT_SYMBOL = %s', cell1Dict['ICICI_SYMBOL'], cell1Dict['MKT_SYMBOL'])
                 cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
                 cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
@@ -851,8 +971,9 @@ class iciciDirect():
                 if foundInvPeriod:
                     rowDict['INV_PERIOD'] = invPeriod
                 else:
-                    rowDict['INV_PERIOD'] = self.__suggestInvPeriod(rowDict['STRATEGY'], cell1Dict['ICICI_SYMBOL'], cell3Dict['REC_DATE'])
-                rowDict['REC_STATUS'] = recStatus
+                    rowDict['INV_PERIOD'], rowDict['EXP_DATE'] = self.__suggestInvPeriod(rowDict['STRATEGY'], cell1Dict['ICICI_SYMBOL'], cell3Dict['REC_DATE'])
+                if self.__transitionRec(rowDict, recStatus):
+                    self.__extractRecCloseInfo(rowDict)
                 rowDict['SOURCE'] = 'iCLICK-2-GAIN'
                 self.__iclick2GainDict[key] = {'DICT': rowDict, 'VISIBLE': 'VISIBLE'}
             else: 
@@ -869,7 +990,8 @@ class iciciDirect():
                     rowDict.update(cell7Dict)
                     rowDict.update(cell8Dict)
                     rowDict.update(cell9Dict)
-                    rowDict['REC_STATUS'] = recStatus
+                    if self.__transitionRec(rowDict, recStatus):
+                        self.__extractRecCloseInfo(rowDict)
         return rowDict
 
 
