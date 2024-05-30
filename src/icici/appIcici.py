@@ -12,10 +12,10 @@ import configparser
 import requests
 import zipfile
 
-sys.path.append('./src/common')
-from iciciDirect import iciciDirect
-from persistence import persistence
 from breeze_connect import BreezeConnect
+from iciciDirectWeb import IciciDirectWeb
+sys.path.append('./src/common')
+from persistence import persistence
 
 # Reommendation Status transitions as 
 # OPEN --> CLOSE
@@ -65,7 +65,7 @@ class app():
             self.__backupDb(dbFnO)                
             self.__persistenceFnO = persistence(configFile, dbFnO)
 
-            self.__iciciDirect = iciciDirect(configFile)
+            self.__iciciDirectWeb = IciciDirectWeb(configFile)
             self.__numRetries = int(self.__config['APP']['NUM_RETRIES'])
             self.__paytmBaseURL = self.__config['APP']['PATYM_URI']
             self.__timeToRefreshTradeIeas = int(self.__config['APP']['TIMES_TO_REFRESH_TRADE_IDEAS'])
@@ -160,7 +160,7 @@ class app():
                                    dbDict['SOURCE'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['INV_PERIOD'], dbDict['EXP_DATE'])
                 if not dryRun:
                     dbDict['REC_STATUS'] = 'CLOSE'
-                    recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                    recDict = self.__iciciDirectWeb.prepareRecDict(dbDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
                     self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
@@ -207,13 +207,13 @@ class app():
 
             # If they are not found in the recommendations on the web page --> close them 
             for dbDict in dbDicts:
-                visible = self.__iciciDirect.isVisible(dbDict['SOURCE'], dbDict['ICICI_SYMBOL'], dbDict['STRATEGY'], dbDict['BUY_SELL'])
+                visible = self.__iciciDirectWeb.isVisible(dbDict['SOURCE'], dbDict['ICICI_SYMBOL'], dbDict['STRATEGY'], dbDict['BUY_SELL'])
 
                 # Close the recommendation that was not found
                 if not visible:
                     dbDict['REC_STATUS'] = 'CLOSE'
                     dbDict['VISIBLE'] = 'HIDDEN'
-                    recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                    recDict = self.__iciciDirectWeb.prepareRecDict(dbDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
                     persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
@@ -243,7 +243,7 @@ class app():
         # Insert the recommendation in DB
         if not isInDb:
             if(rowDict['REC_STATUS'] != 'CLOSE'):
-                recDict = self.__iciciDirect.prepareRecDict(rowDict)
+                recDict = self.__iciciDirectWeb.prepareRecDict(rowDict)
                 self.__logger.info('New Recommendation %s', rowDict)
                 status = self.__send2PayTm('NEW_REC', recDict)
                 rowDict['ACK'] = 'ACK' if status else 'NACK'
@@ -256,7 +256,7 @@ class app():
                 # If the recommendation has changed then
                 isChange = self.__hasChanged(dbDict, rowDict)
                 if isChange:
-                    recDict = self.__iciciDirect.prepareRecDict(rowDict)
+                    recDict = self.__iciciDirectWeb.prepareRecDict(rowDict)
                     self.__logger.info('Existing recommendation changed %s', rowDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
                     rowDict['ACK'] = 'ACK' if status else 'NACK'
@@ -328,7 +328,7 @@ class app():
                     self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
 
                 if hasChanged:
-                    recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                    recDict = self.__iciciDirectWeb.prepareRecDict(dbDict)
                     status = self.__send2PayTm('UPDATE_REC', recDict)
                     dbDict['ACK'] = 'ACK' if status else 'NACK'
                     self.__persistenceInv.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
@@ -353,7 +353,7 @@ class app():
             if not found2:
                 if(rowDict['REC_STATUS'] != 'CLOSE'):
                     _, _, rowDict['EXP_DATE'] = self.__computeExpDate(rowDict, rowDict)
-                    recDict = self.__iciciDirect.prepareRecDict(rowDict)
+                    recDict = self.__iciciDirectWeb.prepareRecDict(rowDict)
                     status = self.__send2PayTm('NEW_REC', recDict)
                     rowDict['ACK'] = 'ACK' if status else 'NACK'
                     res = self.__persistenceInv.insertDb(rowDict, [['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']]])
@@ -372,7 +372,7 @@ class app():
 
         # If they are not found in the recommendations on the web page --> close them 
         for dbDict in dbDicts:
-            visible = self.__iciciDirect.isVisible(dbDict['SOURCE'], dbDict['ICICI_SYMBOL'], dbDict['STRATEGY'], dbDict['BUY_SELL'])
+            visible = self.__iciciDirectWeb.isVisible(dbDict['SOURCE'], dbDict['ICICI_SYMBOL'], dbDict['STRATEGY'], dbDict['BUY_SELL'])
             # Close the recommendation that was not found
             if visible:
                 val = dbDict['MKT_SYMBOL'] + '-' + dbDict['STRATEGY'] + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
@@ -404,7 +404,7 @@ class app():
             self.__logger.debug("Find results: dbDict = %s", dbDicts)
 
             for dbDict in dbDicts:
-                recDict = self.__iciciDirect.prepareRecDict(dbDict)
+                recDict = self.__iciciDirectWeb.prepareRecDict(dbDict)
                 status = self.__send2PayTm('UPDATE_REC', recDict)
                 dbDict['ACK'] = 'ACK' if status else 'NACK'
                 persistence.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
@@ -418,21 +418,21 @@ class app():
             # Scrape recommendations from iClick2Invest
             actionableKeys = ['INV_PERIOD']
             otherKeys = []
-            self.__iciciDirect.browseResearchToClick_2_Invest()
-            self.__iciciDirect.scrapeiClick2Invest()
-            for invRecDict in self.__iciciDirect.getNextiCLICK_2_INVESTTblRow():
+            self.__iciciDirectWeb.browseResearchToClick_2_Invest()
+            self.__iciciDirectWeb.scrapeiClick2Invest()
+            for invRecDict in self.__iciciDirectWeb.getNextiCLICK_2_INVESTTblRow():
                 self.__mergeNonLeverageRecsToDb(invRecDict, actionableKeys, otherKeys)
 
         # Scrape recommendations from iClick2Gain
-        self.__iciciDirect.browseResearchToClick_2_Gain()
+        self.__iciciDirectWeb.browseResearchToClick_2_Gain()
         timesRefresh = self.__timeToRefreshTradeIeas if marketOpen else 1
         for i in range(timesRefresh):
             actionableKeys = ['LOW_REC_PRICE']
             otherKeys = ['PART_PROFIT_PRICE', 'PART_PROFIT_PERC', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE',
                         'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
-            self.__iciciDirect.scrapeiClick2Gain()    
+            self.__iciciDirectWeb.scrapeiClick2Gain()    
             leverageStrategies = ['MARGIN', 'OPTIONS', 'FUTURE', 'COMMODITY OPTIONS', 'COMMODITY FUTURES']
-            for gainRecDict in self.__iciciDirect.getNextiCLICK_2_GAINTblRow():
+            for gainRecDict in self.__iciciDirectWeb.getNextiCLICK_2_GAINTblRow():
                 if gainRecDict['STRATEGY'] in leverageStrategies:
                     self.__updateLeverageRecStatus(gainRecDict)
                 else:
@@ -450,7 +450,7 @@ class app():
 
 
     def openIciciSession(self):
-        self.__iciciDirect.browseICICIDirect()
+        self.__iciciDirectWeb.browseICICIDirect()
 
 
     def openBreezeSession(self, on_ticks):
@@ -485,18 +485,18 @@ class app():
 
     def getRecDictFromTick(self, ticks):
         self.__logger.info("Ticks %s", ticks)
-        #recDict = self.__iciciDirect.getRecDictFromTick(ticks)
-        #self.__updateLeverageRecStatus(recDict)
+        recDict = self.__iciciDirectWeb.getRecDictFromTick(ticks)
+        self.__updateLeverageRecStatus(recDict)
 
 
 def breezeTicks(ticks):
-    print(ticks)
     trade.getRecDictFromTick(ticks)
 
 
 if __name__ == '__main__':
     trade = app('./iciciDirect.ini')
 
+    # Open the browser and scrape recommendations from ICICI Direct
     trade.openIciciSession()
 
     # Open a websocket with ICICI Direct

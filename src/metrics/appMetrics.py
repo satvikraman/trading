@@ -18,19 +18,21 @@ sys.path.append('./src/common')
 from googleWorkspace import googleWorkspace
 from persistence import persistence
 
-METRIC_START_DATE = '01-May-2024'
+METRIC_START_DATE = '22-May-2024'
 
 COLUMN = Enum('COLUMN', ['DATE', 'STRATEGY', 'STOCK', 'SYMBOL', 'OPEN_PRICE', 'TARGET', 'STOPLOSS', 'TYPE', 'CLOSE_PRICE', 'LOT', 'CLOSE_QTY', 'OPEN_QTY', 'CASHFLOW', 'PnL', 'END'], start=0)
-HEADS = [{'HEAD': 'ICICI EQUITY', 'SLNO': 0, 'SOURCE': ['iCLICK-2-GAIN', 'iCLICK-2-INVEST'], 'STRATEGY': ['CONVICTION IDEAS', 'EQUITY MODEL PORTFOLIO', 'GLADIATOR STOCKS', 
+HEADS = [
+        {'HEAD': 'ICICI EQUITY', 'SLNO': 0, 'SOURCE': ['iCLICK-2-GAIN'], 'STRATEGY': ['MARGIN']},
+        {'HEAD': 'ICICI EQUITY', 'SLNO': 1, 'SOURCE': ['iCLICK-2-GAIN', 'iCLICK-2-INVEST'], 'STRATEGY': ['CONVICTION IDEAS', 'EQUITY MODEL PORTFOLIO', 'GLADIATOR STOCKS', 
                                                                                                     'IDIRECT INSTINCT', 'INITIATING COVERAGE', 'MARGIN TRADING FUNDING (MTF)', 
                                                                                                     'MARKET STRATEGY', 'MOMENTUM PICK', 'QUANT DERIVATIVES PICK', 'RESULT UPDATE', 
                                                                                                     'SHUBH NIVESH', 'STOCK TALES', 'STOCKS ON THE MOVE', 'TECHNO FUNDA', 'TOP PICKS', 
                                                                                                     'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 'MOMENTUM PICK', 
                                                                                                     'GLADIATOR STOCKS', 'QUANT PICKS']}, 
-        {'HEAD': 'ICICI BREEZE', 'SLNO': 1, 'SOURCE': ['BREEZE'], 'STRATEGY': []}, 
-        {'HEAD': 'ICICI Equity FnO', 'SLNO': 2, 'SOURCE': ['iCLICK-2-GAIN'], 'STRATEGY': ['OPTIONS', 'FUTURE']},
-        {'HEAD': 'Paytm Equity', 'SLNO': 3, 'SOURCE': ['PAYTM-EQ'], 'STRATEGY': []}, 
-        {'HEAD': 'Paytm FnO', 'SLNO': 4, 'SOURCE': ['PAYTM-FnO'], 'STRATEGY': []}]
+        {'HEAD': 'ICICI BREEZE', 'SLNO': 2, 'SOURCE': ['BREEZE'], 'STRATEGY': []}, 
+        {'HEAD': 'ICICI Equity FnO', 'SLNO': 3, 'SOURCE': ['iCLICK-2-GAIN'], 'STRATEGY': ['OPTIONS', 'FUTURE']},
+        {'HEAD': 'Paytm Equity', 'SLNO': 4, 'SOURCE': ['PAYTM-EQ'], 'STRATEGY': []}, 
+        {'HEAD': 'Paytm FnO', 'SLNO': 5, 'SOURCE': ['PAYTM-FnO'], 'STRATEGY': []}]
 
 class Metrics():
     def __init__(self, configFile):
@@ -75,6 +77,7 @@ class Metrics():
             if strategy in head['STRATEGY']:
                 bucketName = head['HEAD']
                 bucketSlNo = head['SLNO']
+                break
         
         if bucketName == None:
             for head in HEADS:
@@ -115,6 +118,7 @@ class Metrics():
             dbDict['ROW'] = newRow
             newRow += 1
             dbDict['REC_DATE'] = recDict['REC_DATE']
+            dbDict['REC_TIME'] = recDict['REC_TIME']
             dbDict['STRATEGY'] = recDict['STRATEGY']
             dbDict['STOCK'] = recDict['STOCK']
             dbDict['MKT_SYMBOL'] = recDict['MKT_SYMBOL']
@@ -130,7 +134,7 @@ class Metrics():
 
         if 'REC_CLOSE_DATE' in recDict:
             dbDict['REC_CLOSE_DATE'] = recDict['REC_CLOSE_DATE']
-            closePrice = float(recDict['CLOSE_PRICE'])
+            closePrice = float(recDict['CLOSE_PRICE']) if 'CLOSE_PRICE' in recDict else float(recDict['HIGH_REC_PRICE'])
             closePrice = closePrice if recDict['BUY_SELL'].upper() == 'BUY' else -closePrice
             dbDict['CLOSE_PRICE'] = closePrice
             finalClosePrice = closePrice
@@ -145,7 +149,7 @@ class Metrics():
             updateRow[COLUMN.CLOSE_PRICE.value] = finalClosePrice
                 
         if recDict['STRATEGY'] in ['OPTIONS', 'FUTURE'] or recDict['SOURCE'] in ['PAYTM-FnO']:
-            dbDict['LOT'] = recDict['LOT']
+            dbDict['LOT'] = recDict['LOT'] if 'LOT' in recDict else 1
         else:
             dbDict['LOT'] = 1
 
@@ -195,7 +199,7 @@ class Metrics():
                     updateRow = updateRow[0]
 
                 if addCloseEntry:
-                    updateRow[COLUMN.CLOSE_QTY.value] = updateRow[COLUMN.OPEN_QTY.value] if recDict['REC_STATUS'] == 'CLOSE' else updateRow[COLUMN.OPEN_QTY.value]//2
+                    updateRow[COLUMN.CLOSE_QTY.value] = updateRow[COLUMN.OPEN_QTY.value] if recDict['REC_STATUS'] == 'CLOSE' else int(updateRow[COLUMN.OPEN_QTY.value])//2
                     status2 = self.__google.writeToCell(writeStartCol, writeEndCol, [updateRow[:COLUMN.CLOSE_QTY.value + 1]])
                     row = dbDict['CLOSE_ROW'] if 'CLOSE_ROW' in dbDict else newRow
                     writeStartCol = writeStartColChar + str(row)
@@ -226,9 +230,9 @@ class Metrics():
                 headDict['ROW'] = newRow
                 persistenceInst.updateDb(headDict, [['HEAD', bucketName]])
                 if isInDb:
-                    persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])
+                    persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 else:
-                    persistenceInst.insertDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']]])            
+                    persistenceInst.insertDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])            
 
 
     def handlrec(self, recDict, filterDate):
@@ -262,7 +266,7 @@ class Metrics():
             persistenceInst = self.__persistenceFnO
         else:
             persistenceInst = self.__persistenceInv        
-        isInDb, dbDict = persistenceInst.isInDb([['STOCK', recDict['STOCK']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+        isInDb, dbDict = persistenceInst.isInDb([['STOCK', recDict['STOCK']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
 
         self.updateRows(persistenceInst, recDict, dbDict, isInDb, addCloseEntry, addClose2Entry)
 
@@ -294,8 +298,8 @@ class Metrics():
                 self.handlrec(dbDict, filterDate)
             filterDate += datetime.timedelta(days=1)
 
-metrics = Metrics('./metrics.ini')
+metrics = Metrics('./src/metrics/metrics.ini')
 
 if __name__ == '__main__':
-    metrics.offlineAdd('./db/backup/paytmTradingIdeasFnO.json', '16-May-2024', '21-May-2024', 'PAYTM-FnO')
+    metrics.offlineAdd('./db/backup/iciciDirectIntraDay.json', '28-May-2024', '28-May-2024', 'iCLICK-2-GAIN')
     print("All Done")

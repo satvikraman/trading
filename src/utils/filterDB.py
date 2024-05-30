@@ -41,7 +41,7 @@ class app():
 
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
-    filter = app('./payTmMoney.ini')
+    filter = app('./src/paytm/payTmMoney.ini')
     #filter.filterDb()
 
     start = datetime.date(2024, 4, 14)

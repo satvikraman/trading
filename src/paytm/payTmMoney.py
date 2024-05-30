@@ -13,31 +13,16 @@ from pmClient import PMClient
 from pmClient import WebSocketClient
 
 class payTmMoney:
-    def __init__(self, configFile):
-        if(os.path.isfile(configFile)):
-            self.__config = configparser.ConfigParser()
-            self.__config.read(configFile)
+    def __init__(self, logger, retries):
+        self.__logger = logger
+        self.__retries = retries
 
-            if(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'DEBUG'):
-                level = logging.DEBUG
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'INFO'):
-                level = logging.INFO
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'WARNING'):
-                level = logging.WARNING
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'ERROR'):
-                level = logging.ERROR
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'CRITICAL'):
-                level = logging.CRITICAL
-            self.__logger = logging.getLogger(__name__)
-            self.__logger.setLevel(level)
-            self.__retries = int(self.__config['PAYTM-MONEY']['NUM_RETRIES'])
-
-            dotenv.load_dotenv('./.env', override=True)
-            self.__api_key = os.environ.get('api_key', '')
-            self.__api_secret = os.environ.get('api_secret', '')
-            self.__request_token = os.environ.get('request_token', '')
-            self.__state_key = os.environ.get('state_key', '')
-            self.__orderBook = None
+        dotenv.load_dotenv('./.env', override=True)
+        self.__api_key = os.environ.get('api_key', '')
+        self.__api_secret = os.environ.get('api_secret', '')
+        self.__request_token = os.environ.get('request_token', '')
+        self.__state_key = os.environ.get('state_key', '')
+        self.__orderBook = None
     
         
     def payTmLogin(self):
@@ -100,7 +85,7 @@ class payTmMoney:
         print(res)
 
 
-    def getLastTradedPrice(self, securityId, securityType, exchange='NSE'):
+    def get_live_market_data(self, securityId, securityType, exchange='NSE'):
         pref = [exchange, str(securityId), securityType]
         ltp = None
         status = False
@@ -196,7 +181,7 @@ class payTmMoney:
 
 
     def findOrderStatusAndQtyInfo(self, orderNo):
-        self.getOrderBookUpdate()
+        self.order_book()
         status = False
         qty = trdQty = None
         for resOrder in self.__orderBook['data']:
@@ -208,7 +193,7 @@ class payTmMoney:
         return status, qty, trdQty
 
 
-    def getOrderBookUpdate(self):
+    def order_book(self):
         status = False
         retries = self.__retries
         while not status and retries >= 0:
@@ -226,11 +211,11 @@ class payTmMoney:
         return status
 
 
-    def cancelOrder(self, orderNo, offline=False):
+    def cancel_order(self, orderNo, offline=False):
         status = False
         message = orderNum = None
         if self.__orderBook == None:
-            self.getOrderBookUpdate()
+            self.order_book()
         for resOrder in self.__orderBook['data']:
             if(('order_no' in resOrder.keys()) and (resOrder['order_no'] ==  orderNo)):
                 retries = self.__retries
@@ -255,12 +240,12 @@ class payTmMoney:
         return status, message, orderNum
 
 
-    def placeOrder(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
+    def place_order(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
         if segment == 'EQUITY':
-            product = 'I' if product == 'INTRADAY' else 'C'
+            product = 'I' if product == 'MARGIN' else 'C'
             segmentCode = 'E'
         else:
-            product = 'M'
+            product = 'I' if product == 'MARGIN' else 'M'
             segmentCode = 'D'
 
         txnType = 'B' if buySell == 'BUY' else 'S'
