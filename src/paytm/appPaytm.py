@@ -68,7 +68,7 @@ class AppPaytmBroker():
             self.persistenceFnO = persistence(self.__logger, dbFnO) if self.__workflow.backup(dbFnO, backupPath) else None
 
             dotenv.load_dotenv('./.env', override=True)
-            self.amountPerOrder = int(os.environ.get("max_amount_per_order", '5000'))
+            self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
             self.__logger.info('Max Amount Per Order %d', self.amountPerOrder)
             self.__core = [{'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
 

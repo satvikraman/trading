@@ -118,7 +118,7 @@ class AppIciciDirectBreezeBroker():
             self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
             self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
             self.checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
-            self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
+            self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
             self.cmp = {}
 
             self.__workflow.refreshCMP()

@@ -1,5 +1,10 @@
 @echo off
 
+IF NOT EXIST .\credentials.json (
+    CALL decrypt.bat
+)
+
+
 :START
 python src/icici/appIciciBreeze.py
 TIMEOUT /T 5 /NOBREAK
