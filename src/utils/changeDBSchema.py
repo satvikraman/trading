@@ -1,5 +1,6 @@
 from typing import Any
 import csv
+import logging
 import os
 import re
 import shutil
@@ -9,29 +10,58 @@ from dateutil.relativedelta import relativedelta
 import configparser
 
 sys.path.append('./src/common')
-
 from persistence import persistence
 
 class app():
-    def __init__(self, configFile1, configFile2=None, db=None, dryRun=False):
-        if os.path.isfile(configFile1):
+    def __init__(self, paytmConfig, iciciConfig=None):
+        self.__logger = None
+        if(os.path.isfile(paytmConfig)):
             self.__config = configparser.ConfigParser()
-            self.__config.read(configFile1)
-            db = self.__config['DATABASE']['DB_EQUITY']            
-            self.backupDb(db)
-            dbName = re.sub('.json', '-newSchema.json', db)
-            self.__persistence1 = persistence(configFile1, db)
-            self.__persistence1a = persistence(configFile1, dbName)
+            self.__config.read(paytmConfig)
+            if self.__logger == None:
+                if(self.__config['LOGGING']['LOG_LEVEL'] == 'DEBUG'):
+                    level = logging.DEBUG
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'INFO'):
+                    level = logging.INFO
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'WARNING'):
+                    level = logging.WARNING
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'ERROR'):
+                    level = logging.ERROR
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'CRITICAL'):
+                    level = logging.CRITICAL
+                self.__logger = logging.getLogger(__name__)
+                self.__logger.setLevel(level)
 
-        if configFile2 != None and os.path.isfile(configFile2):
-            self.__config = configparser.ConfigParser()
-            self.__config.read(configFile2)
             db = self.__config['DATABASE']['DB_EQUITY']            
             self.backupDb(db)
             dbName = re.sub('.json', '-newSchema.json', db)
-            self.__persistence2 = persistence(configFile2, db)
-            self.__persistence2a = persistence(configFile1, dbName)
-            
+            self.__persistence1 = persistence(self.__logger, db)
+            self.__persistence1a = persistence(self.__logger, dbName)
+
+        if iciciConfig != None and os.path.isfile(iciciConfig):
+            self.__config = configparser.ConfigParser()
+            self.__config.read(iciciConfig)
+            if self.__logger == None:
+                if(self.__config['LOGGING']['LOG_LEVEL'] == 'DEBUG'):
+                    level = logging.DEBUG
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'INFO'):
+                    level = logging.INFO
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'WARNING'):
+                    level = logging.WARNING
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'ERROR'):
+                    level = logging.ERROR
+                elif(self.__config['LOGGING']['LOG_LEVEL'] == 'CRITICAL'):
+                    level = logging.CRITICAL
+                self.__logger = logging.getLogger(__name__)
+                self.__logger.setLevel(level)
+
+            db = self.__config['DATABASE']['DB_EQUITY_WEB']            
+            self.backupDb(db)
+            dbName = re.sub('.json', '-newSchema.json', db)
+            self.__persistence2 = persistence(self.__logger, db)
+            self.__persistence2a = persistence(self.__logger, dbName)
+
+
     def backupDb(self, db):
         backupDb = db + '-SCHEMA-' + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S")
         shutil.copyfile(db, backupDb)
@@ -111,19 +141,26 @@ class app():
 
 
     def changePayTmSchema(self):
-        dbDicts = self.__persistence1.getDb([])
+        # Remove the filters in getDb is you want to insert all stocks
+        dbDicts = self.__persistence1.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+        self.__persistence1a.removeAll()
         count = 0
+
+        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'PRODUCT', 'BUY_SELL', 'REC_DATE', 'REC_TIME', 'REC_STATUS', 'EXP_DATE']
+        mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
+        additionalKeys = ["POS_QTY", "POS_DATE", "HOLD_QTY", "POS_HOLD_QTY", "POS_HOLD_STATUS", "QTY", "LATE_ADD", "VISIBLE", "OPEN_ORDERS", "CLOSE_ORDERS", "CHECK_TIME"]
+
+        keysToAdd = mandatoryKeys + mandatoryPriceKeys + additionalKeys
+
         for dbDict in dbDicts:
-            newDict = dbDict.copy()
-            newDict.pop('OPEN_ORDERS')
-            newDict.pop('CLOSE_ORDERS')
-            newDict.pop('CMP')
-
-            newDict['LATE_ADD'] = False
-            newDict['MKT'] = 'NSE'
-            newDict['OPEN_ORDERS'] = dbDict['OPEN_ORDERS']
-            newDict['CLOSE_ORDERS'] = dbDict['CLOSE_ORDERS']
-
+            newDict = {}
+            for key in keysToAdd:
+                if key in dbDict:
+                    newDict[key] = dbDict[key]
+                else:
+                    if key == 'PRODUCT':
+                        newDict['PRODUCT'] = 'CASH'
+                
             status = self.__persistence1a.insertDb(newDict, [['MKT_SYMBOL', newDict['MKT_SYMBOL']], ['STRATEGY', newDict['STRATEGY']], ['REC_DATE', newDict['REC_DATE']], ['REC_TIME', newDict['REC_TIME']]])
             if not status:
                 print("Problem inserting %s", newDict)
@@ -135,20 +172,20 @@ class app():
         dbDicts1 = self.__persistence1.getDb([['REC_STATUS', '!CLOSE']])
 
         for dbDict1 in dbDicts1:
-            isInDb, _ = self.__persistence2.isInDb([['NSE_SYMBOL', dbDict1['NSE_SYMBOL']], ['STRATEGY', dbDict1['STRATEGY']], ['REC_DATE', dbDict1['REC_DATE']]])
+            isInDb, _ = self.__persistence2.isInDb([['MKT_SYMBOL', dbDict1['MKT_SYMBOL']], ['STRATEGY', dbDict1['STRATEGY']], ['REC_DATE', dbDict1['REC_DATE']], ['REC_TIME', dbDict1['REC_TIME']], ['REC_STATUS', dbDict1['REC_STATUS']]])
             if not isInDb:
-                print("Stock = %s Strategy = %s REC_DATE = %s - Not in ICICI", dbDict1['NSE_SYMBOL'], dbDict1['STRATEGY'], dbDict1['REC_DATE'])
+                print("Stock = %s Strategy = %s REC_DATE = %s REC_TIM = %s - Not in ICICI", dbDict1['MKT_SYMBOL'], dbDict1['STRATEGY'], dbDict1['REC_DATE'], dbDict1['REC_TIME'])
             
 
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
-    #trade = app('./iciciDirect.ini')
+    #trade = app('./src/icici/iciciDirect.ini')
     #trade.changeIciciSchema()
     
     # Backup DB. We will work on the original DB
-    #trade = app('./payTmMoney.ini')
+    #trade = app('./src/paytm/payTmMoney.ini')
     #trade.changePayTmSchema()
 
-    trade = app('./payTmMoney.ini', './iciciDirect.ini')
-    trade.cleanSpecificStocks()
+    trade = app('./src/paytm/payTmMoney.ini', './src/icici/iciciDirect.ini')
+    trade.checkPayTmInIcici()
 

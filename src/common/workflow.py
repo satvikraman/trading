@@ -1,10 +1,11 @@
 import datetime
 from dateutil.relativedelta import relativedelta
+import os
 import time
 import re
 import requests
 import shutil
-import threading
+
 
 class Workflow():
     def __init__(self, parent, logger):
@@ -15,14 +16,18 @@ class Workflow():
 
 
     def backup(self, db, backupPath, suffix=''):
-        if not bool(re.search(r'/$', backupPath)):
-            backupPath += '/'
-        fName = re.sub(r'^.*/', '', db)
-        ext = re.search(r'\..*$', fName).group(0)
-        fName = re.sub(r'\..*$', '', fName)
-        backupDb = backupPath + fName + suffix + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S") + ext
-        self.__logger.info("Backing up DB as %s", backupDb)
-        shutil.copyfile(db, backupDb)
+        status = False
+        if(os.path.isfile(db)):
+            if not bool(re.search(r'/$', backupPath)):
+                backupPath += '/'
+            fName = re.sub(r'^.*/', '', db)
+            ext = re.search(r'\..*$', fName).group(0)
+            fName = re.sub(r'\..*$', '', fName)
+            backupDb = backupPath + fName + suffix + datetime.datetime.today().strftime("%d-%b-%Y-%H-%M-%S") + ext
+            self.__logger.info("Backing up DB as %s", backupDb)
+            shutil.copyfile(db, backupDb)
+            status = True
+        return status
 
     ############################################################################################################################################
     # COMMON FUNCTIONS
@@ -41,48 +46,58 @@ class Workflow():
 
 
     def __hasChanged(self, recDict, dbDict):
-        hasChanged = False
+        hasTgtSLChanged = False
+        hasRecPriceChanged = False
+
+        if dbDict['POS_HOLD_STATUS'] == 'OPEN':
+            if dbDict['HIGH_REC_PRICE'] < recDict['HIGH_REC_PRICE']:
+                self.__logger.info("Changing HIGH_REC_PRICE: dbDict: {} = recDict {}".format(dbDict['HIGH_REC_PRICE'], recDict['HIGH_REC_PRICE']))
+                dbDict['HIGH_REC_PRICE'] = recDict['HIGH_REC_PRICE']
+                hasRecPriceChanged = True
+
+            if dbDict['LOW_REC_PRICE'] > recDict['LOW_REC_PRICE']:
+                self.__logger.info("Changing LOW_REC_PRICE: dbDict: {} = recDict {}".format(dbDict['LOW_REC_PRICE'], recDict['LOW_REC_PRICE']))
+                dbDict['LOW_REC_PRICE'] = recDict['LOW_REC_PRICE']
+                hasRecPriceChanged = True
 
         # Being conservative: Take the max of the STOP_LOSS and min of the TARGET
         if dbDict['BUY_SELL'] == 'BUY':
             if dbDict['STOP_LOSS'] < recDict['STOP_LOSS']:
                 self.__logger.info("Changing BUY STOP_LOSS: dbDict: {} = recDict {}".format(dbDict['STOP_LOSS'], recDict['STOP_LOSS']))
-                hasChanged = True
+                hasTgtSLChanged = True
                 dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
             if dbDict['TARGET'] > recDict['TARGET']:
                 self.__logger.info("Changing BUY TARGET: dbDict: {} = recDict {}".format(dbDict['TARGET'], recDict['TARGET']))
-                hasChanged = True
+                hasTgtSLChanged = True
                 dbDict['TARGET'] = recDict['TARGET']
         else:
             if dbDict['STOP_LOSS'] > recDict['STOP_LOSS']:
                 self.__logger.info("Changing SELL STOP_LOSS: dbDict: {} = recDict {}".format(dbDict['STOP_LOSS'], recDict['STOP_LOSS']))
-                hasChanged = True
+                hasTgtSLChanged = True
                 dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
             if dbDict['TARGET'] < recDict['TARGET']:
                 self.__logger.info("Changing SELL TARGET: dbDict: {} = recDict {}".format(dbDict['TARGET'], recDict['TARGET']))
-                hasChanged = True
+                hasTgtSLChanged = True
                 dbDict['TARGET'] = recDict['TARGET']
 
         # Check if REC_STATUS needs to change
-        recChanged, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
-        hasChanged = hasChanged or recChanged
-        return hasChanged
+        hasRecChanged, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
+        hasChanged = hasRecPriceChanged or hasTgtSLChanged or hasRecChanged
+        return hasChanged, hasRecPriceChanged, dbDict
     
 
     def __prepareRecDict(self, rowDict):
         if not self.__parent.strategiesToInvest(rowDict['SOURCE'], rowDict['STRATEGY']):
             return None
         
-        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_TIME', 'REC_STATUS', 'EXP_DATE']
+        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'PRODUCT', 'BUY_SELL', 'REC_DATE', 'REC_TIME', 'REC_STATUS', 'EXP_DATE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
         mandatoryDervKeys = ['LOT_SIZE']
-        
-        importantKeys = ['ICICI_SYMBOL']
-        
+                
         recDict = {}
 
-        keysToSend = mandatoryKeys + mandatoryPriceKeys + importantKeys
-        if rowDict['STRATEGY'] in ['OPTION', 'FUTURE']:
+        keysToSend = mandatoryKeys + mandatoryPriceKeys
+        if rowDict['PRODUCT'] in ['OPTION', 'FUTURE']:
             keysToSend = keysToSend + mandatoryDervKeys
 
         for key in keysToSend:
@@ -103,19 +118,22 @@ class Workflow():
 
 
     def __isInvPeriodLeft(self, recDict):
-        if recDict['STRATEGY'] in ['MARGIN']:
+        if recDict['PRODUCT'] in ['MARGIN']:
             return True
         
         recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
         todaysDate = self.__today
         expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y")
 
-        if expDate > recDate and expDate > todaysDate:
-            expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
-            status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
+        if expDate >= todaysDate:
+            if expDate > recDate:
+                expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
+                status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
+            else:
+                # IntraDay and 0 DTE OPTION and FUTURE will land here
+                status = True
         else:
-            # IntraDay and 0 DTE OPTION and FUTURE will land here
-            status = True
+            status = False
 
         return status
 
@@ -178,7 +196,7 @@ class Workflow():
 
     def __isLateAdd(self, recDict):
         status = False
-        if recDict['STRATEGY'] in ['MARGIN', 'OPTIONS', 'FUTURE']:
+        if recDict['PRODUCT'] in ['MARGIN', 'OPTION', 'FUTURE']:
             recDateTime = datetime.datetime.strptime(recDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
             now = datetime.datetime.now()
             timeDiffSec = (now - recDateTime).total_seconds()
@@ -206,13 +224,12 @@ class Workflow():
         status = True
         for orderDict in dbDict['OPEN_ORDERS']:
             if orderDict['ORDER_STATUS'] == 'OPEN':
-                orderStatus, orderMessage, orderNum = self.__parent.cancelOrder(dbDict, orderDict['ORDER_NO'])
+                status, orderMessage, orderNum = self.__parent.cancelOrder(dbDict, orderDict['ORDER_NO'])
                 dbDict = self.__updateOrderStatus(dbDict, orderDict)
-                if orderStatus:
-                    status = True
+                if status:
                     timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
                     orderDict['ORDER_STATUS'] = 'CLOSE'
-                    orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': orderStatus, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
+                    orderDict.update({'CANCEL_ORDER': orderNum, 'CANCEL_STATUS': status, 'CANCEL_MESSAGE': orderMessage, 'CANCEL_TIME': timeStr})
         return status, dbDict
 
 
@@ -238,18 +255,19 @@ class Workflow():
                     else:
                         if dbDict['BUY_SELL'] == 'BUY':
                             if limitPrice * self.__parent.deleteLtpDisFactor < ltp:
-                                fetchOrderDetails = delOrder = True
+                                delOrder = True
                             elif ltp <= limitPrice:
                                 fetchOrderDetails = True
                         else:
                             if limitPrice > ltp * self.__parent.deleteLtpDisFactor:
-                                fetchOrderDetails = delOrder = True
+                                delOrder = True
                             elif ltp >= limitPrice:
                                 fetchOrderDetails = True
                 
                 if delOrder:
                     self.__logger.info("LTP far from limit price. Cancelling order %s for stock %s", orderDict['ORDER_NO'], dbDict['MKT_SYMBOL'])
                     _, dbDict = self.__cancelOrder(dbDict)
+                    dbDict['CHECK_TIME'] = nowStr
                 if fetchOrderDetails:
                     dbDict = self.__updateOrderStatus(dbDict, orderDict)
                     dbDict['CHECK_TIME'] = nowStr
@@ -301,7 +319,7 @@ class Workflow():
             dbDict = self.__checkLtpAndUpdateOrderStatus(ltp, dbDict)
             dbDict = self.__getPosStatus(dbDict)
 
-            if dbDict['STRATEGY'] in ['MARGIN', 'OPTION', 'FUTURE']:
+            if dbDict['PRODUCT'] in ['MARGIN', 'OPTION', 'FUTURE']:
                 if dbDict['BUY_SELL'] == 'BUY':
                     if (ltp >= dbDict['TARGET']):
                         self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['TARGET'])
@@ -338,15 +356,17 @@ class Workflow():
     def __modifyCmpSubscription(self, persistenceInst, dbDict, actionType):
         securityId = dbDict['SECURITY_ID']        
         if actionType == 'REMOVE':
-            if dbDict['STRATEGY'] in ['OPTION', 'FUTURE']:
+            if dbDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                 persistenceInsts = [self.__parent.persistenceFnO]
             else:
-                additionalDBToCheck = self.__parent.persistenceInv if dbDict['STRATEGY'] == 'MARGIN' else self.__parent.persistenceIntraDay
+                additionalDBToCheck = self.__parent.persistenceInv if dbDict['PRODUCT'] == 'MARGIN' else self.__parent.persistenceIntraDay
                 persistenceInsts = [persistenceInst, additionalDBToCheck]                
 
             # Check if there is any open security. If not unsubscribe
             continueSubscription = False
             for persistenceInst in persistenceInsts:
+                if persistenceInst == None:
+                    continue
                 dbDicts = persistenceInst.getDb([['SECURITY_ID', dbDict['SECURITY_ID']], ['POS_HOLD_STATUS', '!CLOSE']])
                 if len(dbDicts) > 0:
                     continueSubscription = True
@@ -367,29 +387,22 @@ class Workflow():
                 if status:
                     self.__parent.cmp[securityId]['LTP'] = ltp
                 if self.__parent.useWebsocket:
-                    self.__parent.websocketSubscription(actionType, 'LTP', 'EQUITY', dbDict['MKT'], securityId)
+                    self.__parent.websocketSubscription(actionType, securityId, dbDict['MKT'])
 
 
-    def __hasPendingOrders(self, dbDict, filter='ALL'):
-        openOrdersStateOpen = closeOrdersStateOpen = False
-        if filter == 'ALL' or filter == 'OPEN_ORDERS':
+    def __hasPendingOrders(self, dbDict, filter='OPEN'):
+        status = False
+        if filter == 'ALL' or filter == 'OPEN':
             for orderDict in dbDict['OPEN_ORDERS']:
                 if orderDict['ORDER_STATUS'] == 'OPEN':
-                    openOrdersStateOpen = True
+                    status = True
 
-        if filter == 'ALL' or filter == 'CLOSE_ORDERS':
+        if filter == 'ALL' or filter == 'CLOSE':
             for orderDict in dbDict['CLOSE_ORDERS']:
                 if orderDict['ORDER_STATUS'] == 'OPEN':
-                    closeOrdersStateOpen = True
+                    status = True
         
-        return openOrdersStateOpen or closeOrdersStateOpen
-
-
-    def __getSegment(self, strategy):
-        segment = 'EQUITY'
-        if 'OPTION' in strategy or 'FUTURE' in strategy:
-            segment = 'DERIVATIVE'
-        return segment
+        return status
 
 
     def __getQtyLimitPrice(self, dbDict):
@@ -423,10 +436,13 @@ class Workflow():
         return canOrder, qty, limitPrice, orderType
     
 
-    def __openPosition(self, persistenceInst, dbDict):
+    def __openPosition(self, persistenceInst, dbDict, recPriceChange=False):
         # If there is an pending open order in the system return
-        if self.__hasPendingOrders(dbDict, 'OPEN_ORDERS'):
-            return False, dbDict
+        if self.__hasPendingOrders(dbDict, filter='OPEN'):
+            if recPriceChange:
+                dbDict = self.__cancelAndGetPosStatus(dbDict)
+            else:
+                return False, dbDict
 
         canOrder, qty, limitPrice, orderType = self.__getQtyLimitPrice(dbDict)
         ltp = self.__parent.cmp[dbDict['SECURITY_ID']]['LTP']
@@ -469,7 +485,7 @@ class Workflow():
 
 
     def __closePosition(self, persistenceInst, dbDict, partial=False):
-        product = 'INTRADAY' if dbDict['STRATEGY'] == 'MARGIN' else 'DELIVERY'
+        product = dbDict['PRODUCT']
         dbDict = self.__getPosStatus(dbDict)
 
         if dbDict['POS_HOLD_STATUS'] == 'CLOSE':
@@ -496,7 +512,6 @@ class Workflow():
         trigger = 0
         closeQty = (abs(posHoldQty) + 1) // 2 if partial else posHoldQty
 
-        segment = self.__getSegment(dbDict['STRATEGY'])
         self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, product, orderType)
         orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, closeQty, buySell, orderType, limitPrice)
 
@@ -571,12 +586,12 @@ class Workflow():
         status, closeDbDictOrderNumArr = self.__waitForCloseOrdersToComplete(persistenceInst, closeDbDictOrderNumArr)
 
 
-    def __followOrders(self, persistenceInst, dbDict):
+    def __followOrders(self, persistenceInst, dbDict, hasRecPriceChanged=False):
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
             self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
             self.__updateRecStatus(persistenceInst, dbDict)
             if self.__parent.marketOpen:
-                self.__openPosition(persistenceInst, dbDict)
+                self.__openPosition(persistenceInst, dbDict, hasRecPriceChanged)
         elif dbDict['REC_STATUS'] in ['PARTIAL_CLOSE', 'CLOSE']:
             cancelOrder = True if dbDict['POS_HOLD_STATUS'] == 'OPEN' else False
             if self.__parent.marketOpen:
@@ -584,10 +599,10 @@ class Workflow():
 
 
     def __updateRec(self, persistenceInst, recDict, dbDict):
-        if self.__hasChanged(recDict, dbDict): 
-            dbDict['VISIBLE'] = 'VISIBLE'
+        status, hasRecPriceChanged, dbDict = self.__hasChanged(recDict, dbDict)
+        if status:
             status = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-            self.__followOrders(persistenceInst, dbDict)
+            self.__followOrders(persistenceInst, dbDict, hasRecPriceChanged)
         else:
             status = True
 
@@ -596,18 +611,17 @@ class Workflow():
 
     def __addNewRec(self, persistenceInst, recDict, amountPerOrder, holdQty=0):
         status = False
-        recDict['LATE_ADD'] = self.__isLateAdd(recDict)
         recDict['HIGH_REC_PRICE'] = float(recDict['HIGH_REC_PRICE'])
         recDict['LOW_REC_PRICE'] = float(recDict['LOW_REC_PRICE'])
         recDict['TARGET'] = float(recDict['TARGET'])
         recDict['STOP_LOSS'] = float(recDict['STOP_LOSS'])
 
-        if recDict['STRATEGY'] in ['OPTIONS', 'FUTURE']:
+        if recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
             qty = 1
         else:
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
             qty = max(int(amountPerOrder / avgPrice), 1)
-            margin = self.__parent.timesMargin if recDict['STRATEGY'] == 'MARGIN' else 1
+            margin = self.__parent.timesMargin if recDict['PRODUCT'] == 'MARGIN' else 1
             qty *= margin
 
         # Security ID of the stock 
@@ -616,7 +630,11 @@ class Workflow():
         recDict['HOLD_QTY'] = holdQty
         recDict['POS_HOLD_QTY'] = holdQty
         recDict['POS_HOLD_STATUS'] = 'OPEN'
-        recDict.update({'SECURITY_ID': recDict['SECURITY_ID'], 'QTY': qty, 'MAX_AMOUNT': amountPerOrder, 'OPEN_ORDERS': [], 'CLOSE_ORDERS': []})
+        recDict['QTY'] = qty
+        recDict['LATE_ADD'] = self.__isLateAdd(recDict)
+        recDict['VISIBLE'] = 'VISIBLE'
+        recDict['OPEN_ORDERS'] = []
+        recDict['CLOSE_ORDERS'] = []
 
         res = persistenceInst.insertDb(recDict, None)
         if res > 0:
@@ -631,9 +649,9 @@ class Workflow():
     def handleRec(self, recDict, amountPerOrder=None):
         self.__logger.info("Recommendation received %s", recDict)
         
-        if recDict['STRATEGY'] == 'MARGIN':
+        if recDict['PRODUCT'] == 'MARGIN':
             persistenceInst = self.__parent.persistenceIntraDay
-        elif recDict['STRATEGY'] in ['OPTIONS', 'FUTURE', 'FnO_HEDGE']:
+        elif recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
             persistenceInst = self.__parent.persistenceFnO
         else:
             persistenceInst = self.__parent.persistenceInv
@@ -667,10 +685,10 @@ class Workflow():
                 status = True
             
             firstLoop = False
-
         # Loop ends here
         #self.__lock.release()
 
+        recDict['STRATEGY'] = strategyList[0]
         return status
 
 
@@ -680,7 +698,9 @@ class Workflow():
         # Some orders may be still open --> cancel them and close position
         #self.__lock.acquire()
         persistenceInst = self.__parent.persistenceIntraDay
-        dbDicts = persistenceInst.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
+        if persistenceInst == None:
+            return
+        dbDicts = persistenceInst.getDb([['PRODUCT', 'MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
         if len(dbDicts) > 0:
             self.__logger.info("Closing all open intra-day positions")
             self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=True)
@@ -690,12 +710,11 @@ class Workflow():
         # Do nothing
 
 
-    def __executeEOMSeq(self, persistenceInst, dbDicts):
+    def __cancelAndGetPosStatus(self, dbDict):
         # Cancel any open orders and place orders to close open positions
-        for dbDict in dbDicts:
-            _, cancelDict = self.__cancelOrder(dbDict)
-            cancelDict = self.__getPosStatus(cancelDict)
-            persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+        _, cancelDict = self.__cancelOrder(dbDict)
+        cancelDict = self.__getPosStatus(cancelDict)
+        return cancelDict
 
 
     def closeAllOpenDeliveryOrders(self):
@@ -703,6 +722,8 @@ class Workflow():
         self.__logger.info("Closing all open delivery orders")
 
         for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceFnO]:
+            if persistenceInst == None:
+                continue
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
                 self.__updateRecStatus(persistenceInst, dbDict)
@@ -710,20 +731,23 @@ class Workflow():
             # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
             #self.__lock.acquire()
             # Some orders are still open --> cancel them and close position
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
-            # Cancel open order & Get final position
-            if len(dbDicts) > 0:
-                self.__executeEOMSeq(persistenceInst, dbDicts)
+            dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+            for dbDict in dbDicts:
+                # Cancel open order & Get final position
+                dbDict = self.__cancelAndGetPosStatus(dbDict)
+                persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
             #self.__lock.release()
 
 
     def closeAllHiddenRecs(self):
         # Get all open positions
         for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceFnO]:
+            if persistenceInst == None:
+                continue
             # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
             #self.__lock.acquire()
             # Some orders may be still open --> cancel them and close position
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
             if len(dbDicts) > 0:
                 self.__logger.info("Closing all hidden non-margin orders")
                 self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=True)
@@ -732,14 +756,15 @@ class Workflow():
 
     def refreshCMP(self):
         for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
+            if persistenceInst == None:
+                continue
             #self.__lock.acquire()
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             #self.__lock.release()
             for dbDict in dbDicts:
                 securityID = dbDict['SECURITY_ID']
                 if securityID not in self.__parent.cmp:
-                    securityType = 'EQUITY' if dbDict['STRATEGY'] not in ['OPTION', 'FUTURE'] else dbDict['STRATEGY']
-                    self.__parent.cmp[securityID] = {'LTP': -1, 'SECURITY_TYPE': securityType, 'MKT': dbDict['MKT']}
+                    self.__parent.cmp[securityID] = {'LTP': -1, 'SECURITY_TYPE': dbDict['PRODUCT'], 'MKT': dbDict['MKT']}
 
         for securityID in list(self.__parent.cmp):
             status, ltp = self.__parent.getLastTradedPrice(dbDict)
@@ -758,6 +783,8 @@ class Workflow():
             self.refreshCMP()
 
         for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
+            if persistenceInst == None:
+                continue
             #self.__lock.acquire()
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
@@ -814,6 +841,31 @@ class Workflow():
                 # Check if this is indeed true
 
 
+    def setVisibility(self, hiddenDict):
+        if hiddenDict['PRODUCT'] == 'EQUITY':
+            persistenceInst = self.__parent.persistenceInv
+        else:
+            persistenceInst = self.__parent.persistenceFnO
+
+        #self.__lock.acquire()
+        dbDicts = persistenceInst.getDb([['SOURCE', hiddenDict['SOURCE']], ['POS_HOLD_STATUS', '!CLOSE']])
+        for dbDict in dbDicts:
+            # Handle the visibility of Satvik's strategy
+            strategy = dbDict['STRATEGY']
+            strategy = re.sub(r'^SR-', '', strategy)
+            val = dbDict['SRC_SYMBOL'] + '-' + strategy + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
+            if val in hiddenDict['VISIBLE']:
+                visibility = 'VISIBLE'
+            else:
+                visibility = 'HIDDEN'
+
+            if dbDict['VISIBLE'] !=  visibility:
+                self.__logger.info("Changing visibility of dbDict %s from %s => %s", dbDict, dbDict['VISIBLE'], visibility)
+                dbDict['VISIBLE'] = visibility
+                persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                
+        #self.__lock.release()
+
+
 
 
     ############################################################################################################################################
@@ -843,75 +895,100 @@ class Workflow():
             except Exception as e:
                 self.__logger.error("Exception: %s. Trying %d more times. recDict = %s", e, retries, self.__numRetries, recDict)
                 retries -= 1
-
         return status
 
 
-    def setVisibility(self, hiddenDict):
-        for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
-            #self.__lock.acquire()
-            if hiddenDict['SOURCE'] == 'ICICI':
-                source = 'iCLICK-2-GAIN|iCLICK-2-INVEST'
-            else:
-                source = 'PAYTM'
+    def updateMismatchedVisibility(self, persistenceInst, source, product, baseURL):
+        visibilityDict = {'SOURCE': source, 'PRODUCT': product, 'VISIBLE': []}
 
-            dbDicts = persistenceInst.getDb([['SOURCE', source], ['POS_HOLD_STATUS', '!CLOSE']])
-            for dbDict in dbDicts:
-                # Handle the visibility of Satvik's strategy
-                strategy = dbDict['STRATEGY']
-                strategy = re.sub(r'^SR-', '', strategy)
-                val = dbDict['MKT_SYMBOL'] + '-' + strategy + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
-                if val in hiddenDict['VISIBLE']:
-                    visibility = 'VISIBLE'
-                else:
-                    visibility = 'HIDDEN'
+        # Find all strategyToCheck (MARGIN|OPTIONS|FUTURE) recommendations in DB that are not closed
+        dbDicts = persistenceInst.getDb([[dbDict['SOURCE'], source], ['REC_STATUS', '!CLOSE']])
 
-                if dbDict['VISIBLE'] !=  visibility:
-                    self.__logger.info("Changing visibility of dbDict %s from %s => %s", dbDict, dbDict['VISIBLE'], visibility)
-                    dbDict['VISIBLE'] = visibility
-                    persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                
-            #self.__lock.release()
+        # If they are not found in the recommendations on the web page --> close them 
+        for dbDict in dbDicts:
+            visible = self.__parent.isVisible(dbDict['SOURCE'], dbDict['STOCK'], dbDict['SRC_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'])
+            # Close the recommendation that was not found
+            if visible:
+                val = dbDict['SRC_SYMBOL'] + '-' + dbDict['STRATEGY'] + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
+                visibilityDict['VISIBLE'].append(val)
+                if (dbDict['VISIBLE'] != 'VISIBLE'):
+                    dbDict['VISIBLE'] = 'VISIBLE'
+                    persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                    self.__logger.info("Changing rec's visibility to visible => %s", dbDict)
+            elif (dbDict['VISIBLE'] == 'VISIBLE') or dbDict['REC_STATUS'] != 'CLOSE':
+                dbDict['VISIBLE'] = 'HIDDEN'
+                dbDict['REC_STATUS'] = 'CLOSE'
+                persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                self.__logger.info("Changing the visibility to hidden and closing the rec => %s", dbDict)
+        self.__callRestAPI(visibilityDict, baseURL, 'v1/visibility')
 
 
-    def sendNonAckedRecsFromDb(self, baseURL):
-        # Find open recommendations matching the condition in DB
-        for instrument in ["EQUITY", "MARGIN", "FnO"]:
-            if instrument == "EQUITY":
-                persistence = self.__parent.persistenceInv
-            elif instrument == "MARGIN":
-                persistence = self.__parent.persistenceIntraDay
-            elif instrument == "FnO":
-                persistence = self.__parent.persistenceFnO
+    def closeLeverageRecsNotVisible(self, persistenceInst, baseURL):
+        # Find all strategyToCheck (MARGIN|OPTIONS|FUTURE) recommendations in DB that are not closed
+        dbDicts = persistenceInst.getDb([['REC_STATUS', '!CLOSE']])
 
-            dbDicts = persistence.getDb([['ACK', 'NACK']])
-            self.__logger.debug("Find results: dbDict = %s", dbDicts)
+        # If they are not found in the recommendations on the web page --> close them 
+        for dbDict in dbDicts:
+            visible = self.__parent.isVisible(dbDict['SOURCE'], dbDict['STOCK'], dbDict['SRC_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'])
 
-            for dbDict in dbDicts:
+            # Close the recommendation that was not found
+            if not visible:
+                dbDict['REC_STATUS'] = 'CLOSE'
+                dbDict['VISIBLE'] = 'HIDDEN'
                 recDict = self.__prepareRecDict(dbDict)
                 status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
                 dbDict['ACK'] = 'ACK' if status else 'NACK'
-                persistence.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']], ['REC_STATUS', 'OPEN']])
 
 
-    def updateAndSendRec(self, persistenceInst, rowDict, baseURL, endPoint):
+    def sendNonAckedRecsFromDb(self, persistenceInst, baseURL):
+        # Find open recommendations matching the condition in DB
+        dbDicts = persistenceInst.getDb([['ACK', 'NACK']])
+        self.__logger.debug("Find results: dbDict = %s", dbDicts)
+
+        for dbDict in dbDicts:
+            recDict = self.__prepareRecDict(dbDict)
+            status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
+            dbDict['ACK'] = 'ACK' if status else 'NACK'
+            persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+
+
+    def recChanged(self, newDict, recStatus, highRecPrice, lowRecPrice, target, stoploss):
+        anyChange, newDict = self.__transitionRec(newDict, recStatus)
+
+        if newDict['HIGH_REC_PRICE'] != highRecPrice:
+            anyChange = True
+        if newDict['LOW_REC_PRICE'] != lowRecPrice:
+            anyChange = True
+        if newDict['TARGET'] != target:
+            anyChange = True
+        if newDict['STOP_LOSS'] != stoploss:
+            anyChange = True
+        return anyChange
+
+
+    def updateAndSendRec(self, persistenceInst, rowDict, baseURL, recChangeCheckOnce=False):
         isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
 
         # If no recommendation found in DB and if the current recommendation is not close, then
         # Insert the recommendation in DB
         if isInDb:
-            # If the recommendation has changed then
-            if self.__hasChanged(dbDict, rowDict):
-                recDict = self.__prepareRecDict(rowDict)
+            status = True
+            if recChangeCheckOnce:
+                status= self.recChanged(rowDict, dbDict['REC_STATUS'], dbDict['HIGH_REC_PRICE'], dbDict['LOW_REC_PRICE'], dbDict['TARGET'], dbDict['STOP_LOSS'])
+            if status:
+                # The recommendation has changed, else this function wont be called
                 self.__logger.info('Existing recommendation changed %s', rowDict)
-                status = self.__callRestAPI(recDict, baseURL, endPoint)
+                recDict = self.__prepareRecDict(rowDict)
+                status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
                 rowDict['ACK'] = 'ACK' if status else 'NACK'
                 persistenceInst.updateDb(rowDict, [['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-            #else: Nothing to be done
+                #else: Nothing to be done
         else:
             if(rowDict['REC_STATUS'] != 'CLOSE'):
-                recDict = self.__prepareRecDict(rowDict)
                 self.__logger.info('New Recommendation %s', rowDict)
-                status =self.__callRestAPI(recDict, baseURL, endPoint)
+                recDict = self.__prepareRecDict(rowDict)
+                status =self.__callRestAPI(recDict, baseURL, 'v1/rec')
                 rowDict['ACK'] = 'ACK' if status else 'NACK'
                 res = persistenceInst.insertDb(rowDict, None)
             else:

@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 
 def test_appIcici_0():
+    breakpoint()
     trade = AppIciciDirectBreezeBroker('./src/icici/iciciDirect.ini', dbInv='./src/icici/test/temp/testTrade.json', dbIntraDay='./src/icici/test/temp/testTradeIntraDay.json', dbFnO='./src/icici/test/temp/testTradeFnO.json')
     trade.persistenceInv.removeAll()
     trade.persistenceIntraDay.removeAll()
@@ -152,7 +153,6 @@ def test_appIcici_3(mock_BreezeConnect, mock_IciciDirectWeb):
                                                         }    
                                                          
     mock_BreezeConnect.return_value = mock_BreezeConnect
-
     trade = AppIciciDirectBreezeBroker('./src/icici/iciciDirect.ini', dbInv='./src/icici/test/temp/testTrade.json', dbIntraDay='./src/icici/test/temp/testTradeIntraDay.json', dbFnO='./src/icici/test/temp/testTradeFnO.json')
     trade.persistenceInv.removeAll()
     trade.persistenceIntraDay.removeAll()
@@ -198,7 +198,6 @@ def test_appIcici_3(mock_BreezeConnect, mock_IciciDirectWeb):
                                                             "Status": 200,
                                                             "Error": 'null'
                                                         }   
-
     trade.runBrokerPeriodicChecks()
 
     dbDicts = trade.persistenceIntraDay.getDb([])

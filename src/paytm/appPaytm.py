@@ -11,8 +11,8 @@ import threading
 from flask import Flask, request, jsonify
 
 sys.path.append('./src/common')
-from src.common.persistence import persistence
-from src.common.workflow import Workflow
+from persistence import persistence
+from workflow import Workflow
 
 sys.path.append('../pyPMClient')
 from payTmMoney import payTmMoney
@@ -25,21 +25,21 @@ class AppPaytmBroker():
             self.__config.read(configFile)
             self.__today = datetime.datetime.today()
 
-            if(self.__config['APP']['LOG_LEVEL'] == 'DEBUG'):
+            if(self.__config['LOGGING']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
-            elif(self.__config['APP']['LOG_LEVEL'] == 'INFO'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'INFO'):
                 level = logging.INFO
-            elif(self.__config['APP']['LOG_LEVEL'] == 'WARNING'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'WARNING'):
                 level = logging.WARNING
-            elif(self.__config['APP']['LOG_LEVEL'] == 'ERROR'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'ERROR'):
                 level = logging.ERROR
-            elif(self.__config['APP']['LOG_LEVEL'] == 'CRITICAL'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'CRITICAL'):
                 level = logging.CRITICAL
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
     
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'], mode='w')
+            formatter = logging.Formatter('%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s')
+            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'], mode='a')
             consoleHandler = logging.StreamHandler()
             fileHandler.setFormatter(formatter)
             consoleHandler.setFormatter(formatter)
@@ -53,27 +53,24 @@ class AppPaytmBroker():
                 self.__payTmMoney = payTmMoney(self.__logger, int(self.__config['PAYTM-MONEY']['NUM_RETRIES']))
 
             self.__workflow = Workflow(self, self.__logger)
-
-            if not dryRun:
-                self.__workflow.backup(dbInv)
-                self.__workflow.backup(dbIntraDay)
-                self.__workflow.backup(dbFnO)
+            backupPath = './src/paytm/db/backup'
 
             if dbInv == None:
                 dbInv = self.__config['DATABASE']['DB_EQUITY']
-            self.__persistenceInv = persistence(self.__logger, dbInv)
+            self.persistenceInv = persistence(self.__logger, dbInv) if self.__workflow.backup(dbInv, backupPath) else None
 
             if dbIntraDay == None:
                 dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
-            self.__persistenceIntraDay = persistence(self.__logger, dbIntraDay)
+            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay) if self.__workflow.backup(dbIntraDay, backupPath) else None
 
             if dbFnO == None:
                 dbFnO = self.__config['DATABASE']['DB_FNO']
-            self.__persistenceFnO = persistence(self.__logger, dbFnO)
+            self.persistenceFnO = persistence(self.__logger, dbFnO) if self.__workflow.backup(dbFnO, backupPath) else None
 
             dotenv.load_dotenv('./.env', override=True)
-            self.__amountPerOrder = int(os.environ.get("max_amount_per_order", '5000'))
-            self.__logger.info('Max Amount Per Order %d', self.__amountPerOrder)
+            self.amountPerOrder = int(os.environ.get("max_amount_per_order", '5000'))
+            self.__logger.info('Max Amount Per Order %d', self.amountPerOrder)
+            self.__core = [{'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
 
             self.squareOff = False
             self.marketOpen = False
@@ -84,11 +81,10 @@ class AppPaytmBroker():
             self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
             self.checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
             self.cmp = {}
-            self.core = [{'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
 
 
     def __getHoldingsData(self):
-        status, self.__holdings = self.__payTmMoney.getHoldingsData()
+        status, self.__holdings = self.__payTmMoney.user_holdings_data()
         # Remove quantities we consider to be a part of the core portfolio so that 
         # we don't need to repeatedly do this calculation. Hold - Core = Trade
         for holding in self.__holdings:
@@ -102,13 +98,10 @@ class AppPaytmBroker():
 
     def __moveOldPosToHolding(self):
         instruments = ['EQUITY', 'FnO']
-        for instrument in instruments:
-            if instrument == 'EQUITY':
-                persistenceInst = self.__persistenceInv
-            else:
-                persistenceInst = self.__persistenceFnO
-
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN']])
+        for persistenceInst in [self.persistenceInv, self.persistenceFnO]:
+            if persistenceInst == None:
+                continue
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
             for dbDict in dbDicts:
                 if dbDict['POS_QTY'] != 0:
                     posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
@@ -124,15 +117,12 @@ class AppPaytmBroker():
         dbHoldings = []
         instruments = ['EQUITY', 'FnO']
 
-        for instrument in instruments:
-            if instrument == 'EQUITY':
-                persistenceInst = self.__persistenceInv
-            else:
-                persistenceInst = self.__persistenceFnO
-
+        for persistenceInst in [self.persistenceInv, self.persistenceFnO]:
+            if persistenceInst == None:
+                continue
             # Consolidate DB holdings. The same stock could be mentioned across strategies and dates
             # Goal is to compare that total quantity of a stock matches actuals
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
             for dbDict in dbDicts:
                 if dbDict['POS_QTY'] != 0 or dbDict['POS_HOLD_QTY'] != 0:
                     found = False
@@ -191,7 +181,7 @@ class AppPaytmBroker():
 
 
     def setAmountPerOrder(self, maxAmount):
-        self.__amountPerOrder = int(maxAmount)
+        self.amountPerOrder = int(maxAmount)
         dotenv.set_key('./.env', "max_amount_per_order", str(maxAmount))
 
 
@@ -209,19 +199,15 @@ class AppPaytmBroker():
         valid_until_date = os.environ.get('valid_until_date', '')
         valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
         if valid_until_date.lower() != valid_today:
-            instruments = ['EQUITY', 'FnO']
-            for instrument in instruments:
-                if instrument == 'EQUITY':
-                    persistenceInst = self.__persistenceInv
-                else:
-                    persistenceInst = self.__persistenceFnO
-
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN']])
-            for dbDict in dbDicts:
-                if self.__hasPendingOrders(dbDict):
-                    status = False
-                    self.__logger.critical("Instrument = %s Stock = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
-                                            instrument, dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
+            for persistenceInst in [self.persistenceInv, self.persistenceFnO]:
+                if persistenceInst == None:
+                    continue
+                dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
+                for dbDict in dbDicts:
+                    if self.__hasPendingOrders(dbDict, filter='ALL'):
+                        status = False
+                        self.__logger.critical("Stock = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
+                                                dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
         assert status, 'Open orders check failed'
 
 
@@ -239,43 +225,41 @@ class AppPaytmBroker():
 
     def printMilestones(self):
         instruments = ['EQUITY', 'FnO']
-        for instrument in instruments:
-            if instrument == 'EQUITY':
-                persistenceInst = self.__persistenceInv
-            else:
-                persistenceInst = self.__persistenceFnO
+        for persistenceInst in [self.persistenceInv, self.persistenceFnO]:
+            if persistenceInst == None:
+                continue
 
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
             # Stocks that are hidden
             self.__logger.info("\n\nFollowing stocks are hidden and will be closed today")
             for dbDict in dbDicts:
                 self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', '!CLOSE']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', '!CLOSE']])
             # Stocks that will close today at the start
             self.__logger.info("\n\nFollowing stocks will close today")
             for dbDict in dbDicts:
                 self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
                     
             perc = 1
-            dbDicts = persistenceInst.getDb([['STRATEGY', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
             self.__logger.info("\n\nFollowing stocks are trading %.1f%% away from their target price", perc)
             # Stocks very close to target
             for dbDict in dbDicts:
-                ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
+                ltp = self.cmp[dbDict['SECURITY_ID']]['LTP']
                 if ltp != -1 and ltp * 1.01 >= dbDict['TARGET']:
                     self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                                    dbDict['REC_DATE'], dbDict['EXP_DATE'], self.cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
             self.__logger.info("\n\nFollowing stocks are trading %.1f%% away from their stop loss price", perc)
             # Stocks very close to stop-loss
             for dbDict in dbDicts:
-                ltp = self.__cmp[dbDict['SECURITY_ID']]['LTP']
+                ltp = self.cmp[dbDict['SECURITY_ID']]['LTP']
                 if ltp != -1 and dbDict['STOP_LOSS'] * 1.01 >= ltp:
                     self.__logger.info("STOCK %s STRATEGY %s REC_DATE %s EXP_DATE %s CMP %.2f TARGET %.2f STOP_LOSS %.2f POS_HOLD_QTY %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], 
-                                       dbDict['REC_DATE'], dbDict['EXP_DATE'], self.__cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
+                                       dbDict['REC_DATE'], dbDict['EXP_DATE'], self.cmp[dbDict['SECURITY_ID']]['LTP'], dbDict['TARGET'], dbDict['STOP_LOSS'], dbDict['POS_HOLD_QTY'])
 
 
     def getOrderBookUpdate(self):
@@ -288,10 +272,7 @@ class AppPaytmBroker():
 
 
     def getLastTradedPrice(self, dbDict):
-        if dbDict['STRATEGY'] in ['OPTION', 'FUTURE']:
-            productType = dbDict['STRATEGY']
-        else:
-            productType = 'EQUITY'
+        productType = dbDict['PRODUCT'] if dbDict['PRODUCT'] in ['OPTION', 'FUTURE'] else 'EQUITY'
         status, ltp = self.__payTmMoney.get_live_market_data(dbDict['SECURITY_ID'], productType, dbDict['MKT'])
         return status, ltp
 
@@ -302,13 +283,12 @@ class AppPaytmBroker():
     
 
     def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0):
-        if dbDict['STRATEGY'] in ['OPTION', 'FUTURE']:
-            product = dbDict['STRATEGY']
+        product = dbDict['PRODUCT']
+        if product in ['OPTION', 'FUTURE']:            
             segment = 'DERIVATIVE'
         else:
-            product = dbDict['STRATEGY'] if dbDict['STRATEGY'] == 'MARGIN' else 'CASH'
             segment = 'EQUITY'
-
+        
         status, message, orderNum = self.__payTmMoney.place_order(dbDict['MKT_SYMBOL'], dbDict['SECURITY_ID'], qty, buySell, product, orderType, limitPrice, dbDict['MKT'], segment)
         return status, message, orderNum
 
@@ -319,17 +299,18 @@ class AppPaytmBroker():
                 self.__workflow.closeAllOpenIntraDayPositions()
                 self.__workflow.closeAllHiddenRecs()
                     
-            self.__worker.reconcileRecs()
+            self.__workflow.reconcileRecs()
             if self.__dryRun:
                 return
 
         if not self.marketOpen:
-            self.__worker.reconcileRecs()
-            self.__worker.closeAllOpenDeliveryOrders()
+            self.__workflow.reconcileRecs()
+            self.__workflow.closeAllOpenDeliveryOrders()
 
 
-    def websocketSubscription(self, actionType, scriptId, exchange='NSE', scripType='EQUITY'):
+    def websocketSubscription(self, actionType, scriptId, exchange='NSE', product='CASH'):
         modeType='LTP'
+        scripType = 'EQUITY' if product in ['CASH', 'MARGIN'] else product
         preferences =   [{
                         "actionType": actionType,
                         "modeType": modeType,
@@ -350,7 +331,7 @@ class AppPaytmBroker():
             try:
                 self.cmp[securityId]['LTP'] = wsMessage['last_price']
             except Exception as e:
-                self.__logger.critical("securityId %s not in self.__cmp. Error: %s", securityId, e)
+                self.__logger.critical("securityId %s not in self.cmp. Error: %s", securityId, e)
 
 
     def setVisibility(self, hiddenDict):
@@ -358,32 +339,34 @@ class AppPaytmBroker():
 
 
     def handleRec(self, recDict):
-        self.__workflow.handleRec(recDict)
+        recDict['SECURITY_ID'] = re.sub(r'.*!', '', recDict['SECURITY_ID'])
+        status = self.__workflow.handleRec(recDict)
+        return status
 
 
-trade = AppPaytmBroker('./payTmMoney.ini', dryRun=False)
+    def on_paytm_sock_open(self):
+        self.useWebsocket = True
+        self.__logger.info("websocket connection with PayTm opened")
+        # Get the CMP once at the start. This initializes the self.cmp structure and the websocket subscription, if in use
+        self.refreshCMP()
 
 
-def on_paytm_sock_open():
-    trade.useWebsocket = True
-    trade._app__logger.info("websocket connection with PayTm opened")
-    # Get the CMP once at the start. This initializes the self.__cmp structure and the websocket subscription, if in use
-    trade.refreshCMP()
+    def on_paytm_sock_message(self, message):
+        self.setCMP(message)
+        #self.__logger.debug("websocket message %s", message)
 
 
-def on_paytm_sock_message(message):
-    trade.setCMP(message)
-    #trade._app__logger.debug("websocket message %s", message)
+    def on_paytm_sock_close(self, close_code, close_reason):
+        self.useWebsocket = False
+        self.__logger.error("on_paytm_sock_close: websocket connection with PayTm closed. code: %s. reason: %s", close_code, close_reason)
 
 
-def on_paytm_sock_close(close_code, close_reason):
-    trade.useWebsocket = False
-    trade._app__logger.error("on_paytm_sock_close: websocket connection with PayTm closed. code: %s. reason: %s", close_code, close_reason)
+    def on_paytm_sock_error(self, err):
+        self.useWebsocket = False
+        self.__logger.error("on_paytm_sock_error: websocket error %s", err)
 
 
-def on_paytm_sock_error(err):
-    trade.useWebsocket = False
-    trade._app__logger.error("on_paytm_sock_error: websocket error %s", err)
+trade = AppPaytmBroker('./src/paytm/payTmMoney.ini', dryRun=False)
 
 
 def paytmWebsocketConnectThread():
@@ -417,7 +400,7 @@ def max_amount_per_order():
 
 
 def flaskThread():
-    flask.run()
+    flask.run(host='127.0.0.1', port=5000)
 
 
 if __name__ == '__main__':
@@ -431,7 +414,7 @@ if __name__ == '__main__':
     trade.startupCheck()
 
     # Open and wait until the websocket w/ PayTm opens.
-    trade.openPaytmWebsocket(on_paytm_sock_open, on_paytm_sock_message, on_paytm_sock_close, on_paytm_sock_error)
+    trade.openPaytmWebsocket(trade.on_paytm_sock_open, trade.on_paytm_sock_message, trade.on_paytm_sock_close, trade.on_paytm_sock_error)
     paytmWebsocketConnectThr = threading.Thread(target=paytmWebsocketConnectThread)
     paytmWebsocketConnectThr.daemon = True
     paytmWebsocketConnectThr.start()
@@ -447,6 +430,8 @@ if __name__ == '__main__':
     
     squareOffMinus15 = False
     marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
+    # REMOVE
+    marketOpen = True    
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
         time.sleep(15)
@@ -454,7 +439,9 @@ if __name__ == '__main__':
     while marketOpen:
         # Start closing all intraday positions as soon as it is 3:00PM
         squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=15) 
-        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=30) 
+        marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=30)
+        # REMOVE
+        marketOpen = True
         trade.setMarketTimer(squareOffMinus15, marketOpen)
         trade.runPeriodicChecks()
         time.sleep(1)

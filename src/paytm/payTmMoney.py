@@ -106,7 +106,7 @@ class payTmMoney:
         return status, ltp
 
  
-    def getHoldingsData(self):
+    def user_holdings_data(self):
         resDictArr = []
         status = False
         retries = self.__retries
@@ -143,7 +143,7 @@ class payTmMoney:
         return status, resDictArr
 
 
-    def getSecurityPosition(self, securityId, product, openOrderType, exchange='NSE'):
+    def position_details(self, securityId, product, openOrderType, exchange='NSE'):
         product = 'I' if product == 'INTRADAY' else 'C'
         status = False
         pos = buyQty = sellQty = 0

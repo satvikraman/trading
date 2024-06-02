@@ -4,4 +4,4 @@
 credentials.json
 token.json
 *.zip
-db/backup/*
+**/db/backup/*.json

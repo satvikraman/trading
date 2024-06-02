@@ -3,6 +3,7 @@ import dotenv
 import os
 import datetime
 from dateutil.relativedelta import relativedelta
+import re
 import sys
 import threading
 import time
@@ -39,8 +40,8 @@ class AppIciciDirectBreezeBroker():
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
     
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s')
-            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'], mode='w')
+            formatter = logging.Formatter('%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s')
+            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'])
             consoleHandler = logging.StreamHandler()
             fileHandler.setFormatter(formatter)
             consoleHandler.setFormatter(formatter)
@@ -48,39 +49,55 @@ class AppIciciDirectBreezeBroker():
             logging.getLogger('').addHandler(fileHandler)
 
             self.__mapIcici = MapIciciToNseStock(self.__config['DATASET']['NSE_DATASET'], self.__config['DATASET']['BSE_DATASET'], self.__config['DATASET']['FNO_DATASET'])
-            self.__iciciDirectWeb = IciciDirectWeb(self.__logger, None, self.__config['DEFAULT']['BROWSER'], self.__config['DEFAULT']['CHROME_DRIVER'], self.__config['DEFAULT']['EDGE_DRIVER'])
             self.__iciciDirectBreeze = IciciDirectBreeze(self, self.__logger, self.__mapIcici, int(self.__config['APP']['NUM_RETRIES']))
-            
-            loginURL = self.__iciciDirectBreeze.getBreezeLoginURL()
-            sessionToken = self.__iciciDirectWeb.getBreezeSessionToken(loginURL, self.__config['APP']['USE_PUSHBULLET'], self.__config['APP']['USE_SPREADSHEET'], 
-                                                                       self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
-            status = self.__iciciDirectBreeze.setBreezeSessionKeysAndSubscribeFeeds(sessionToken, self.breezeTicks)
-            self.__iciciDirectWeb.closeBrowser()
-            if not status:
-                exit
+
+            dotenv.load_dotenv('.env', override=True)
+
+            brz_session_token_valid_until = os.environ.get('brz_session_token_valid_until', '')
+            today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
+            if brz_session_token_valid_until.upper() != today:
+                self.__iciciDirectWeb = IciciDirectWeb(self.__logger, None, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], None)
+                loginURL = self.__iciciDirectBreeze.getBreezeLoginURL()
+                sessionToken = self.__iciciDirectWeb.getBreezeSessionToken(loginURL, self.__config['APP']['USE_PUSHBULLET'], self.__config['APP']['USE_SPREADSHEET'], 
+                                                                            self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
+                status = self.__iciciDirectBreeze.setBreezeSessionKeysAndSubscribeFeeds(sessionToken, self.breezeTicks)
+                self.__iciciDirectWeb.closeBrowser()
+                if status:
+                    dotenv.set_key('./.env', "brz_session_token_valid_until", today)
+                    dotenv.set_key('./.env', "brz_session_token", sessionToken)
+                    self.useWebsocket = True
+                else:
+                    exit
+            else:
+                sessionToken = os.environ.get('brz_session_token', '')
+                status = self.__iciciDirectBreeze.setBreezeSessionKeysAndSubscribeFeeds(sessionToken, self.breezeTicks)
+                if status:
+                    self.useWebsocket = True
+                else:
+                    exit
             
             self.__workflow = Workflow(self, self.__logger)
 
             backupPath = './src/icici/db/backup'
             if dbInv == None:
-                dbInv = self.__config['DATABASE']['DB_EQUITY']
-            self.__workflow.backup(dbInv, backupPath)
-            self.persistenceInv = persistence(self.__logger, dbInv)
+                dbInv = self.__config['DATABASE']['DB_EQUITY_BREEZE']
+            self.persistenceInv = persistence(self.__logger, dbInv) if self.__workflow.backup(dbInv, backupPath) else None
 
             if dbIntraDay == None:
-                dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
-            self.__workflow.backup(dbIntraDay, backupPath)                
-            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay)
+                dbIntraDay = self.__config['DATABASE']['DB_INTRADAY_BREEZE']
+            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay) if self.__workflow.backup(dbIntraDay, backupPath) else None
 
             if dbFnO == None:
-                dbFnO = self.__config['DATABASE']['DB_FNO']
-            self.__workflow.backup(dbFnO, backupPath)                
-            self.persistenceFnO = persistence(self.__logger, dbFnO)
+                dbFnO = self.__config['DATABASE']['DB_FNO_BREEZE']
+            self.persistenceFnO = persistence(self.__logger, dbFnO) if self.__workflow.backup(dbFnO, backupPath) else None
 
-            self.__paytmBaseURL = 'http://127.0.0.1:'+str(self.__config['APP']['PATYM_PORT'])
-            
+            if '/test/' in dbInv or '/test/' in dbIntraDay or '/test/' in dbFnO:
+                self.useWebsocket = False
+
+            baseURL = re.sub(r'/$', '', self.__config['APP']['BASE_URL'])
+            self.__paytmBaseURL = baseURL + ':' + self.__config['APP']['PATYM_PORT'] + '/'            
+
             # Download the latest ICICI dataset once every day
-            dotenv.load_dotenv('.env', override=True)
             icici_dataset_valid_until_date = os.environ.get('icici_dataset_valid_until_date', '')
             today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
             if(icici_dataset_valid_until_date.upper() != today):
@@ -96,7 +113,6 @@ class AppIciciDirectBreezeBroker():
 
             self.squareOff = False
             self.marketOpen = False
-            self.useWebsocket = False
             self.timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
             self.createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
             self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
@@ -104,6 +120,8 @@ class AppIciciDirectBreezeBroker():
             self.checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
             self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
             self.cmp = {}
+
+            self.__workflow.refreshCMP()
 
 
     def strategiesToInvest(self, source, strategy):
@@ -113,7 +131,7 @@ class AppIciciDirectBreezeBroker():
         status = False
         if strategy in strategiesToInvest[source]:
             status = True
-        elif strategy not in allStrategies:
+        elif strategy not in allStrategies[source]:
             self.__logger.error("Strategy: %s was not found in allStrategies of: %s", strategy, source)
         return status
 
@@ -123,11 +141,12 @@ class AppIciciDirectBreezeBroker():
 
 
     def handleRec(self, recDict):
-        self.__workflow.handleRec(recDict)
+        status = self.__workflow.handleRec(recDict)
+        return status
 
 
     def runRecommenderPeriodicChecks(self):
-        self.__worker.sendNonAckedRecsFromDb(self.__paytmBaseURL)
+        self.__workflow.sendNonAckedRecsFromDb(self.persistenceInv, self.__paytmBaseURL)
 
 
     def runBrokerPeriodicChecks(self):
@@ -142,21 +161,13 @@ class AppIciciDirectBreezeBroker():
             self.__workflow.closeAllOpenDeliveryOrders()
 
 
-    def __getProduct(self, strategy):
-        if strategy in ['OPTION', 'FUTURE']:
-            product = strategy
-        else:
-            product = 'MARGIN' if strategy == 'MARGIN' else 'CASH'
-        return product       
-
-
     def findOrderStatusAndQtyInfo(self, dbDict, orderNum):
         status, qty, trdQty = self.__iciciDirectBreeze.get_order_detail(dbDict['MKT'], orderNum)
         return status, qty, trdQty
     
 
     def getLastTradedPrice(self, dbDict):
-        product = self.__getProduct(dbDict['STRATEGY'])
+        product = dbDict['PRODUCT']
         status, ltp = self.__iciciDirectBreeze.get_quotes(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, dbDict['EXP_DATE'])
         return status, ltp
 
@@ -167,45 +178,47 @@ class AppIciciDirectBreezeBroker():
 
 
     def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0):
-        product = self.__getProduct(dbDict['STRATEGY'])
-        if dbDict['STRATEGY'] == 'MARGIN' and dbDict['POS_QTY'] == 0:
+        product = dbDict['PRODUCT']
+        if dbDict['PRODUCT'] == 'MARGIN' and dbDict['POS_QTY'] == 0:
             status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
         else:
             status, message, orderNum = self.__iciciDirectBreeze.square_off(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
         return status, message, orderNum
 
 
-    def websocketSubscription(self, actionType, scriptId, exchange="NFO",scripType="DERIVATIVE"):
-        if actionType == 'ADD' :
-            self.__breeze.subscribe_feeds(scriptId)
-        else:
-            self.__breeze.unsubscribe_feeds(scriptId)
+    def websocketSubscription(self, actionType, scriptId, exchange="NFO", product="CASH"):
+        self.__iciciDirectBreeze.websocketSubscription(actionType, scriptId)
+
 
     def setCMP(self, ticks):
         try:
-            self.cmp[ticks['symbol']] = ticks['last']
+            self.cmp[ticks['symbol']]['LTP'] = ticks['last']
         except Exception as e:
             self.__logger.critical("securityId %s not in self.__cmp. Error: %s", ticks['symbol'], e)
 
 
     def getRecDictFromTick(self, ticks):
-        self.__logger.info("Ticks %s", ticks)
         tickDict = self.__iciciDirectBreeze.getRecDictFromTick(ticks)
         if tickDict != None:
-            if tickDict['STRATEGY'] in ['OPTION', 'FUTURE']:
+            if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                 self.__workflow.handleRec(tickDict)
-            elif tickDict['STRATEGY'] == 'FnO-HEDGE':
+            elif tickDict['PRODUCT'] == 'FnO-HEDGE':
                 self.__workflow.handleSpreadRec(tickDict)
-            elif tickDict['STRATEGY'] == 'MARGIN':
+            elif tickDict['PRODUCT'] == 'MARGIN':
                 self.__workflow.handleRec(tickDict)
             else:
                 self.__workflow.updateAndSendRec(self.persistenceInv, tickDict, self.__paytmBaseURL, 'v1/rec')
+
+
+    def setVisibility(self, hiddenDict):
+        self.__workflow.setVisibility(hiddenDict)
 
 
     def breezeTicks(self, ticks):
         if 'symbol' in ticks:
             self.setCMP(ticks)
         else:
+            self.__logger.info('TICKS: %s', ticks)
             self.getRecDictFromTick(ticks)
 
 flask = Flask(__name__)
@@ -235,7 +248,7 @@ def max_amount_per_order():
 
 
 def flaskThread():
-    flask.run()
+    flask.run(host='127.0.0.1', port=5001)
 
 
 if __name__ == '__main__':

@@ -31,23 +31,23 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 class IciciDirectWeb():
-    def __init__(self, logger, mapIcici, browser, chromeBrowser, edgeBrowser):
+    def __init__(self, logger, mapIcici, browser, chromeBrowser, edgeBrowser, iciciURL):
         self.__logger = logger
         self.__mapIcici = mapIcici
+        self.__iciciURL = iciciURL
+
         self.__iclick2GainDict = {}
         self.__iclick2InvestDict = {}
         self.__pushbullet = None
         self.__google = None
-
-        self.__browserEngine = browser
-        if self.__browserEngine == 'CHROME':
+        if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
             #options = webdriver.ChromeOptions()
             #options.add_argument(r'--user-data-dir=C:\\Users\\araman\\AppData\\Local\\Google\\Chrome\\User Data') #e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
             #options.add_argument(r'--profile-directory=Default')
             #self.__browser = webdriver.Chrome(self.__browserDriver, chrome_options=options)
             self.__browser = webdriver.Chrome(self.__browserDriver)
-        elif self.__browserEngine == 'EDGE':
+        elif browser == 'EDGE':
             self.__browserDriver = edgeBrowser
             self.__browser = webdriver.Edge(self.__browserDriver)
 
@@ -97,11 +97,12 @@ class IciciDirectWeb():
 
         return element if singular else elements
 
+
     def browseResearchToClick_2_Gain(self):
         status = False
         attempts = 0
         while not status and attempts < 3:
-            if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+            if self.__browser.current_url == self.__iciciURL:
                 self.loginICICIDirect()
 
             # Click on Research
@@ -121,7 +122,7 @@ class IciciDirectWeb():
         status = False
         attempts = 0
         while not status and attempts < 3:
-            if self.__browser.current_url == self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+            if self.__browser.current_url == self.__iciciURL:
                 self.loginICICIDirect()
 
             # Click on Research
@@ -232,7 +233,7 @@ class IciciDirectWeb():
             
             # Check if we have progressed
             time.sleep(5)
-            if self.__browser.current_url != self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL']:
+            if self.__browser.current_url != self.__iciciURL:
                 self.__google.writeToCell('A4', 'A4', [['Login successful']])
                 if relogin and self.__pushbullet != None:
                     self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Direct successful")                
@@ -246,11 +247,11 @@ class IciciDirectWeb():
                     self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login into ICICI Direct")                
 
 
-    def browseICICIDirect(self):
-        self.__browser.get(self.__config['ICICI-DIRECT']['ICICI_DIRECT_URL'])
+    def browseICICIDirect(self, usePushBullet, useSpreadSheet, spreadsheetID, sheetName):
+        self.__browser.get(self.__iciciURL)
 
         # Initialize PushBullet to enable mobile notifications
-        if self.__config['ICICI-DIRECT']['USE_PUSHBULLET'] == 'YES':
+        if usePushBullet == 'YES':
             if self.__pushbullet == None:
                 dotenv.load_dotenv('./.env', override=True)
                 pb_api_key = os.environ.get('pb_api_key', '')
@@ -259,10 +260,8 @@ class IciciDirectWeb():
                 self.__pushbulletDev = self.__pushbullet.getDevices()
 
             # Connect to Google sheets
-        if self.__config['ICICI-DIRECT']['USE_SPREADSHEET'] == 'YES':
+        if useSpreadSheet == 'YES':
             if self.__google == None:
-                spreadsheetID = self.__config['ICICI-DIRECT']['SPREADSHEET_ID']
-                sheetName = self.__config['ICICI-DIRECT']['SHEET_NAME']
                 self.__google = googleWorkspace(spreadsheetID, sheetName)
                 self.__google.authorize()
                 self.__google.buildSheets()
@@ -340,14 +339,14 @@ class IciciDirectWeb():
                 sessionToken = re.search(r'\d+.*$', self.__browser.current_url).group(0)
                 self.__google.writeToCell('A9', 'A9', [['Login successful']])
                 if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Direct successful")                
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Breeze successful")                
                 loginNotSuccessful = False
             else:
                 actions = ActionChains(self.__browser)
                 actions.send_keys(Keys.SPACE).perform()
                 self.__google.writeToCell('A9', 'A9', [['Unable to login']])
                 if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login into ICICI Direct")
+                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login into ICICI Breeze")
         
         return sessionToken
 
@@ -385,49 +384,6 @@ class IciciDirectWeb():
         self.__browser.quit()
     
 
-    def __getProduct(self, product):
-        productHash = {'OPTION': 'options', 'FUTURE': 'futures', 'DELIVERY': 'cash', 'INTRADAY': 'margin'}
-        return productHash[product]
-
-
-    def findOrderStatusAndQtyInfo(self, orderNo):
-        exchange = 'NFO'
-        res = self.__breeze.get_order_detail(exchange_code=exchange, order_id=orderNo)
-        status = True if res['Status'] == 200 else False
-        qty = trdQty = None
-        if status:
-            qty = res['Success']['quantity']
-            trdQty = qty - res['Success']['pending_quantity']
-        return status, qty, trdQty
-
-
-    def placeOrder(self, stk, product, action, orderTyp, qty, price):
-        exchange = 'NFO'
-        validity = 'day'
-        validityDate = datetime.datetime.now().isoformat()[:10] + 'T06:00:00.000Z'
-
-        stk = stk.split('-')
-        stkCode = stk[0]
-        expDate = stk[1]+'-'+stk[2]+'-'+stk[3]
-        strikePrice = stk[4]
-        right = 'call' if stk[5] == 'CE' else 'put'
-
-        expDate = datetime.datetime(expDate, "%d-%b-%Y").isoformat()[:10] + 'T06:00:00.000Z'
-        action = 'buy' if action == 'BUY' else 'sell'
-        orderTyp = 'limit' if orderTyp == 'LMT' else 'market'
-
-        res = self.__breeze(stock_code=stkCode, exchange_code=exchange, product=self.__getProduct(product), action=action, order_type=orderTyp, stoploss='0', 
-                            quantity=str(qty), price=str(price), validity=validity, validity_date=validityDate, disclosed_quantity='0', expiry_date=expDate, right=right, strike_price=strikePrice)
-        status = True if res['Status'] == 200 else False
-        message = res['Success']['message'] if status else res['Error']
-        orderNum = ''
-        if status:
-            orderNum = re.search(r'\d.*$', res['Success']['order_id'])
-            if orderNum != None:
-                orderNum = orderNum.group(0)
-        return status, message, orderNum
-
-
     def __halfCloseRec(self, updateAction1):
         status = False
         actions = ['Book Partial Profit']
@@ -448,117 +404,62 @@ class IciciDirectWeb():
         return status
     
 
-    def __suggestInvPeriod(self, strategy, iciciSymbol, recDate):
-        invPeriod = ''
-        if strategy == 'MARGIN':
-            invPeriod  = '0 DAYS'
-            expDate = recDate
-        elif strategy == 'OPTIONS':
-            spliticiciSymbol = iciciSymbol.split('-')
-            expiryDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
-            recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
-            expDate    = datetime.datetime.strptime(expiryDate, "%d-%b-%Y")
-            invPeriod  = (expDate - recDate).days
-            invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
-        elif strategy == 'FUTURE':
-            spliticiciSymbol = iciciSymbol.split('-')
-            expiryDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
-            recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
-            expDate    = datetime.datetime.strptime(expiryDate, "%d-%b-%Y")
-            invPeriod  = (expDate - recDate).days
-            invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
-        else:
+    def __suggestInvPeriodExpDate(self, strategy, iciciSymbol, recDate, invPeriod=None):
+        if invPeriod != None:
             invDays = invMonths = 0
-            if strategy == 'MOMENTUM PICK':
-                invPeriod  = '14 DAYS*'
-                invDays    = 14
-            elif strategy == 'QUANT PICKS':
-                invPeriod  = '3 MONTHS*'
-                invMonths  = 3
-            elif strategy == 'GLADIATOR STOCKS':
-                invPeriod  = '3 MONTHS*'
-                invMonths  = 3
-            else:
-                invPeriod  = '14 DAYS*'
-                invDays    = 14
-                self.__logger.error("Handle suggestion of investment period for this strategy %s", strategy)
+            if 'MONTH' in invPeriod:
+                invMonths = int(re.search(r'\d+', invPeriod).group(0))
+            elif 'DAY' in invPeriod:
+                invDays = int(re.search(r'\d+', invPeriod).group(0))
             expDate = datetime.datetime.strftime(datetime.datetime.strptime(recDate, '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
+        else:
+            if strategy == 'MARGIN':
+                invPeriod  = '0 DAYS'
+                expDate = recDate
+            elif strategy == 'OPTIONS':
+                spliticiciSymbol = iciciSymbol.split('-')
+                expDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
+                recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
+                expiryDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
+                invPeriod  = (expiryDate - recDate).days
+                invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
+            elif strategy == 'FUTURE':
+                spliticiciSymbol = iciciSymbol.split('-')
+                expDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
+                recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
+                expiryDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
+                invPeriod  = (expiryDate - recDate).days
+                invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
+            else:
+                invDays = invMonths = 0
+                if strategy == 'MOMENTUM PICK':
+                    invPeriod  = '14 DAYS*'
+                    invDays    = 14
+                elif strategy == 'QUANT PICKS':
+                    invPeriod  = '3 MONTHS*'
+                    invMonths  = 3
+                elif strategy == 'GLADIATOR STOCKS':
+                    invPeriod  = '3 MONTHS*'
+                    invMonths  = 3
+                else:
+                    invPeriod  = '14 DAYS*'
+                    invDays    = 14
+                    self.__logger.error("Handle suggestion of investment period for this strategy %s", strategy)
+                expDate = datetime.datetime.strftime(datetime.datetime.strptime(recDate, '%d-%b-%Y') + relativedelta(days=invDays, months=invMonths), '%d-%b-%Y')
         return invPeriod, expDate
 
 
-    def isVisible(self, source, iciciSymbol, strategy, buySell):
-        visible = False
+    def isVisible(self, source, stock, iciciSymbol, strategy, recDate, recTime):
+        visible = False        
         if source == 'iCLICK-2-GAIN':
-            key = (iciciSymbol, strategy, buySell)
+            key = (iciciSymbol, strategy, recDate, recTime)
             if key in self.__iclick2GainDict:
                 visible = self.__iclick2GainDict[key]['VISIBLE'] == 'VISIBLE'
         else:
-            key = (iciciSymbol, strategy, buySell)
+            key = (stock, strategy, recDate, recTime)            
             if key in self.__iclick2InvestDict:
                 visible = self.__iclick2InvestDict[key]['VISIBLE'] == 'VISIBLE'
         return visible
-
-
-    def prepareRecDict(self, rowDict):
-        if not self.strategiesToInvest(rowDict['SOURCE'], rowDict['STRATEGY'], rowDict['BUY_SELL']):
-            return None
-        
-        mandatoryKeys = ['STOCK', 'SOURCE', 'MKT_SYMBOL', 'SECURITY_ID', 'ICICI_SYMBOL', 'STRATEGY', 'BUY_SELL', 'REC_DATE', 'REC_STATUS', 'EXP_DATE', 'VISIBLE']
-        mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
-        mandatoryDervKeys = ['LOT_SIZE']
-        mandatoryLevKeys = ['REC_TIME']
-        
-        importantKeys = ['INV_PERIOD', 'MKT']
-        priceKeys = ['CMP', 'PART_PROFIT_PRICE', 'FINAL_PROFIT_PRICE', 'EXIT_PRICE']
-        
-        otherLevkeys = ['PART_PROFIT_PERC', 'UPDATE_ACTION_1', 'UPDATE_TIME_1', 'UPDATE_ACTION_2', 'UPDATE_TIME_2']
-        otherNonLevkeys = otherLevkeys + ['REC_TIME']
-        
-        recDict = {}
-
-        if rowDict['STRATEGY'] == 'OPTIONS':
-            keysToSend = mandatoryKeys + mandatoryPriceKeys + mandatoryDervKeys + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
-        elif rowDict['STRATEGY'] == 'MARGIN':
-            keysToSend = mandatoryKeys + mandatoryPriceKeys                     + mandatoryLevKeys + importantKeys + priceKeys + otherLevkeys
-        else:
-            keysToSend = mandatoryKeys + mandatoryPriceKeys                                        + importantKeys + priceKeys + otherNonLevkeys
-
-        for key in keysToSend:
-            if key in rowDict:
-                recDict[key] = rowDict[key]
-            elif key in mandatoryKeys + mandatoryPriceKeys + mandatoryDervKeys:
-                self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
-                return {}
-            elif rowDict['STRATEGY'] in ['OPTIONS', 'MARGIN'] and key in mandatoryLevKeys:
-                self.__logger.critical("Mandatory key %s missing. Sending empty dict", key)
-                return {}
-            elif key in importantKeys:
-                if key == 'INV_PERIOD':
-                    recDict['INV_PERIOD'], _ = self.__suggestInvPeriod(rowDict['STRATEGY'], rowDict['ICICI_SYMBOL'], rowDict['REC_DATE'])
-            elif key in priceKeys:
-                recDict[key] = 0
-            elif key in otherNonLevkeys:
-                recDict[key] = ''        
-        return recDict
-
-
-    def __mapCallActiontoRecStatus(self, tickDict, ticks):
-        callAction = ticks['call_action']
-        if re.search(r'Exit|Stoploss hit', callAction, re.IGNORECASE):
-            tickDict['EXIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
-            recStatus = 'CLOSE'
-        elif re.search(r'Book Profit', callAction, re.IGNORECASE):
-            tickDict['FINAL_PROFIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
-            recStatus = 'CLOSE'
-        elif re.search(r'Book part Profit', callAction, re.IGNORECASE):
-            tickDict['PART_PROFIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
-            recStatus = 'PARTIAL_CLOSE'
-        else:
-            recStatus = 'OPEN'
-        
-        tickDict['REC_STATUS'] = recStatus
-            
-        return tickDict
 
 
     def __formatStockCell(self, cell):
@@ -573,7 +474,7 @@ class IciciDirectWeb():
             # Remove trailing space from the stock name
             cellDict['STOCK'] = re.sub(r'\s+$', '', data[0])
             # Remove () from the ICICI Direct stock code
-            cellDict['ICICI_SYMBOL'] = re.sub(r'\(|\)|\s+', '', data[1])
+            cellDict['SRC_SYMBOL'] = re.sub(r'\(|\)|\s+', '', data[1])
             self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
 
@@ -592,7 +493,6 @@ class IciciDirectWeb():
         cellDict['STRATEGY'] = re.sub(r'^\W+', '', recDetails[0])
         cellDict['INV_PERIOD'] = recDetails[1]
         cellDict['BUY_SELL'] = recDetails[2]
-        status, cellDict['SECURITY_ID'], cellDict['ICICI_SYMBOL'], cellDict['MKT_SYMBOL'], cellDict['MKT'] = self.__mapIcici.mapICICSymbolToMktSymbol(cellDict['STRATEGY'], cellDict['STOCK'])
 
         self.__logger.debug('Generated dictionary %s', cellDict)
         return cellDict
@@ -703,40 +603,11 @@ class IciciDirectWeb():
         else:
             self.__logger.error("Haven't handled this remark: %s", cell)
         return resDict
-    
-
-    def getStrategiesToInvest(self, source, filter=None):
-        if source == 'iCLICK-2-GAIN':
-            allStrategies = ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS']
-            strategiesToInvest = ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']
-        elif source == 'iCLICK-2-INVEST':
-            allStrategies = ['CONVICTION IDEAS', 'EQUITY MODEL PORTFOLIO', 'GLADIATOR STOCKS', 'IDIRECT INSTINCT', 'INITIATING COVERAGE', 'MARGIN TRADING FUNDING (MTF)', 'MARKET STRATEGY', 
-                             'MOMENTUM PICK', 'QUANT DERIVATIVES PICK', 'RESULT UPDATE', 'SHUBH NIVESH', 'STOCK TALES', 'STOCKS ON THE MOVE', 'TECHNO FUNDA', 'TOP PICKS', 
-                             'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS']
-            strategiesToInvest = allStrategies
         
-        if filter == 'ALL':
-            strategiesToInvest = allStrategies
-
-        return strategiesToInvest, allStrategies
-
-    def strategiesToInvest(self, source, strategy, buySell='BUY'):
-        status = False
-        strategiesToInvest, allStrategies = self.getStrategiesToInvest(source)
-        if strategy in strategiesToInvest:
-            status = True
-            if strategy == "OPTIONS" and buySell == 'SELL':
-                status = False
-            if strategy == 'FUTURE':
-                status = False
-        elif strategy not in allStrategies:
-            self.__logger.error("Strategy: %s was not found in allStrategies of: %s", strategy, source)
-        return status
-    
 
     def __formatiCLICK_2_GAINTblExpandRowToDict(self, tblExpandRow):
         status = False
-        invPeriod = ''
+        invPeriod = None
 
         gridPullRight = tblExpandRow.find_elements_by_class_name("pull-right")
         if len(gridPullRight) == 1:
@@ -791,6 +662,8 @@ class IciciDirectWeb():
             rowDict['CLOSE_PRICE'] = rowDict['EXIT_PRICE']
         elif updateAction1 == 'SLTP':
             rowDict['CLOSE_PRICE'] = rowDict['STOP_LOSS']
+        
+        return rowDict
 
 
     def __getRecStatusfromGainRow(self, tblRow, tblRowCols):
@@ -813,68 +686,79 @@ class IciciDirectWeb():
         return recStatus, cell9Dict
 
 
+    def __recChanged(self, rowDictTmp, recStatus, highRecPrice, lowRecPrice, target, stoploss):
+        status = False
+        
+        status, rowDictTmp = self.__transitionRec(rowDictTmp, recStatus)
+        if status:
+            rowDictTmp = self.__extractRecCloseInfo(rowDictTmp)
+        if rowDictTmp['HIGH_REC_PRICE'] != highRecPrice:
+            rowDictTmp['HIGH_REC_PRICE'] = highRecPrice
+            status = True
+        if rowDictTmp['LOW_REC_PRICE'] != lowRecPrice:
+            rowDictTmp['LOW_REC_PRICE'] = lowRecPrice
+            status = True
+        if rowDictTmp['TARGET'] != target:
+            rowDictTmp['TARGET'] = target
+            status = True
+        if rowDictTmp['STOP_LOSS'] != stoploss:
+            rowDictTmp['STOP_LOSS'] = stoploss
+            status = True
+        return status, rowDictTmp
+
+
     def __formatiCLICK_2_GAINTblRowToDict(self, tblRow, tblRowCols, tblExpandRow):
         rowDict = None
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatStockCell(tblRowCols[0].text)
+        cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
+        key = (cell1Dict['SRC_SYMBOL'], cell1Dict['STRATEGY'], cell3Dict['REC_DATE'], cell3Dict['REC_TIME'])
 
-        if True:
-            cell3Dict = self.__formatRecommendationCell(tblRowCols[2].text)
-            recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols)
+        cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
+        cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
+        cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
+        cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
+        cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')        
+        recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols)
 
-            key = (cell1Dict['ICICI_SYMBOL'], cell1Dict['STRATEGY'], cell3Dict['REC_DATE'], cell3Dict['REC_TIME'], cell1Dict['BUY_SELL'])
-            if key not in self.__iclick2GainDict:
-                # Find the corresponding NSE symbol
-                if cell1Dict['STRATEGY'] in ['COMMODITY OPTIONS', 'COMMODITY FUTURES']:
-                    cell1Dict['MKT_SYMBOL'] = cell1Dict['ICICI_SYMBOL']
-                    cell1Dict['MKT'] = 'MCX'
-                    cell1Dict['SECURITY_ID'] = '' 
-                else:
-                    status, cell1Dict['SECURITY_ID'], cell1Dict['ICICI_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'] = self.__mapIcici.mapICICSymbolToMktSymbol(cell1Dict['STRATEGY'], cell1Dict['STOCK'], cell1Dict['ICICI_SYMBOL'])
-                    if not status:
-                        self.__logger.error("Unable to map STRATEGY=%s STOCK=%s ICICI_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
-                        return rowDict
-                self.__logger.debug('ICICI_SYMBOL = %s <=> MKT_SYMBOL = %s', cell1Dict['ICICI_SYMBOL'], cell1Dict['MKT_SYMBOL'])
-                cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
-                cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
-                cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
-                cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
-                cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
-                cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
-                
-                rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
-                
-                foundInvPeriod = False
-                if cell1Dict['STRATEGY'] in ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']:
-                    tblRowCols[0].click()
-                    foundInvPeriod, invPeriod = self.__formatiCLICK_2_GAINTblExpandRowToDict(tblExpandRow)
-                    tblRowCols[0].click()
-                if foundInvPeriod:
-                    rowDict['INV_PERIOD'] = invPeriod
-                else:
-                    rowDict['INV_PERIOD'], rowDict['EXP_DATE'] = self.__suggestInvPeriod(rowDict['STRATEGY'], cell1Dict['ICICI_SYMBOL'], cell3Dict['REC_DATE'])
-                
-                if self.__transitionRec(rowDict, recStatus):
-                    self.__extractRecCloseInfo(rowDict)
-                
-                rowDict['SOURCE'] = 'iCLICK-2-GAIN'
-                self.__iclick2GainDict[key] = {'DICT': rowDict, 'VISIBLE': 'VISIBLE'}
-            else: 
-                self.__iclick2GainDict[key]['VISIBLE'] = 'VISIBLE'
-                rowDictTmp = self.__iclick2GainDict[key]['DICT']
-                if recStatus != rowDictTmp['REC_STATUS']:
-                    cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
-                    cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
-                    cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
-                    cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
-                    rowDict = rowDictTmp
-                    rowDict.update(cell5Dict)
-                    rowDict.update(cell6Dict)
-                    rowDict.update(cell7Dict)
-                    rowDict.update(cell8Dict)
-                    rowDict.update(cell9Dict)
-                    if self.__transitionRec(rowDict, recStatus):
-                        self.__extractRecCloseInfo(rowDict)
+        if key not in self.__iclick2GainDict:
+            # Find the corresponding NSE symbol
+            if cell1Dict['STRATEGY'] in ['COMMODITY OPTIONS', 'COMMODITY FUTURES']:
+                cell1Dict['MKT_SYMBOL'] = cell1Dict['SRC_SYMBOL']
+                cell1Dict['MKT'] = 'MCX'
+                cell1Dict['SECURITY_ID'] = '' 
+                cell1Dict['PRODUCT'] = re.sub(r's$', '', cell1Dict['STRATEGY'], flags=re.IGNORECASE)
+            else:
+                status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'], iciciSymbol=cell1Dict['SRC_SYMBOL'])
+                if not status:
+                    self.__logger.error("Unable to map STRATEGY=%s STOCK=%s SRC_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
+                    return rowDict
+            self.__logger.debug('SRC_SYMBOL = %s <=> MKT_SYMBOL = %s', cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'])
+            cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
+            rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
+            
+            invPeriod = None
+            if cell1Dict['PRODUCT'] == 'CASH':
+                tblRowCols[0].click()
+                _, invPeriod = self.__formatiCLICK_2_GAINTblExpandRowToDict(tblExpandRow)
+                tblRowCols[0].click()
+
+            rowDict['INV_PERIOD'], rowDict['EXP_DATE'] = self.__suggestInvPeriodExpDate(rowDict['STRATEGY'], cell1Dict['SRC_SYMBOL'], cell3Dict['REC_DATE'], invPeriod)
+            
+            status, rowDict = self.__transitionRec(rowDict, recStatus)
+            if status:
+                self.__extractRecCloseInfo(rowDict)
+            
+            rowDict['SOURCE'] = 'iCLICK-2-GAIN'
+            self.__iclick2GainDict[key] = {'DICT': rowDict, 'VISIBLE': 'VISIBLE'}
+        else: 
+            self.__iclick2GainDict[key]['VISIBLE'] = 'VISIBLE'
+            rowDictTmp = self.__iclick2GainDict[key]['DICT']
+            status, rowDictTmp = self.__recChanged(rowDictTmp, recStatus, cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
+                                                   cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])
+            if status:            
+                rowDict = rowDictTmp
+
         return rowDict
 
 
@@ -883,27 +767,29 @@ class IciciDirectWeb():
         self.__logger.debug('==== Format Table Row To Dictionary ====')
         # Index 0 - Extract the stock name; NSE Symbol, Strategy, Buy or Sell
         cell1Dict = self.__formatInvStockCell(tblRowCols[0].text)
-        if self.strategiesToInvest('iCLICK-2-INVEST', cell1Dict['STRATEGY']):
-            key = (cell1Dict['ICICI_SYMBOL'], cell1Dict['STRATEGY'], cell1Dict['BUY_SELL'])
-            if key not in self.__iclick2InvestDict:
-                cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
-                cell3Dict = self.__formatInvRecommendationCell(tblRowCols[2].text)
-                cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
-                cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
-                cell7Dict = self.__formatInvRemarkCell(tblRowCols[6].text)
-                rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell7Dict}
-                rowDict['SOURCE'] = 'iCLICK-2-INVEST'
-                self.__iclick2InvestDict[key] = {'DICT': rowDict, 'VISIBLE': 'VISIBLE'}
-            else:
-                self.__iclick2InvestDict[key]['VISIBLE'] = 'VISIBLE'
-                rowDictTmp = self.__iclick2InvestDict[key]['DICT']
-                cell7Dict = self.__formatInvRemarkCell(tblRowCols[6].text)
-                if cell7Dict['REC_STATUS'] != rowDictTmp['REC_STATUS']:
-                    cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
-                    rowDict = rowDictTmp
-                    rowDict.update(cell5Dict)
-                    rowDict.update(cell7Dict)
-                    self.__logger.debug('Generated dictionary %s', rowDict)
+        cell3Dict = self.__formatInvRecommendationCell(tblRowCols[2].text)
+
+        cell4Dict = self.__formatPriceCell(tblRowCols[3].text, 'TARGET')
+        cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
+        cell7Dict = self.__formatInvRemarkCell(tblRowCols[6].text)
+        
+        key = (cell1Dict['STOCK'], cell1Dict['STRATEGY'], cell3Dict['REC_DATE'], cell3Dict['REC_TIME'])
+        if key not in self.__iclick2InvestDict:
+            status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], product = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'])
+            _, cell1Dict['EXP_DATE'] = self.__suggestInvPeriodExpDate(cell1Dict['STRATEGY'], cell1Dict['SRC_SYMBOL'], cell3Dict['REC_DATE'], cell1Dict['INV_PERIOD'])
+            cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
+            rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell7Dict}
+            rowDict['SOURCE'] = 'iCLICK-2-INVEST'
+            rowDict['PRODUCT'] = product
+            self.__iclick2InvestDict[key] = {'DICT': rowDict, 'VISIBLE': 'VISIBLE'}
+        else:
+            self.__iclick2InvestDict[key]['VISIBLE'] = 'VISIBLE'
+            rowDictTmp = self.__iclick2InvestDict[key]['DICT']
+            status, rowDictTmp = self.__recChanged(rowDictTmp, cell7Dict['REC_STATUS'], cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
+                                                   cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])
+            if status:
+                rowDict = rowDictTmp
+            self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
 
 

@@ -68,6 +68,16 @@ class IciciDirectBreeze():
         return stkCode, product, right, strikePrice, expiry
 
 
+    def websocketSubscription(self, actionType, scriptId):
+        if actionType == 'ADD' :
+            res = self.__breeze.subscribe_feeds(scriptId)
+        else:
+            res = self.__breeze.unsubscribe_feeds(scriptId)
+        self.__logger.info('result: %s', res)
+        status = 'success' in res['message']
+        return status
+    
+
     def get_order_detail(self, mkt, orderNum):
         retries = self.__retries
         status = False
@@ -75,12 +85,13 @@ class IciciDirectBreeze():
         while not status and retries >= 0:
             try:
                 res = self.__breeze.get_order_detail(exchange_code=mkt, order_id=orderNum)
+                self.__logger.info('result: %s', res)
                 if res['Status'] == 200:
                     status = True
                     qty = int(res['Success'][0]['quantity'])
-                    trdQty = qty - int(res['Success'][0]['pending_quantity'])
+                    trdQty = qty - int(res['Success'][0]['pending_quantity']) - int(res['Success'][0]['cancelled_quantity'])
                 else:
-                    retries -= 1
+                    status = True
                     message = res['Error']
                     self.__logger.error("get_order_detail : mkt: {} orderNum: {} Error: {}".format(mkt, orderNum, message))                    
             except Exception as e:
@@ -100,11 +111,12 @@ class IciciDirectBreeze():
         while not status and retries >= 0:
             try:
                 res = self.__breeze.get_quotes(stock_code=stkCode, exchange_code=mkt, product_type=product, right=right, strike_price=strikePrice, expiry_date=expiry)
+                self.__logger.info('result: %s', res)
                 if res['Status'] == 200:
                     status = True
                     ltp = res['Success'][0]['ltp']
                 else:
-                    retries -= 1
+                    status = True
                     message = res['Error']
                     self.__logger.error("get_quotes : iciciSymbol: {} mkt: {} product: {} expDate: {} Error: {}".format(iciciSymbol, mkt, product, expDate, message))
             except Exception as e:
@@ -114,20 +126,21 @@ class IciciDirectBreeze():
         return status, ltp
 
 
-    def cancel_order(self, orderNum, mkt):
+    def cancel_order(self, mkt, orderId):
         retries = self.__retries
         status = False
         message = orderNum = None
 
         while not status and retries >= 0:
             try:
-                res = self.__breeze.cancel_order(exchange_code=mkt, order_id=orderNum)
+                res = self.__breeze.cancel_order(exchange_code=mkt, order_id=orderId)
+                self.__logger.info('result: %s', res)
                 if res['Status'] == 200:
                     status = True
                     message = res['Success']['message']
                     orderNum = res['Success']['order_id']
                 else:
-                    retries -= 1
+                    status = True
                     message = res['Error']
                     self.__logger.error("cancel_order : orderNum: {} mkt: {} Error: {}".format(orderNum, mkt, message))
             except Exception as e:
@@ -157,12 +170,13 @@ class IciciDirectBreeze():
                 res = self.__breeze.place_order(stock_code=stkCode, exchange_code=mkt, product=product, action=buySell, order_type=orderType, 
                                                 quantity=qty, price=limitPrice, validity="day", 
                                                 expiry_date=expiry, right=right, strike_price=strikePrice)
+                self.__logger.info('result: %s', res)
                 if res['Status'] == 200:
                     status = True
                     message = res['Success']['order_id']
                     orderNum = re.search(r'\d+.*$', message).group(0)
                 else:
-                    retries -= 1
+                    status = True
                     message = res['Error']
                     self.__logger.error("place_order : iciciSymbol: {}, mkt: {}, product: {}, qty: {}, buySell: {}, orderType: {}, limitPrice: {}, expDate: {} Error: {}".format(iciciSymbol, mkt, product, qty, buySell, orderType, limitPrice, expDate, message))
             except Exception as e:
@@ -191,12 +205,13 @@ class IciciDirectBreeze():
             try:
                 res = self.__breeze.square_off(stock_code=stkCode, exchange_code=mkt, product=product, action=buySell, order_type=orderType, 
                                                quantity=qty, price=limitPrice, validity="day")
+                self.__logger.info('result: %s', res)
                 if res['Status'] == 200:
                     status = True
                     message = res['Success']['message']
                     orderNum = res['Success']['order_id']
                 else:
-                    retries -= 1
+                    status = True
                     message = res['Error']
                     self.__logger.error("place_order : iciciSymbol: {}, mkt: {}, product: {}, qty: {}, buySell: {}, orderType: {}, limitPrice: {}, expDate: {} Error: {}".format(iciciSymbol, mkt, product, qty, buySell, orderType, limitPrice, expDate, message))
             except Exception as e:
@@ -274,15 +289,32 @@ class IciciDirectBreeze():
         return invPeriod, expDate
 
 
+    def __mapCallActiontoRecStatus(self, tickDict, ticks):
+        callAction = ticks['call_action']
+        if re.search(r'Exit|Stoploss|SLTP|Square off', callAction, re.IGNORECASE):
+            tickDict['EXIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
+            recStatus = 'CLOSE'
+        elif re.search(r'Book Part Profit|Book Partial Profit|Book 50%', callAction, re.IGNORECASE):
+            tickDict['PART_PROFIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
+            recStatus = 'PARTIAL_CLOSE'
+        elif re.search(r'Book Profit|Book Full Profit|TGT|Target 1', callAction, re.IGNORECASE):
+            tickDict['FINAL_PROFIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
+            recStatus = 'CLOSE'
+        else:
+            recStatus = 'OPEN'
+        
+        tickDict['REC_STATUS'] = recStatus
+            
+        return tickDict
+
+
     def getRecDictFromTick(self, ticks):
         if 'stock_name' in ticks:
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'\(.*$', '', ticks['stock_name'])
             tickDict['SOURCE'] = 'BREEZE-iCLICK'
-            tickDict['STRATEGY'] = re.sub('OPTIONS', 'OPTION', ticks['stock_description'].upper())
-            if tickDict['STRATEGY'] in ['OPTION', 'FUTURE']:
-                return None
+            tickDict['STRATEGY'] = ticks['stock_description'].upper()
             tickDict['BUY_SELL'] = ticks['action_type'].upper()
             if not self.__parent.strategiesToInvest(tickDict['SOURCE'], tickDict['STRATEGY']):
                 return
@@ -300,8 +332,9 @@ class IciciDirectBreeze():
 
             iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
             iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
-            status, securityID, iciciSymbol, mktSymbol, mkt = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NSE')
+            status, securityID, iciciSymbol, mktSymbol, mkt, product = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NSE')
             # Mandatory keys
+            tickDict['PRODUCT'] = product
             tickDict['MKT_SYMBOL'] = mktSymbol
             tickDict['ICICI_SYMBOL'] = iciciSymbol
             tickDict['SECURITY_ID'] = securityID
@@ -324,6 +357,9 @@ class IciciDirectBreeze():
             tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
             tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
             tickDict['EXIT_PRICE'] = ticks['exit_price']
+            if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
+                return None
+
         else:
             return None
             tickDict = {}

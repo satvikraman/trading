@@ -5,7 +5,7 @@ from tinydb.operations import delete
 
 class persistence:
     def __init__(self, logger, db):
-        self.__logger = logger        
+        self.__logger = logger
         self.__db = TinyDB(db)
         self.__lock = threading.Lock()
         self.__query = Query()
