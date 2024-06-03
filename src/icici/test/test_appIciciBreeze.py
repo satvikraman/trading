@@ -4,10 +4,12 @@ import datetime
 import os
 import logging
 import pytest
-
+sys.path.append('./src/common')
+from mapIciciToNseStock import MapIciciToNseStock
 sys.path.append('./src/icici')
 from appIciciBreeze import AppIciciDirectBreezeBroker
-from unittest.mock import patch
+from iciciDirectBreeze import IciciDirectBreeze
+from unittest.mock import patch, Mock
 
 
 def test_appIcici_0():
@@ -503,3 +505,18 @@ def test_appIcici_5(mock_BreezeConnect, mock_IciciDirectWeb):
     assert dbDicts[0]['POS_HOLD_QTY'] == 0
     assert len(dbDicts[0]['OPEN_ORDERS']) == 1
     assert len(dbDicts[0]['CLOSE_ORDERS']) == 0
+
+def test_appIcici_6():
+    mockObj = Mock()
+    mapicici = MapIciciToNseStock('./dataset/NSEScripMaster.txt', './dataset/BSEScripMaster.txt', './dataset/FONSEScripMaster.txt')
+    iciciDirectBreezeObj = IciciDirectBreeze(mockObj, mockObj, mapicici, mockObj)
+    tickList = [{'stock_name': 'HINDUSTAN UNILEVER LIMITED(FUT-HINLEV-27-Jun-2024)Future-Buy', 'stock_code': 'HINLEV', 'action_type': 'buy', 'expiry_date': '27-Jun-2024', 'strike_price': '', 'option_type': '', 'stock_description': 'Future', 'recommended_price_and_date': '2358-2359,2024-05-31 10:18:20', 'recommended_price_from': '2358', 'recommended_price_to': '2359', 'recommended_date': '2024-05-31 10:18:20', 'target_price': '2400', 'sltp_price': '2338', 'part_profit_percentage': '0,0', 'profit_price': '0', 'exit_price': '0', 'recommended_update': '     SLTP:2024-05-31 14:21:57', 'iclick_status': 'closed', 'subscription_type': 'iclick_2_gain                 '}
+                {'strategy_date': '2024-06-03 09:43:39', 'modification_date': '2024-06-03 09:43:39', 'portfolio_id': '103420', 'call_action': 'Call Initiated', 'portfolio_name': 'Short Straddle', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-06 00:00:00', 'option_type': 'call', 'strike_price': '23100', 'action': 'sell', 'recommended_price_from': '305', 'recommended_price_to': '308', 'minimum_lot_quantity': '25', 'last_traded_price': '305.2', 'best_bid_price': '304.75', 'best_offer_price': '305.15', 'last_traded_quantity': '23123.25', 'target_price': '450', 'expected_profit_per_lot': '3475', 'stop_loss_price': '651', 'expected_loss_per_lot': '1550', 'total_margin': '151330.79', 'leg_no': '1', 'status': 'active'},
+                {'strategy_date': '2024-06-03 09:43:39', 'modification_date': '2024-06-03 09:43:39', 'portfolio_id': '103420', 'call_action': 'Call Initiated', 'portfolio_name': 'Short Straddle', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-06 00:00:00', 'option_type': 'put', 'strike_price': '23100', 'action': 'sell', 'recommended_price_from': '281', 'recommended_price_to': '284', 'minimum_lot_quantity': '25', 'last_traded_price': '276.3', 'best_bid_price': '276.05', 'best_offer_price': '276.55', 'last_traded_quantity': '23123.25', 'target_price': '450', 'expected_profit_per_lot': '3475', 'stop_loss_price': '651', 'expected_loss_per_lot': '1550', 'total_margin': '151330.79', 'leg_no': '2', 'status': 'active'},
+                {'strategy_date': '2024-05-27 14:11:20', 'modification_date': '2024-06-03 09:58:02', 'portfolio_id': '102472', 'call_action': 'Book Profit', 'portfolio_name': 'Index Strategy', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-06 00:00:00', 'option_type': 'put', 'strike_price': '22500', 'action': 'sell', 'recommended_price_from': '200', 'recommended_price_to': '205', 'minimum_lot_quantity': '25', 'last_traded_price': '88.75', 'best_bid_price': '88.3', 'best_offer_price': '88.55', 'last_traded_quantity': '23163.15', 'target_price': '300', 'expected_profit_per_lot': '6250', 'stop_loss_price': '1', 'expected_loss_per_lot': '1225', 'total_margin': '131646.09', 'leg_no': '1', 'status': 'active'},
+                {'strategy_date': '2024-05-27 14:11:20', 'modification_date': '2024-06-03 09:58:02', 'portfolio_id': '102472', 'call_action': 'Book Profit', 'portfolio_name': 'Index Strategy', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-06 00:00:00', 'option_type': 'call', 'strike_price': '23500', 'action': 'sell', 'recommended_price_from': '260', 'recommended_price_to': '265', 'minimum_lot_quantity': '25', 'last_traded_price': '162.35', 'best_bid_price': '162.05', 'best_offer_price': '162.35', 'last_traded_quantity': '23163.15', 'target_price': '300', 'expected_profit_per_lot': '6250', 'stop_loss_price': '1', 'expected_loss_per_lot': '1225', 'total_margin': '131646.09', 'leg_no': '2', 'status': 'active'},
+                {'strategy_date': '2024-05-27 14:11:20', 'modification_date': '2024-06-03 09:58:02', 'portfolio_id': '102472', 'call_action': 'Book Profit', 'portfolio_name': 'Index Strategy', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-27 00:00:00', 'option_type': 'put', 'strike_price': '22000', 'action': 'buy', 'recommended_price_from': '185', 'recommended_price_to': '190', 'minimum_lot_quantity': '25', 'last_traded_price': '101.7', 'best_bid_price': '101.45', 'best_offer_price': '101.75', 'last_traded_quantity': '23163.15', 'target_price': '300', 'expected_profit_per_lot': '6250', 'stop_loss_price': '1', 'expected_loss_per_lot': '1225', 'total_margin': '131646.09', 'leg_no': '3', 'status': 'active'},
+                {'strategy_date': '2024-05-27 14:11:20', 'modification_date': '2024-06-03 09:58:02', 'portfolio_id': '102472', 'call_action': 'Book Profit', 'portfolio_name': 'Index Strategy', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-27 00:00:00', 'option_type': 'call', 'strike_price': '24000', 'action': 'buy', 'recommended_price_from': '225', 'recommended_price_to': '230', 'minimum_lot_quantity': '25', 'last_traded_price': '179.35', 'best_bid_price': '179.4', 'best_offer_price': '179.45', 'last_traded_quantity': '23163.15', 'target_price': '300', 'expected_profit_per_lot': '6250', 'stop_loss_price': '1', 'expected_loss_per_lot': '1225', 'total_margin': '131646.09', 'leg_no': '4', 'status': 'active'}]
+    for ticks in tickList:    
+        recDict = iciciDirectBreezeObj.getRecDictFromTick(ticks)
+        print(recDict)

@@ -34,7 +34,7 @@ class IciciDirectBreeze():
         res = breeze.ws_connect()
         breeze.on_ticks = on_ticks
 
-        breeze.subscribe_feeds(get_order_notification=True)
+        #breeze.subscribe_feeds(get_order_notification=True)
         res = breeze.subscribe_feeds(stock_token = "i_click_2_gain")
         status1 = True if 'success' in res['message'] else False
         self.__logger.info(res['message'])
@@ -258,17 +258,17 @@ class IciciDirectBreeze():
             expDate = recDate
         elif strategy == 'OPTIONS':
             spliticiciSymbol = iciciSymbol.split('-')
-            expiryDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
+            expDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
             recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
-            expDate    = datetime.datetime.strptime(expiryDate, "%d-%b-%Y")
-            invPeriod  = (expDate - recDate).days
+            expiryDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
+            invPeriod  = (expiryDate - recDate).days
             invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
         elif strategy == 'FUTURE':
             spliticiciSymbol = iciciSymbol.split('-')
-            expiryDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
+            expDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
             recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
-            expDate    = datetime.datetime.strptime(expiryDate, "%d-%b-%Y")
-            invPeriod  = (expDate - recDate).days
+            expiryDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
+            invPeriod  = (expiryDate - recDate).days
             invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
         else:
             invDays = invMonths = 0
@@ -289,16 +289,16 @@ class IciciDirectBreeze():
         return invPeriod, expDate
 
 
-    def __mapCallActiontoRecStatus(self, tickDict, ticks):
+    def __mapFnOCallActionToRecStatus(self, tickDict, ticks):
         callAction = ticks['call_action']
         if re.search(r'Exit|Stoploss|SLTP|Square off', callAction, re.IGNORECASE):
-            tickDict['EXIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
+            tickDict['EXIT_PRICE'] = float(ticks['last_traded_price'])
             recStatus = 'CLOSE'
         elif re.search(r'Book Part Profit|Book Partial Profit|Book 50%', callAction, re.IGNORECASE):
-            tickDict['PART_PROFIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
-            recStatus = 'PARTIAL_CLOSE'
+            tickDict['PART_PROFIT_PRICE'] = float(ticks['last_traded_price'])
+            recStatus = 'CLOSE'
         elif re.search(r'Book Profit|Book Full Profit|TGT|Target 1', callAction, re.IGNORECASE):
-            tickDict['FINAL_PROFIT_PRICE'] = self.__convPriceToFloat(ticks['last_traded_price'])
+            tickDict['FINAL_PROFIT_PRICE'] = float(ticks['last_traded_price'])
             recStatus = 'CLOSE'
         else:
             recStatus = 'OPEN'
@@ -317,7 +317,7 @@ class IciciDirectBreeze():
             tickDict['STRATEGY'] = ticks['stock_description'].upper()
             tickDict['BUY_SELL'] = ticks['action_type'].upper()
             if not self.__parent.strategiesToInvest(tickDict['SOURCE'], tickDict['STRATEGY']):
-                return
+                return None
 
             recDateTime = ticks['recommended_date'].split(' ')
             tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
@@ -333,6 +333,8 @@ class IciciDirectBreeze():
             iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
             iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
             status, securityID, iciciSymbol, mktSymbol, mkt, product = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NSE')
+            if not status:
+                return None
             # Mandatory keys
             tickDict['PRODUCT'] = product
             tickDict['MKT_SYMBOL'] = mktSymbol
@@ -350,21 +352,14 @@ class IciciDirectBreeze():
             # Mandatory leverage keys
             tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
 
-            # Other leverage keys
-            tickDict['INV_PERIOD'] = invPeriod
-
             # Price keys
             tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
             tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
             tickDict['EXIT_PRICE'] = ticks['exit_price']
-            if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                return None
-
         else:
-            return None
             tickDict = {}
             # Mandatory keys
-            tickDict['STOCK'] = ticks['underlying']
+            tickDict['STOCK'] = re.sub(r'^\s+|\s+$', '', ticks['underlying'])
             tickDict['SOURCE'] = 'BREEZE-FnO'
             if 'Spread' in ticks['portfolio_name']:
                 tickDict['STRATEGY'] = 'FnO_HEDGE'
@@ -373,12 +368,12 @@ class IciciDirectBreeze():
             else:
                 tickDict['STRATEGY'] = re.sub('futures', 'future', ticks['product_type'], re.IGNORECASE).upper()
             tickDict['BUY_SELL'] = ticks['action'].upper()
-            if not self.strategiesToInvest('iCLICK-2-GAIN', tickDict['STRATEGY'], tickDict['BUY_SELL']):
-                return
+            #if not self.__parent.strategiesToInvest(tickDict['SOURCE'], tickDict['STRATEGY']):
+            #    return None
 
             recDateTime = ticks['strategy_date'].split(' ')
             tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
-            tickDict = self.__mapCallActiontoRecStatus(tickDict, ticks)
+            tickDict = self.__mapFnOCallActionToRecStatus(tickDict, ticks)
             tickDict['UPDATE_ACTION_1'] = ticks['call_action']
             tickDict['UPDATE_TIME_1'] = ticks['modification_date']
 
@@ -391,15 +386,17 @@ class IciciDirectBreeze():
 
             if tickDict['STRATEGY'] == 'OPTIONS':
                 iciciSymbol = 'OPT' + '-' + tickDict['STOCK'] + '-' + tickDict['EXP_DATE']
-                iciciSymbol += ticks['strike_price']
+                iciciSymbol = iciciSymbol + '-' + ticks['strike_price'] + '-'
                 iciciSymbol += 'CE' if ticks['option_type'] == 'call' else 'PE'
             else:
                 iciciSymbol = 'FUT' + '-' + tickDict['STOCK'] + '-' + tickDict['EXP_DATE']
-            
-            invPeriod, tickDict['EXP_DATE'] = self.__suggestInvPeriod(tickDict['STRATEGY'], iciciSymbol, tickDict['REC_DATE'])
-            status, securityID, iciciSymbol, mktSymbol, mkt = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NFO')
+
+            status, securityID, iciciSymbol, mktSymbol, mkt, product = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NFO')
+            if not status:
+                return None
             
             # Mandatory keys
+            tickDict['PRODUCT'] = product
             tickDict['MKT_SYMBOL'] = mktSymbol
             tickDict['ICICI_SYMBOL'] = iciciSymbol
             tickDict['SECURITY_ID'] = securityID
@@ -414,8 +411,5 @@ class IciciDirectBreeze():
             
             # Mandatory leverage keys
             tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
-
-            # Other leverage keys
-            tickDict['INV_PERIOD'] = invPeriod
 
         return tickDict

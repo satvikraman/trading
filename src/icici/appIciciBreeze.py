@@ -111,6 +111,10 @@ class AppIciciDirectBreezeBroker():
                 except Exception as e:
                     self.__logger.critical(e)
 
+                # Clean the intra day dictionary once at the start of the day
+                if self.persistenceIntraDay != None:
+                    self.persistenceIntraDay.removeAll()
+
             self.squareOff = False
             self.marketOpen = False
             self.timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
@@ -126,7 +130,7 @@ class AppIciciDirectBreezeBroker():
 
     def strategiesToInvest(self, source, strategy):
         allStrategies = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS']}
-        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN']}
+        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE']}
 
         status = False
         if strategy in strategiesToInvest[source]:
@@ -200,15 +204,13 @@ class AppIciciDirectBreezeBroker():
         tickDict = self.__iciciDirectBreeze.getRecDictFromTick(ticks)
         if tickDict != None:
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                self.__workflow.handleRec(tickDict)
-            elif tickDict['PRODUCT'] == 'FnO-HEDGE':
-                self.__workflow.handleSpreadRec(tickDict)
+                pass
+                #self.__workflow.handleRec(tickDict)
             elif tickDict['PRODUCT'] == 'MARGIN':
                 self.__logger.info('TICKS: %s', ticks)
                 self.__workflow.handleRec(tickDict)
             else:
-                pass
-                #self.__workflow.updateAndSendRec(self.persistenceInv, tickDict, self.__paytmBaseURL, 'v1/rec')
+                self.__workflow.updateAndSendRec(self.persistenceInv, tickDict, self.__paytmBaseURL, 'v1/rec')
 
 
     def setVisibility(self, hiddenDict):
