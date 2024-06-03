@@ -624,8 +624,6 @@ class Workflow():
             qty = max(int(amountPerOrder / avgPrice), 1)
             margin = self.__parent.timesMargin if recDict['PRODUCT'] == 'MARGIN' else 1
             qty *= margin
-            if recDict['PRODUCT'] == 'MARGIN':
-                qty = 1
 
         # Security ID of the stock 
         recDict['POS_QTY'] = 0
