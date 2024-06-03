@@ -204,7 +204,7 @@ class AppPaytmBroker():
                     continue
                 dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
                 for dbDict in dbDicts:
-                    if self.__hasPendingOrders(dbDict, filter='ALL'):
+                    if self.__workflow.hasPendingOrders(dbDict, filter='ALL'):
                         status = False
                         self.__logger.critical("Stock = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
                                                 dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
@@ -345,10 +345,10 @@ class AppPaytmBroker():
 
 
     def on_paytm_sock_open(self):
-        self.useWebsocket = True
-        self.__logger.info("websocket connection with PayTm opened")
         # Get the CMP once at the start. This initializes the self.cmp structure and the websocket subscription, if in use
         self.refreshCMP()
+        self.useWebsocket = True
+        self.__logger.info("websocket connection with PayTm opened")
 
 
     def on_paytm_sock_message(self, message):
@@ -430,8 +430,6 @@ if __name__ == '__main__':
     
     squareOffMinus15 = False
     marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
-    # REMOVE
-    marketOpen = True    
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
         time.sleep(15)
@@ -440,8 +438,6 @@ if __name__ == '__main__':
         # Start closing all intraday positions as soon as it is 3:00PM
         squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=15) 
         marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=30)
-        # REMOVE
-        marketOpen = True
         trade.setMarketTimer(squareOffMinus15, marketOpen)
         trade.runPeriodicChecks()
         time.sleep(1)

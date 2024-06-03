@@ -40,7 +40,7 @@ class AppIcici():
             self.__logger.setLevel(level)
     
             formatter = logging.Formatter('%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s')
-            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'])
+            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE_WEB'])
             consoleHandler = logging.StreamHandler()
             fileHandler.setFormatter(formatter)
             consoleHandler.setFormatter(formatter)
@@ -166,9 +166,11 @@ class AppIcici():
             self.__iciciDirectWeb.scrapeiClick2Gain()    
             for gainRecDict in self.__iciciDirectWeb.getNextiCLICK_2_GAINTblRow():
                 if gainRecDict['PRODUCT'] == 'MARGIN':
-                    self.__workflow.updateAndSendRec(self.persistenceIntraDay, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheckOnce)
+                    pass
+                    #self.__workflow.updateAndSendRec(self.persistenceIntraDay, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheckOnce)
                 elif gainRecDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                    self.__workflow.updateAndSendRec(self.persistenceFnO, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheckOnce)
+                    pass
+                    #self.__workflow.updateAndSendRec(self.persistenceFnO, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheckOnce)
                 elif gainRecDict['PRODUCT'] == 'CASH':
                     self.__workflow.updateAndSendRec(self.persistenceInv, gainRecDict, self.__paytmBaseURL, recChangeCheckOnce)
                 elif gainRecDict['PRODUCT'] in ['COMMODITY FUTURE', 'COMMODITY OPTION']:

@@ -1,6 +1,7 @@
 import datetime
 from dateutil.relativedelta import relativedelta
 import os
+import threading
 import time
 import re
 import requests
@@ -12,7 +13,7 @@ class Workflow():
         self.__parent = parent
         self.__logger = logger
         self.__today = datetime.datetime.today()
-        #self.__lock = threading.Lock()
+        self.__lock = threading.Lock()
 
 
     def backup(self, db, backupPath, suffix=''):
@@ -390,7 +391,7 @@ class Workflow():
                     self.__parent.websocketSubscription(actionType, securityId, dbDict['MKT'])
 
 
-    def __hasPendingOrders(self, dbDict, filter='OPEN'):
+    def hasPendingOrders(self, dbDict, filter='OPEN'):
         status = False
         if filter == 'ALL' or filter == 'OPEN':
             for orderDict in dbDict['OPEN_ORDERS']:
@@ -438,7 +439,7 @@ class Workflow():
 
     def __openPosition(self, persistenceInst, dbDict, recPriceChange=False):
         # If there is an pending open order in the system return
-        if self.__hasPendingOrders(dbDict, filter='OPEN'):
+        if self.hasPendingOrders(dbDict, filter='OPEN'):
             if recPriceChange:
                 dbDict = self.__cancelAndGetPosStatus(dbDict)
             else:
@@ -623,6 +624,8 @@ class Workflow():
             qty = max(int(amountPerOrder / avgPrice), 1)
             margin = self.__parent.timesMargin if recDict['PRODUCT'] == 'MARGIN' else 1
             qty *= margin
+            if recDict['PRODUCT'] == 'MARGIN':
+                qty = 1
 
         # Security ID of the stock 
         recDict['POS_QTY'] = 0
@@ -662,7 +665,7 @@ class Workflow():
         # Create a list of strategies to loop over including the one for Satvik        
         strategyList = [recDict['STRATEGY'], 'SR-' + recDict['STRATEGY']]
 
-        #self.__lock.acquire()
+        self.__lock.acquire()
         if amountPerOrder == None:
             amountPerOrder = self.__parent.amountPerOrder
 
@@ -686,7 +689,7 @@ class Workflow():
             
             firstLoop = False
         # Loop ends here
-        #self.__lock.release()
+        self.__lock.release()
 
         recDict['STRATEGY'] = strategyList[0]
         return status
@@ -696,7 +699,7 @@ class Workflow():
         # Get all open positions
         # Check for all orders in 'OPEN' state
         # Some orders may be still open --> cancel them and close position
-        #self.__lock.acquire()
+        self.__lock.acquire()
         persistenceInst = self.__parent.persistenceIntraDay
         if persistenceInst == None:
             return
@@ -704,7 +707,7 @@ class Workflow():
         if len(dbDicts) > 0:
             self.__logger.info("Closing all open intra-day positions")
             self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=True)
-        #self.__lock.release()
+        self.__lock.release()
 
         # Check for all orders in 'CLOSE' state.
         # Do nothing
@@ -729,14 +732,14 @@ class Workflow():
                 self.__updateRecStatus(persistenceInst, dbDict)
 
             # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
-            #self.__lock.acquire()
+            self.__lock.acquire()
             # Some orders are still open --> cancel them and close position
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
                 # Cancel open order & Get final position
                 dbDict = self.__cancelAndGetPosStatus(dbDict)
                 persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-            #self.__lock.release()
+            self.__lock.release()
 
 
     def closeAllHiddenRecs(self):
@@ -745,35 +748,33 @@ class Workflow():
             if persistenceInst == None:
                 continue
             # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
-            #self.__lock.acquire()
+            self.__lock.acquire()
             # Some orders may be still open --> cancel them and close position
             dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
             if len(dbDicts) > 0:
                 self.__logger.info("Closing all hidden non-margin orders")
                 self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=True)
-            #self.__lock.release()
+            self.__lock.release()
 
 
     def refreshCMP(self):
         for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
             if persistenceInst == None:
                 continue
-            #self.__lock.acquire()
+            self.__lock.acquire()
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
-            #self.__lock.release()
+            self.__lock.release()
             for dbDict in dbDicts:
                 securityID = dbDict['SECURITY_ID']
                 if securityID not in self.__parent.cmp:
                     self.__parent.cmp[securityID] = {'LTP': -1, 'SECURITY_TYPE': dbDict['PRODUCT'], 'MKT': dbDict['MKT']}
-
-        for securityID in list(self.__parent.cmp):
-            status, ltp = self.__parent.getLastTradedPrice(dbDict)
-            if status:
-                self.__parent.cmp[securityID]['LTP'] = ltp
-            
-            if self.__parent.useWebsocket:
-                self.__parent.websocketSubscription('ADD', securityID, 'NSE', self.__parent.cmp[securityID]['SECURITY_TYPE'])
-            time.sleep(0.01)
+                    status, ltp = self.__parent.getLastTradedPrice(dbDict)
+                    if status:
+                        self.__parent.cmp[securityID]['LTP'] = ltp
+                    
+                    if self.__parent.useWebsocket:
+                        self.__parent.websocketSubscription('ADD', securityID, 'NSE', self.__parent.cmp[securityID]['SECURITY_TYPE'])
+                    time.sleep(0.01)
 
 
     def reconcileRecs(self):
@@ -785,21 +786,21 @@ class Workflow():
         for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
             if persistenceInst == None:
                 continue
-            #self.__lock.acquire()
+            self.__lock.acquire()
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
                 self.__updateRecStatus(persistenceInst, dbDict)
-            #self.__lock.release()
+            self.__lock.release()
 
             if self.__parent.marketOpen:
                 # If recommendation (margin or otherwise) == 'OPEN' and order == 'OPEN'
                 # Check if more positions can be opened based on the CMP found above
                 self.__logger.debug("Trying to open more positions")
-                #self.__lock.acquire()
+                self.__lock.acquire()
                 dbDicts = persistenceInst.getDb([['REC_STATUS', 'OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
                 for dbDict in dbDicts:
                     self.__openPosition(persistenceInst, dbDict)
-                #self.__lock.release()
+                self.__lock.release()
 
                 # If recommendation == 'OPEN' and order == 'POSITION'
                 # Do nothing. All orders have been placed. Wait for the recommendation to close
@@ -812,17 +813,17 @@ class Workflow():
 
                 # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'OPEN'
                 # Cancel open orders. Exit open (partial) position immediately
-                #self.__lock.acquire()
+                self.__lock.acquire()
                 dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'OPEN']])
                 self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=True, forceCloseRec=False)
-                #self.__lock.release()
+                self.__lock.release()
 
                 # If recommendation == 'PARTIAL_CLOSE|CLOSE' == '!OPEN' and order == 'POSITION'
                 # Exit (partial) position immediately
-                #self.__lock.acquire()
+                self.__lock.acquire()
                 dbDicts = persistenceInst.getDb([['REC_STATUS', '!OPEN'], ['POS_HOLD_STATUS', 'POSITION']])
                 self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
-                #self.__lock.release()
+                self.__lock.release()
 
                 # If recommendation == 'PARTIAL_CLOSE' and order == 'PARTIAL_CLOSE'
                 # Do nothing. We had to sell half of the position and we have already done that
@@ -832,10 +833,10 @@ class Workflow():
 
                 # If recommendation == 'CLOSE' and order == 'PARTIAL_CLOSE'
                 # Exit positions immediately
-                #self.__lock.acquire()
+                self.__lock.acquire()
                 dbDicts = persistenceInst.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'PARTIAL_CLOSE']])
                 self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
-                #self.__lock.release()
+                self.__lock.release()
 
                 # If recommendation == 'CLOSE' and order == 'CLOSE'
                 # Check if this is indeed true
@@ -847,7 +848,7 @@ class Workflow():
         else:
             persistenceInst = self.__parent.persistenceFnO
 
-        #self.__lock.acquire()
+        self.__lock.acquire()
         dbDicts = persistenceInst.getDb([['SOURCE', hiddenDict['SOURCE']], ['POS_HOLD_STATUS', '!CLOSE']])
         for dbDict in dbDicts:
             # Handle the visibility of Satvik's strategy
@@ -863,7 +864,7 @@ class Workflow():
                 self.__logger.info("Changing visibility of dbDict %s from %s => %s", dbDict, dbDict['VISIBLE'], visibility)
                 dbDict['VISIBLE'] = visibility
                 persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                
-        #self.__lock.release()
+        self.__lock.release()
 
 
 

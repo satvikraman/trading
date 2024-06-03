@@ -41,7 +41,7 @@ class AppIciciDirectBreezeBroker():
             self.__logger.setLevel(level)
     
             formatter = logging.Formatter('%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s')
-            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'])
+            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE_BREEZE'])
             consoleHandler = logging.StreamHandler()
             fileHandler.setFormatter(formatter)
             consoleHandler.setFormatter(formatter)
@@ -146,6 +146,8 @@ class AppIciciDirectBreezeBroker():
 
 
     def runRecommenderPeriodicChecks(self):
+        if self.persistenceInv == None:
+            return
         self.__workflow.sendNonAckedRecsFromDb(self.persistenceInv, self.__paytmBaseURL)
 
 
@@ -179,10 +181,7 @@ class AppIciciDirectBreezeBroker():
 
     def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0):
         product = dbDict['PRODUCT']
-        if dbDict['PRODUCT'] == 'MARGIN' and dbDict['POS_QTY'] == 0:
-            status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
-        else:
-            status, message, orderNum = self.__iciciDirectBreeze.square_off(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
+        status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
         return status, message, orderNum
 
 
@@ -205,9 +204,11 @@ class AppIciciDirectBreezeBroker():
             elif tickDict['PRODUCT'] == 'FnO-HEDGE':
                 self.__workflow.handleSpreadRec(tickDict)
             elif tickDict['PRODUCT'] == 'MARGIN':
+                self.__logger.info('TICKS: %s', ticks)
                 self.__workflow.handleRec(tickDict)
             else:
-                self.__workflow.updateAndSendRec(self.persistenceInv, tickDict, self.__paytmBaseURL, 'v1/rec')
+                pass
+                #self.__workflow.updateAndSendRec(self.persistenceInv, tickDict, self.__paytmBaseURL, 'v1/rec')
 
 
     def setVisibility(self, hiddenDict):
@@ -218,7 +219,6 @@ class AppIciciDirectBreezeBroker():
         if 'symbol' in ticks:
             self.setCMP(ticks)
         else:
-            self.__logger.info('TICKS: %s', ticks)
             self.getRecDictFromTick(ticks)
 
 flask = Flask(__name__)
