@@ -34,7 +34,7 @@ class IciciDirectBreeze():
         res = breeze.ws_connect()
         breeze.on_ticks = on_ticks
 
-        #breeze.subscribe_feeds(get_order_notification=True)
+        breeze.subscribe_feeds(get_order_notification=True)
         res = breeze.subscribe_feeds(stock_token = "i_click_2_gain")
         status1 = True if 'success' in res['message'] else False
         self.__logger.info(res['message'])
@@ -357,6 +357,7 @@ class IciciDirectBreeze():
             tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
             tickDict['EXIT_PRICE'] = ticks['exit_price']
         else:
+            return None
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'^\s+|\s+$', '', ticks['underlying'])

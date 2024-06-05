@@ -130,7 +130,7 @@ class AppIciciDirectBreezeBroker():
 
     def strategiesToInvest(self, source, strategy):
         allStrategies = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS']}
-        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE']}
+        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']}
 
         status = False
         if strategy in strategiesToInvest[source]:
@@ -159,9 +159,8 @@ class AppIciciDirectBreezeBroker():
         if self.marketOpen:
             if self.squareOff:
                 self.__workflow.closeAllOpenIntraDayPositions()
-                self.__workflow.closeAllHiddenRecs()
                     
-            self.__workflow.reconcileRecs()
+            self.__workflow.reconcileRecs([])
 
         if not self.marketOpen:
             self.__workflow.closeAllOpenDeliveryOrders()
@@ -206,9 +205,6 @@ class AppIciciDirectBreezeBroker():
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                 pass
                 #self.__workflow.handleRec(tickDict)
-            elif tickDict['PRODUCT'] == 'MARGIN':
-                self.__logger.info('TICKS: %s', ticks)
-                self.__workflow.handleRec(tickDict)
             else:
                 self.__workflow.updateAndSendRec(self.persistenceInv, tickDict, self.__paytmBaseURL, 'v1/rec')
 
@@ -221,6 +217,7 @@ class AppIciciDirectBreezeBroker():
         if 'symbol' in ticks:
             self.setCMP(ticks)
         else:
+            self.__logger.info('TICKS: %s', ticks)
             self.getRecDictFromTick(ticks)
 
 flask = Flask(__name__)

@@ -299,7 +299,7 @@ class AppPaytmBroker():
                 self.__workflow.closeAllOpenIntraDayPositions()
                 self.__workflow.closeAllHiddenRecs()
                     
-            self.__workflow.reconcileRecs()
+            self.__workflow.reconcileRecs([self.persistenceInv, self.persistenceIntraDay])
             if self.__dryRun:
                 return
 

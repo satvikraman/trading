@@ -420,20 +420,15 @@ class Workflow():
             self.__logger.critical("Stock: %s totalQty %d is < 0", dbDict['MKT_SYMBOL'], totalQty)
             return False, 0, 0, 'LMT'
         
-        qty = remQty
-        cmp = self.__parent.cmp[dbDict['SECURITY_ID']]['LTP']
-        orderType = 'LMT'
         canOrder = True
-        if dbDict['BUY_SELL'] == 'BUY':
-            limitPrice = min(dbDict['HIGH_REC_PRICE'], cmp) 
-            #if limitPrice < dbDict['LOW_REC_PRICE']:
-            #    qty = 0
-            #    canOrder = False
-        else:
-            limitPrice = max(dbDict['LOW_REC_PRICE'], cmp) 
-            if limitPrice > dbDict['HIGH_REC_PRICE']:
-                qty = 0
-                canOrder = False
+        qty = remQty
+        if dbDict['PRODUCT'] == 'MARGIN':
+            orderType = 'MKT'
+            limitPrice = 0
+        elif dbDict['PRODUCT'] == 'CASH':
+            orderType = 'LMT'
+            limitPrice = dbDict['HIGH_REC_PRICE']
+
         return canOrder, qty, limitPrice, orderType
     
 
@@ -446,7 +441,6 @@ class Workflow():
                 return False, dbDict
 
         canOrder, qty, limitPrice, orderType = self.__getQtyLimitPrice(dbDict)
-        ltp = self.__parent.cmp[dbDict['SECURITY_ID']]['LTP']
         if not canOrder:
             if limitPrice != 0:
                 self.__logger.debug("Price not in recommendation range. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
@@ -457,6 +451,7 @@ class Workflow():
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
             canOrder = False
+            ltp = self.__parent.cmp[dbDict['SECURITY_ID']]['LTP']
             if dbDict['BUY_SELL'] == 'BUY':
                 if limitPrice * self.__parent.createLtpDisFactor >= ltp:
                     canOrder = True
@@ -775,13 +770,13 @@ class Workflow():
                     time.sleep(0.01)
 
 
-    def reconcileRecs(self):
+    def reconcileRecs(self, persistenceInsts):
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
         if not self.__parent.useWebsocket:
             self.__logger.debug("Getting CMP data")
             self.refreshCMP()
 
-        for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
+        for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
             self.__lock.acquire()
@@ -901,7 +896,7 @@ class Workflow():
         visibilityDict = {'SOURCE': source, 'PRODUCT': product, 'VISIBLE': []}
 
         # Find all strategyToCheck (MARGIN|OPTIONS|FUTURE) recommendations in DB that are not closed
-        dbDicts = persistenceInst.getDb([[dbDict['SOURCE'], source], ['REC_STATUS', '!CLOSE']])
+        dbDicts = persistenceInst.getDb([['SOURCE', source], ['REC_STATUS', '!CLOSE']])
 
         # If they are not found in the recommendations on the web page --> close them 
         for dbDict in dbDicts:
