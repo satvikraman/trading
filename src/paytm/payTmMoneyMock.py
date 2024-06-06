@@ -19,15 +19,15 @@ class payTmMoneyMock:
             self.__stockDictArr = []
             self.__cmpDictArr = []
 
-            if(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'DEBUG'):
+            if(self.__config['LOGGING']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'INFO'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'INFO'):
                 level = logging.INFO
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'WARNING'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'WARNING'):
                 level = logging.WARNING
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'ERROR'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'ERROR'):
                 level = logging.ERROR
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'CRITICAL'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'CRITICAL'):
                 level = logging.CRITICAL
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
@@ -173,9 +173,9 @@ class payTmMoneyMock:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
                             else:
                                 trdQty = orderDict['TRADED_QTY'] + qtyToClose
-                                trdQty = orderDict['TRADED_QTY'] = trdQty
+                                orderDict['TRADED_QTY'] = trdQty
                                 if orderDict['QTY'] - trdQty < qtyToClose:
-                                    orderDict['TRADED_QTY'] = qty
+                                    trdQty = orderDict['TRADED_QTY'] = qty
                                     orderDict['ORDER_STATUS'] = 'CLOSE'
 
                             status = True

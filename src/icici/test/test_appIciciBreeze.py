@@ -6,10 +6,15 @@ import logging
 import pytest
 sys.path.append('./src/common')
 from mapIciciToNseStock import MapIciciToNseStock
+from workflow import Workflow
 sys.path.append('./src/icici')
 from appIciciBreeze import AppIciciDirectBreezeBroker
 from iciciDirectBreeze import IciciDirectBreeze
 from unittest.mock import patch, Mock
+
+class RequestRet():
+    def __init__(self, ret_code=200):
+            self.status_code = ret_code
 
 
 def test_appIcici_0():
@@ -365,7 +370,8 @@ def test_appIcici_4(mock_BreezeConnect, mock_IciciDirectWeb):
 # Good recommendation - Place order and then cancel it since LTP has moved further aware from limit
 @patch('appIciciBreeze.IciciDirectWeb')
 @patch('iciciDirectBreeze.BreezeConnect')
-def test_appIcici_5(mock_BreezeConnect, mock_IciciDirectWeb):
+@patch('workflow.requests')
+def test_appIcici_5(mock_requests, mock_BreezeConnect, mock_IciciDirectWeb):
 
     mock_IciciDirectWeb.getBreezeSessionToken.return_value = "abcd1234"
 
@@ -407,53 +413,99 @@ def test_appIcici_5(mock_BreezeConnect, mock_IciciDirectWeb):
                                                             "Status": 200,
                                                             "Error": 'null'
                                                         }
-    mock_BreezeConnect.get_order_detail.return_value =  {
-                                                            "Success": [
-                                                                {
-                                                                    "order_id": "20220601N100000019",
-                                                                    "exchange_order_id": 'null',
-                                                                    "exchange_code": "NSE",
-                                                                    "stock_code": "ITC",
-                                                                    "product_type": "Cash",
-                                                                    "action": "Buy",
-                                                                    "order_type": "Limit",
-                                                                    "stoploss": "0.00",
-                                                                    "quantity": "15",
-                                                                    "price": "263.15",
-                                                                    "validity": "",
-                                                                    "disclosed_quantity": "0",
-                                                                    "expiry_date": 'null',
-                                                                    "right": 'null',
-                                                                    "strike_price": 0,
-                                                                    "average_price": "0",
-                                                                    "cancelled_quantity": "0",
-                                                                    "pending_quantity": "15",
-                                                                    "status": "Requested",
-                                                                    "user_remark": "",
-                                                                    "order_datetime": "01-Jun-2022 10:48",
-                                                                    "parent_order_id": 'null',
-                                                                    "modification_number": 'null',
-                                                                    "exchange_acknowledgement_date": 'null',
-                                                                    "SLTP_price": 'null',
-                                                                    "exchange_acknowledge_number": 'null',
-                                                                    "initial_limit": 'null',
-                                                                    "intial_sltp": 'null',
-                                                                    "LTP": 'null',
-                                                                    "limit_offset": 'null',
-                                                                    "mbc_flag": 'null',
-                                                                    "cutoff_price": 'null'
-                                                                }
-                                                            ],
-                                                            "Status": 200,
-                                                            "Error": 'null'
-                                                        }    
-                                                         
-    mock_BreezeConnect.return_value = mock_BreezeConnect
+    mock_BreezeConnect.return_value = mock_BreezeConnect            
 
     trade = AppIciciDirectBreezeBroker('./src/icici/iciciDirect.ini', dbInv='./src/icici/test/temp/testTrade.json', dbIntraDay='./src/icici/test/temp/testTradeIntraDay.json', dbFnO='./src/icici/test/temp/testTradeFnO.json')
     trade.persistenceInv.removeAll()
     trade.persistenceIntraDay.removeAll()
     trade.persistenceFnO.removeAll()
+
+    if trade.tradeIntraDay:
+        if trade.intraDayOrderType == 'MKT':
+            mock_BreezeConnect.get_order_detail.return_value =  {
+                                                                "Success": [
+                                                                    {
+                                                                        "order_id": "20220601N100000019",
+                                                                        "exchange_order_id": 'null',
+                                                                        "exchange_code": "NSE",
+                                                                        "stock_code": "ITC",
+                                                                        "product_type": "Cash",
+                                                                        "action": "Buy",
+                                                                        "order_type": "Limit",
+                                                                        "stoploss": "0.00",
+                                                                        "quantity": "15",
+                                                                        "price": "263.15",
+                                                                        "validity": "",
+                                                                        "disclosed_quantity": "0",
+                                                                        "expiry_date": 'null',
+                                                                        "right": 'null',
+                                                                        "strike_price": 0,
+                                                                        "average_price": "0",
+                                                                        "cancelled_quantity": "0",
+                                                                        "pending_quantity": "0",
+                                                                        "status": "Requested",
+                                                                        "user_remark": "",
+                                                                        "order_datetime": "01-Jun-2022 10:48",
+                                                                        "parent_order_id": 'null',
+                                                                        "modification_number": 'null',
+                                                                        "exchange_acknowledgement_date": 'null',
+                                                                        "SLTP_price": 'null',
+                                                                        "exchange_acknowledge_number": 'null',
+                                                                        "initial_limit": 'null',
+                                                                        "intial_sltp": 'null',
+                                                                        "LTP": 'null',
+                                                                        "limit_offset": 'null',
+                                                                        "mbc_flag": 'null',
+                                                                        "cutoff_price": 'null'
+                                                                    }
+                                                                ],
+                                                                "Status": 200,
+                                                                "Error": 'null'
+                                                            }
+        else:
+            mock_BreezeConnect.get_order_detail.return_value =  {
+                                                                    "Success": [
+                                                                        {
+                                                                            "order_id": "20220601N100000019",
+                                                                            "exchange_order_id": 'null',
+                                                                            "exchange_code": "NSE",
+                                                                            "stock_code": "ITC",
+                                                                            "product_type": "Cash",
+                                                                            "action": "Buy",
+                                                                            "order_type": "Limit",
+                                                                            "stoploss": "0.00",
+                                                                            "quantity": "15",
+                                                                            "price": "263.15",
+                                                                            "validity": "",
+                                                                            "disclosed_quantity": "0",
+                                                                            "expiry_date": 'null',
+                                                                            "right": 'null',
+                                                                            "strike_price": 0,
+                                                                            "average_price": "0",
+                                                                            "cancelled_quantity": "0",
+                                                                            "pending_quantity": "15",
+                                                                            "status": "Requested",
+                                                                            "user_remark": "",
+                                                                            "order_datetime": "01-Jun-2022 10:48",
+                                                                            "parent_order_id": 'null',
+                                                                            "modification_number": 'null',
+                                                                            "exchange_acknowledgement_date": 'null',
+                                                                            "SLTP_price": 'null',
+                                                                            "exchange_acknowledge_number": 'null',
+                                                                            "initial_limit": 'null',
+                                                                            "intial_sltp": 'null',
+                                                                            "LTP": 'null',
+                                                                            "limit_offset": 'null',
+                                                                            "mbc_flag": 'null',
+                                                                            "cutoff_price": 'null'
+                                                                        }
+                                                                    ],
+                                                                    "Status": 200,
+                                                                    "Error": 'null'
+                                                                }                
+    else:                              
+        mock_requests.post.return_value = RequestRet()
+        mock_requests.put.return_value = RequestRet()
 
     ticks = {'stock_name': 'INFOSYS LTD(INFTEC)Margin-Buy', 'stock_code': 'INFTEC', 'action_type': 'buy', 'expiry_date': '', 'strike_price': '', 'option_type': '', 'stock_description': 'Margin', 'recommended_price_and_date': '1444-1445,2024-05-22 09:57:27', 'recommended_price_from': '1444', 'recommended_price_to': '1445', 'recommended_date': '2024-05-22 09:57:27', 'target_price': '1457', 'sltp_price': '1437', 'part_profit_percentage': '0,0', 'profit_price': '1452', 'exit_price': '0', 'recommended_update': ' Book Full Profit:2024-05-22 10:58:39    ', 'iclick_status': 'open', 'subscription_type': 'iclick_2_gain                 '}
     ticks['target_price'] = "1550"
@@ -461,56 +513,88 @@ def test_appIcici_5(mock_BreezeConnect, mock_IciciDirectWeb):
     ticks['recommended_date'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     trade.setMarketTimer(False, True)
+    
     trade.breezeTicks(ticks)
     trade.runBrokerPeriodicChecks()
+    trade.runRecommenderPeriodicChecks()
 
     dbDicts = trade.persistenceIntraDay.getDb([])
     assert(len(dbDicts) == 1)
     assert dbDicts[0]['REC_STATUS'] == 'OPEN'
-    assert dbDicts[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDicts[0]['POS_QTY'] == 0
-    assert dbDicts[0]['POS_HOLD_QTY'] == 0
-    assert dbDicts[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
-    assert dbDicts[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
-    assert len(dbDicts[0]['OPEN_ORDERS']) == 1
-    assert len(dbDicts[0]['CLOSE_ORDERS']) == 0
+    if trade.tradeIntraDay:
+        if trade.intraDayOrderType == 'MKT':
+            assert dbDicts[0]['POS_HOLD_STATUS'] == 'POSITION'
+            assert dbDicts[0]['POS_QTY'] == 15
+            assert dbDicts[0]['POS_HOLD_QTY'] == 15
+            assert dbDicts[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 15
+            assert dbDicts[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'CLOSE'
+            assert len(dbDicts[0]['OPEN_ORDERS']) == 1
+            assert len(dbDicts[0]['CLOSE_ORDERS']) == 0
+
+        else:
+            assert dbDicts[0]['POS_HOLD_STATUS'] == 'OPEN'
+            assert dbDicts[0]['POS_QTY'] == 0
+            assert dbDicts[0]['POS_HOLD_QTY'] == 0
+            assert dbDicts[0]['OPEN_ORDERS'][0]['TRADED_QTY'] == 0
+            assert dbDicts[0]['OPEN_ORDERS'][0]['ORDER_STATUS'] == 'OPEN'
+            assert len(dbDicts[0]['OPEN_ORDERS']) == 1
+            assert len(dbDicts[0]['CLOSE_ORDERS']) == 0
 
 
-    mock_BreezeConnect.get_quotes.return_value =        {
-                                                            "Success": [
-                                                                {
-                                                                    "ltp": 1500,
-                                                                }
-                                                            ],
-                                                            "Status": 200,
-                                                            "Error": 'null'
-                                                        }
+        mock_BreezeConnect.get_quotes.return_value =        {
+                                                                "Success": [
+                                                                    {
+                                                                        "ltp": 1500,
+                                                                    }
+                                                                ],
+                                                                "Status": 200,
+                                                                "Error": 'null'
+                                                            }
 
-    mock_BreezeConnect.cancel_order.return_value =      {
-                                                            "Success": {
-                                                                "order_id": "20220601N100000019",
-                                                                "message": "Your Order Canceled successfully."
-                                                            },
-                                                            "Status": 200,
-                                                            "Error": 'null'
-                                                        }
+        mock_BreezeConnect.cancel_order.return_value =      {
+                                                                "Success": {
+                                                                    "order_id": "20220601N100000019",
+                                                                    "message": "Your Order Canceled successfully."
+                                                                },
+                                                                "Status": 200,
+                                                                "Error": 'null'
+                                                            }
 
-    trade.runBrokerPeriodicChecks()
+        trade.runBrokerPeriodicChecks()
 
-    dbDicts = trade.persistenceIntraDay.getDb([])
+        dbDicts = trade.persistenceIntraDay.getDb([])
+
+        if trade.intraDayOrderType == 'MKT':
+            assert(len(dbDicts) == 1)
+            assert dbDicts[0]['REC_STATUS'] == 'CLOSE'
+            assert dbDicts[0]['POS_HOLD_STATUS'] == 'CLOSE'
+            assert dbDicts[0]['POS_QTY'] == 0
+            assert dbDicts[0]['POS_HOLD_QTY'] == 0
+            assert len(dbDicts[0]['OPEN_ORDERS']) == 1
+            assert len(dbDicts[0]['CLOSE_ORDERS']) == 1
+        else:
+            assert(len(dbDicts) == 1)
+            assert dbDicts[0]['REC_STATUS'] == 'OPEN'
+            assert dbDicts[0]['POS_HOLD_STATUS'] == 'OPEN'
+            assert dbDicts[0]['POS_QTY'] == 0
+            assert dbDicts[0]['POS_HOLD_QTY'] == 0
+            assert len(dbDicts[0]['OPEN_ORDERS']) == 1
+            assert len(dbDicts[0]['CLOSE_ORDERS']) == 0
+
     assert(len(dbDicts) == 1)
     assert dbDicts[0]['REC_STATUS'] == 'OPEN'
-    assert dbDicts[0]['POS_HOLD_STATUS'] == 'OPEN'
-    assert dbDicts[0]['POS_QTY'] == 0
-    assert dbDicts[0]['POS_HOLD_QTY'] == 0
-    assert len(dbDicts[0]['OPEN_ORDERS']) == 1
-    assert len(dbDicts[0]['CLOSE_ORDERS']) == 0
+    if trade.tradeIntraDay:
+        assert dbDicts[0]['POS_HOLD_STATUS'] == 'OPEN'
+        assert dbDicts[0]['POS_QTY'] == 0
+        assert dbDicts[0]['POS_HOLD_QTY'] == 0
+        assert len(dbDicts[0]['OPEN_ORDERS']) == 1
+        assert len(dbDicts[0]['CLOSE_ORDERS']) == 0
 
 def test_appIcici_6():
     mockObj = Mock()
     mapicici = MapIciciToNseStock('./dataset/NSEScripMaster.txt', './dataset/BSEScripMaster.txt', './dataset/FONSEScripMaster.txt')
     iciciDirectBreezeObj = IciciDirectBreeze(mockObj, mockObj, mapicici, mockObj)
-    tickList = [{'stock_name': 'HINDUSTAN UNILEVER LIMITED(FUT-HINLEV-27-Jun-2024)Future-Buy', 'stock_code': 'HINLEV', 'action_type': 'buy', 'expiry_date': '27-Jun-2024', 'strike_price': '', 'option_type': '', 'stock_description': 'Future', 'recommended_price_and_date': '2358-2359,2024-05-31 10:18:20', 'recommended_price_from': '2358', 'recommended_price_to': '2359', 'recommended_date': '2024-05-31 10:18:20', 'target_price': '2400', 'sltp_price': '2338', 'part_profit_percentage': '0,0', 'profit_price': '0', 'exit_price': '0', 'recommended_update': '     SLTP:2024-05-31 14:21:57', 'iclick_status': 'closed', 'subscription_type': 'iclick_2_gain                 '}
+    tickList = [{'stock_name': 'HINDUSTAN UNILEVER LIMITED(FUT-HINLEV-27-Jun-2024)Future-Buy', 'stock_code': 'HINLEV', 'action_type': 'buy', 'expiry_date': '27-Jun-2024', 'strike_price': '', 'option_type': '', 'stock_description': 'Future', 'recommended_price_and_date': '2358-2359,2024-05-31 10:18:20', 'recommended_price_from': '2358', 'recommended_price_to': '2359', 'recommended_date': '2024-05-31 10:18:20', 'target_price': '2400', 'sltp_price': '2338', 'part_profit_percentage': '0,0', 'profit_price': '0', 'exit_price': '0', 'recommended_update': '     SLTP:2024-05-31 14:21:57', 'iclick_status': 'closed', 'subscription_type': 'iclick_2_gain                 '},
                 {'strategy_date': '2024-06-03 09:43:39', 'modification_date': '2024-06-03 09:43:39', 'portfolio_id': '103420', 'call_action': 'Call Initiated', 'portfolio_name': 'Short Straddle', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-06 00:00:00', 'option_type': 'call', 'strike_price': '23100', 'action': 'sell', 'recommended_price_from': '305', 'recommended_price_to': '308', 'minimum_lot_quantity': '25', 'last_traded_price': '305.2', 'best_bid_price': '304.75', 'best_offer_price': '305.15', 'last_traded_quantity': '23123.25', 'target_price': '450', 'expected_profit_per_lot': '3475', 'stop_loss_price': '651', 'expected_loss_per_lot': '1550', 'total_margin': '151330.79', 'leg_no': '1', 'status': 'active'},
                 {'strategy_date': '2024-06-03 09:43:39', 'modification_date': '2024-06-03 09:43:39', 'portfolio_id': '103420', 'call_action': 'Call Initiated', 'portfolio_name': 'Short Straddle', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-06 00:00:00', 'option_type': 'put', 'strike_price': '23100', 'action': 'sell', 'recommended_price_from': '281', 'recommended_price_to': '284', 'minimum_lot_quantity': '25', 'last_traded_price': '276.3', 'best_bid_price': '276.05', 'best_offer_price': '276.55', 'last_traded_quantity': '23123.25', 'target_price': '450', 'expected_profit_per_lot': '3475', 'stop_loss_price': '651', 'expected_loss_per_lot': '1550', 'total_margin': '151330.79', 'leg_no': '2', 'status': 'active'},
                 {'strategy_date': '2024-05-27 14:11:20', 'modification_date': '2024-06-03 09:58:02', 'portfolio_id': '102472', 'call_action': 'Book Profit', 'portfolio_name': 'Index Strategy', 'exchange_code': 'NFO', 'product_type': 'options', 'underlying': 'NIFTY ', 'expiry_date': '2024-06-06 00:00:00', 'option_type': 'put', 'strike_price': '22500', 'action': 'sell', 'recommended_price_from': '200', 'recommended_price_to': '205', 'minimum_lot_quantity': '25', 'last_traded_price': '88.75', 'best_bid_price': '88.3', 'best_offer_price': '88.55', 'last_traded_quantity': '23163.15', 'target_price': '300', 'expected_profit_per_lot': '6250', 'stop_loss_price': '1', 'expected_loss_per_lot': '1225', 'total_margin': '131646.09', 'leg_no': '1', 'status': 'active'},

@@ -122,7 +122,9 @@ class AppIciciDirectBreezeBroker():
             self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
             self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
             self.checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
-            self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
+            self.tradeIntraDay = self.__config['APP']['TRADE_INTRADAY_ORDER'].upper() == 'YES'
+            self.amountPerIntradayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
+            self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
             self.cmp = {}
 
             self.__workflow.refreshCMP()
@@ -138,6 +140,7 @@ class AppIciciDirectBreezeBroker():
         elif strategy not in allStrategies[source]:
             self.__logger.error("Strategy: %s was not found in allStrategies of: %s", strategy, source)
         return status
+
 
     def setMarketTimer(self, squareOff, marketOpen):
         self.squareOff = squareOff
@@ -156,14 +159,20 @@ class AppIciciDirectBreezeBroker():
 
 
     def runBrokerPeriodicChecks(self):
+        if self.tradeIntraDay:
+            persistenceInsts = [self.persistenceIntraDay]
+        else:
+            persistenceInsts = []
+
         if self.marketOpen:
             if self.squareOff:
                 self.__workflow.closeAllOpenIntraDayPositions()
-                    
-            self.__workflow.reconcileRecs([])
+                self.__workflow.closeAllHiddenRecs(persistenceInsts)
+
+            self.__workflow.reconcileRecs(persistenceInsts)
 
         if not self.marketOpen:
-            self.__workflow.closeAllOpenDeliveryOrders()
+            self.__workflow.closeAllOpenDeliveryOrders(persistenceInsts)
 
 
     def findOrderStatusAndQtyInfo(self, dbDict, orderNum):
@@ -204,9 +213,12 @@ class AppIciciDirectBreezeBroker():
         if tickDict != None:
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                 pass
-                #self.__workflow.handleRec(tickDict)
+                #self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
+            elif self.tradeIntraDay and tickDict['PRODUCT'] == 'MARGIN':
+                self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
             else:
-                self.__workflow.updateAndSendRec(self.persistenceInv, tickDict, self.__paytmBaseURL, 'v1/rec')
+                persistenceInst = self.persistenceInv if tickDict['PRODUCT'] == 'CASH' else self.persistenceIntraDay
+                self.__workflow.updateAndSendRec(persistenceInst, tickDict, self.__paytmBaseURL, 'v1/rec')
 
 
     def setVisibility(self, hiddenDict):
@@ -236,14 +248,6 @@ def rec():
     status = trade.handleRec(recDict)
     statusCode = 200 if status else 500
     return "", statusCode
-
-
-@flask.route('/v1/max_amount', methods=['POST'])
-def max_amount_per_order():
-    args = request.args
-    maxAmount = args.get('max_amount', default=10000, type=int)
-    trade.setAmountPerOrder(maxAmount)
-    return "", 201
 
 
 def flaskThread():

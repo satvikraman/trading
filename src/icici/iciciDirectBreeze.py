@@ -222,7 +222,7 @@ class IciciDirectBreeze():
         return status, message, orderNum
         
 
-    def __mapBreezeUpdateInfoToRecStatus(self, update):
+    def __mapBreezeUpdateInfoToRecStatus(self, update, product):
         splitUpdate = re.split(r'\d\d:\d\d:\d\d', update)
         fullClose = ['Book Full Profit', 'TGT1', 'Exit', 'SLTP']
         partialClose = ['Book Partial Profit']
@@ -243,10 +243,10 @@ class IciciDirectBreeze():
 
         recStatus = 'OPEN'
         for action in partialClose:
-            if action in update:
-                recStatus = 'PARTIAL_CLOSE'
+            if bool(re.search(action, update, flags=re.IGNORECASE)):
+                recStatus = 'PARTIAL_CLOSE' if product == 'CASH' else 'CLOSE'
         for action in fullClose:
-            if action in update:
+            if bool(re.search(action, update, flags=re.IGNORECASE)):
                 recStatus = 'CLOSE'
         return recStatus, updateAction1, updateAction1Time, updateAction2, updateAction2Time    
 
@@ -321,9 +321,6 @@ class IciciDirectBreeze():
 
             recDateTime = ticks['recommended_date'].split(' ')
             tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
-            tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.__mapBreezeUpdateInfoToRecStatus(ticks['recommended_update'])
-            if ticks['iclick_status'] == 'closed':
-                tickDict['REC_STATUS'] = 'CLOSE'
 
             iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
             iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
@@ -335,6 +332,11 @@ class IciciDirectBreeze():
             status, securityID, iciciSymbol, mktSymbol, mkt, product = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NSE')
             if not status:
                 return None
+
+            tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.__mapBreezeUpdateInfoToRecStatus(ticks['recommended_update'], product)
+            if ticks['iclick_status'] == 'closed':
+                tickDict['REC_STATUS'] = 'CLOSE'
+
             # Mandatory keys
             tickDict['PRODUCT'] = product
             tickDict['MKT_SYMBOL'] = mktSymbol

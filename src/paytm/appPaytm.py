@@ -46,11 +46,7 @@ class AppPaytmBroker():
             logging.getLogger('').addHandler(consoleHandler)
             logging.getLogger('').addHandler(fileHandler)
 
-            self.__dryRun = dryRun
-            if dryRun:
-                self.__payTmMoney = payTmMoneyMock(configFile)
-            else:
-                self.__payTmMoney = payTmMoney(self.__logger, int(self.__config['PAYTM-MONEY']['NUM_RETRIES']))
+            dotenv.load_dotenv('./.env', override=True)
 
             self.__workflow = Workflow(self, self.__logger)
             backupPath = './src/paytm/db/backup'
@@ -62,14 +58,27 @@ class AppPaytmBroker():
             if dbIntraDay == None:
                 dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
             self.persistenceIntraDay = persistence(self.__logger, dbIntraDay) if self.__workflow.backup(dbIntraDay, backupPath) else None
+            valid_until_date = os.environ.get('valid_until_date', '')
+            valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
+            if valid_until_date.lower() != valid_today and self.persistenceIntraDay != None:
+                self.persistenceIntraDay.removeAll()
 
             if dbFnO == None:
                 dbFnO = self.__config['DATABASE']['DB_FNO']
             self.persistenceFnO = persistence(self.__logger, dbFnO) if self.__workflow.backup(dbFnO, backupPath) else None
 
-            dotenv.load_dotenv('./.env', override=True)
+            self.__dryRun = dryRun
+            if dryRun:
+                self.__payTmMoney = payTmMoneyMock(configFile)
+            else:
+                self.__payTmMoney = payTmMoney(self.__logger, int(self.__config['PAYTM-MONEY']['NUM_RETRIES']))
+
             self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
-            self.__logger.info('Max Amount Per Order %d', self.amountPerOrder)
+            self.amountPerIntraDayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
+            self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
+            self.__logger.info('Max Amount Per Cash Order %d', self.amountPerOrder)
+            self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
+            self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [{'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
 
             self.squareOff = False
@@ -180,9 +189,9 @@ class AppPaytmBroker():
         self.cmp.clear()
 
 
-    def setAmountPerOrder(self, maxAmount):
+    def setAmountPerOrder(self, maxAmount, maxAmountIntraday):
         self.amountPerOrder = int(maxAmount)
-        dotenv.set_key('./.env', "max_amount_per_order", str(maxAmount))
+        self.amountPerIntraDayOrder = int(maxAmountIntraday)
 
 
     def setMarketTimer(self, squareOff, marketOpen):
@@ -294,18 +303,19 @@ class AppPaytmBroker():
 
 
     def runPeriodicChecks(self):
+        persistenceInsts = [self.persistenceInv, self.persistenceIntraDay]
         if self.marketOpen:
             if self.squareOff:
                 self.__workflow.closeAllOpenIntraDayPositions()
-                self.__workflow.closeAllHiddenRecs()
+                self.__workflow.closeAllHiddenRecs(persistenceInsts)
                     
-            self.__workflow.reconcileRecs([self.persistenceInv, self.persistenceIntraDay])
+            self.__workflow.reconcileRecs(persistenceInsts)
             if self.__dryRun:
                 return
 
         if not self.marketOpen:
-            self.__workflow.reconcileRecs()
-            self.__workflow.closeAllOpenDeliveryOrders()
+            self.__workflow.reconcileRecs(persistenceInsts)
+            self.__workflow.closeAllOpenDeliveryOrders(persistenceInsts)
 
 
     def websocketSubscription(self, actionType, scriptId, exchange='NSE', product='CASH'):
@@ -340,7 +350,8 @@ class AppPaytmBroker():
 
     def handleRec(self, recDict):
         recDict['SECURITY_ID'] = re.sub(r'.*!', '', recDict['SECURITY_ID'])
-        status = self.__workflow.handleRec(recDict)
+        amountPerOrder = self.amountPerIntraDayOrder if recDict['PRODUCT'] == 'MARGIN' else self.amountPerOrder
+        status = self.__workflow.handleRec(recDict, amountPerOrder)
         return status
 
 
@@ -389,14 +400,6 @@ def rec():
     status = trade.handleRec(recDict)
     statusCode = 200 if status else 500
     return "", statusCode
-
-
-@flask.route('/v1/max_amount', methods=['POST'])
-def max_amount_per_order():
-    args = request.args
-    maxAmount = args.get('max_amount', default=10000, type=int)
-    trade.setAmountPerOrder(maxAmount)
-    return "", 201
 
 
 def flaskThread():

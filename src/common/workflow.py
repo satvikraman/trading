@@ -422,12 +422,11 @@ class Workflow():
         
         canOrder = True
         qty = remQty
-        if dbDict['PRODUCT'] == 'MARGIN':
-            orderType = 'MKT'
+        orderType = self.__parent.intraDayOrderType if dbDict['PRODUCT'] == 'MARGIN' else 'LMT'
+        if orderType == 'LMT':
+            limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
+        else:
             limitPrice = 0
-        elif dbDict['PRODUCT'] == 'CASH':
-            orderType = 'LMT'
-            limitPrice = dbDict['HIGH_REC_PRICE']
 
         return canOrder, qty, limitPrice, orderType
     
@@ -450,22 +449,22 @@ class Workflow():
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
         if orderType == 'LMT':
-            canOrder = False
-            ltp = self.__parent.cmp[dbDict['SECURITY_ID']]['LTP']
-            if dbDict['BUY_SELL'] == 'BUY':
-                if limitPrice * self.__parent.createLtpDisFactor >= ltp:
-                    canOrder = True
-            else:
-                if limitPrice <= ltp * self.__parent.createLtpDisFactor:
-                    canOrder = True
-            if not canOrder:
-                self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
-                return False, dbDict
-        
-        # If the order fails -> status will be False. Retry the order
+            if dbDict['SECURITY_ID'] in self.__parent.cmp:
+                canOrder = False
+                ltp = self.__parent.cmp[dbDict['SECURITY_ID']]['LTP']
+                if dbDict['BUY_SELL'] == 'BUY':
+                    if limitPrice * self.__parent.createLtpDisFactor >= ltp:
+                        canOrder = True
+                else:
+                    if limitPrice <= ltp * self.__parent.createLtpDisFactor:
+                        canOrder = True
+                if not canOrder:
+                    self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
+                    return False, dbDict
+
+        orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, qty, dbDict['BUY_SELL'], orderType, limitPrice)
         self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, strategy=%s, orderType=%s, limit=%.2f", 
                             dbDict['MKT_SYMBOL'], qty, dbDict['BUY_SELL'], dbDict['STRATEGY'], orderType, limitPrice)
-        orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, qty, dbDict['BUY_SELL'], orderType, limitPrice)
 
         if orderStatus:
             # If the order failed for some reason directly transition it to 'CLOSE' state
@@ -516,7 +515,7 @@ class Workflow():
         status = orderStatus
         
         timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
-        orderDict = {'BUY_SELL': buySell, 'PRODUCT': product, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': closeQty, 'TRADED_QTY': 0, 
+        orderDict = {'BUY_SELL': buySell, 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'TRIGGER': trigger, 'QTY': closeQty, 'TRADED_QTY': 0, 
                         'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
         dbDict['CLOSE_ORDERS'].append(orderDict)
         persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
@@ -584,10 +583,10 @@ class Workflow():
 
     def __followOrders(self, persistenceInst, dbDict, hasRecPriceChanged=False):
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
-            self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
-            self.__updateRecStatus(persistenceInst, dbDict)
             if self.__parent.marketOpen:
                 self.__openPosition(persistenceInst, dbDict, hasRecPriceChanged)
+            self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
+            self.__updateRecStatus(persistenceInst, dbDict)
         elif dbDict['REC_STATUS'] in ['PARTIAL_CLOSE', 'CLOSE']:
             cancelOrder = True if dbDict['POS_HOLD_STATUS'] == 'OPEN' else False
             if self.__parent.marketOpen:
@@ -642,7 +641,7 @@ class Workflow():
         return status, recDict
     
 
-    def handleRec(self, recDict, amountPerOrder=None):
+    def handleRec(self, recDict, amountPerOrder):
         self.__logger.info("Recommendation received %s", recDict)
         
         if recDict['PRODUCT'] == 'MARGIN':
@@ -659,8 +658,6 @@ class Workflow():
         strategyList = [recDict['STRATEGY'], 'SR-' + recDict['STRATEGY']]
 
         self.__lock.acquire()
-        if amountPerOrder == None:
-            amountPerOrder = self.__parent.amountPerOrder
 
         # Loop over all strategies
         for strategy in strategyList:
@@ -692,8 +689,11 @@ class Workflow():
         # Get all open positions
         # Check for all orders in 'OPEN' state
         # Some orders may be still open --> cancel them and close position
-        self.__lock.acquire()
         persistenceInst = self.__parent.persistenceIntraDay
+        if persistenceInst == None:
+            return
+        
+        self.__lock.acquire()
         if persistenceInst == None:
             return
         dbDicts = persistenceInst.getDb([['PRODUCT', 'MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
@@ -713,11 +713,11 @@ class Workflow():
         return cancelDict
 
 
-    def closeAllOpenDeliveryOrders(self):
+    def closeAllOpenDeliveryOrders(self, persistenceInsts):
         # Get all open positions
         self.__logger.info("Closing all open delivery orders")
 
-        for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceFnO]:
+        for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
@@ -735,9 +735,9 @@ class Workflow():
             self.__lock.release()
 
 
-    def closeAllHiddenRecs(self):
+    def closeAllHiddenRecs(self, persistenceInsts):
         # Get all open positions
-        for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceFnO]:
+        for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
             # Check for all non-margin orders whose POS_HOLD_STATUS != CLOSE
@@ -751,6 +751,7 @@ class Workflow():
 
 
     def refreshCMP(self):
+        fetched = {}
         for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
             if persistenceInst == None:
                 continue
@@ -761,14 +762,19 @@ class Workflow():
                 securityID = dbDict['SECURITY_ID']
                 if securityID not in self.__parent.cmp:
                     self.__parent.cmp[securityID] = {'LTP': -1, 'SECURITY_TYPE': dbDict['PRODUCT'], 'MKT': dbDict['MKT']}
+                if securityID not in fetched:
+                    fetched[securityID] = False
+
+                if not fetched[securityID]:
                     status, ltp = self.__parent.getLastTradedPrice(dbDict)
                     if status:
                         self.__parent.cmp[securityID]['LTP'] = ltp
-                    
+                        fetched[securityID] = True
+
                     if self.__parent.useWebsocket:
                         self.__parent.websocketSubscription('ADD', securityID, 'NSE', self.__parent.cmp[securityID]['SECURITY_TYPE'])
                     time.sleep(0.01)
-
+        
 
     def reconcileRecs(self, persistenceInsts):
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
@@ -887,7 +893,7 @@ class Workflow():
                     self.__logger.error("Unable to call REST API. Trying %d more time. recDict = %s", retries, recDict)
                     retries -= 1
             except Exception as e:
-                self.__logger.error("Exception: %s. Trying %d more times. recDict = %s", e, retries, self.__numRetries, recDict)
+                self.__logger.error("Exception: %s. Trying %d more times. recDict = %s", e, retries, recDict)
                 retries -= 1
         return status
 
