@@ -5,3 +5,4 @@ credentials.json
 token.json
 *.zip
 **/db/backup/*.json
+dataset/*.txt
