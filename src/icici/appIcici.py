@@ -146,7 +146,7 @@ class AppIcici():
         return self.__iciciDirectWeb.isVisible(source, stock, iciciSymbol, strategy, recDate, recTime)
 
 
-    def runPeriodicChecks(self, recChangeCheckOnce):
+    def runPeriodicChecks(self, recChangeCheck):
         # Send all recommendations in DB that haven't be ACK'ed
         self.__workflow.sendNonAckedRecsFromDb(self.persistenceInv, self.__paytmBaseURL)
         self.__workflow.sendNonAckedRecsFromDb(self.persistenceIntraDay, self.__iciciBreezeBaseURL)
@@ -157,7 +157,7 @@ class AppIcici():
             self.__iciciDirectWeb.browseResearchToClick_2_Invest()
             self.__iciciDirectWeb.scrapeiClick2Invest()
             for invRecDict in self.__iciciDirectWeb.getNextiCLICK_2_INVESTTblRow():
-                self.__workflow.updateAndSendRec(self.persistenceInv, invRecDict, self.__paytmBaseURL, recChangeCheckOnce)
+                self.__workflow.updateAndSendRec(self.persistenceInv, invRecDict, self.__paytmBaseURL, recChangeCheck)
 
         # Scrape recommendations from iClick2Gain
         self.__iciciDirectWeb.browseResearchToClick_2_Gain()
@@ -167,12 +167,12 @@ class AppIcici():
             for gainRecDict in self.__iciciDirectWeb.getNextiCLICK_2_GAINTblRow():
                 if gainRecDict['PRODUCT'] == 'MARGIN':
                     pass
-                    #self.__workflow.updateAndSendRec(self.persistenceIntraDay, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheckOnce)
+                    #self.__workflow.updateAndSendRec(self.persistenceIntraDay, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheck)
                 elif gainRecDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                     pass
-                    #self.__workflow.updateAndSendRec(self.persistenceFnO, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheckOnce)
+                    #self.__workflow.updateAndSendRec(self.persistenceFnO, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheck)
                 elif gainRecDict['PRODUCT'] == 'CASH':
-                    self.__workflow.updateAndSendRec(self.persistenceInv, gainRecDict, self.__paytmBaseURL, recChangeCheckOnce)
+                    self.__workflow.updateAndSendRec(self.persistenceInv, gainRecDict, self.__paytmBaseURL, recChangeCheck)
                 elif gainRecDict['PRODUCT'] in ['COMMODITY FUTURE', 'COMMODITY OPTION']:
                     pass
                 else:
@@ -206,12 +206,12 @@ if __name__ == '__main__':
     trade.openIciciSession()
 
     marketClose = False
-    recChangeCheckOnce = True
+    recChangeCheck = True
     while not marketClose:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) 
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
-        trade.runPeriodicChecks(recChangeCheckOnce)
-        recChangeCheckOnce = False
+        trade.runPeriodicChecks(recChangeCheck)
+        recChangeCheck = False
         if not marketOpen:
             time.sleep(15)
             

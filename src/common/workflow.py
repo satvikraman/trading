@@ -384,11 +384,11 @@ class Workflow():
             # Get the LTP if it is not already available. If it is available, dont fetch. It will get updated the next time the reconcileRecs runs
             if securityId not in self.__parent.cmp:
                 self.__parent.cmp[securityId] = {'LTP': -1, 'SECURITY_TYPE': 'EQUITY', 'MKT': dbDict['MKT']}
-                status, ltp = self.__parent.getLastTradedPrice(dbDict)
-                if status:
-                    self.__parent.cmp[securityId]['LTP'] = ltp
-                if self.__parent.useWebsocket:
-                    self.__parent.websocketSubscription(actionType, securityId, dbDict['MKT'])
+            status, ltp = self.__parent.getLastTradedPrice(dbDict)
+            if status:
+                self.__parent.cmp[securityId]['LTP'] = ltp
+            if self.__parent.useWebsocket:
+                self.__parent.websocketSubscription(actionType, securityId, dbDict['MKT'])
 
 
     def hasPendingOrders(self, dbDict, filter='OPEN'):
@@ -953,36 +953,36 @@ class Workflow():
             persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
-    def recChanged(self, newDict, recStatus, highRecPrice, lowRecPrice, target, stoploss):
-        anyChange, newDict = self.__transitionRec(newDict, recStatus)
+    def recChanged(self, dbDict, recStatus, highRecPrice, lowRecPrice, target, stoploss):
+        anyChange, dbDict = self.__transitionRec(dbDict, recStatus)
 
-        if newDict['HIGH_REC_PRICE'] != highRecPrice:
+        if dbDict['HIGH_REC_PRICE'] != highRecPrice:
             anyChange = True
-        if newDict['LOW_REC_PRICE'] != lowRecPrice:
+        if dbDict['LOW_REC_PRICE'] != lowRecPrice:
             anyChange = True
-        if newDict['TARGET'] != target:
+        if dbDict['TARGET'] != target:
             anyChange = True
-        if newDict['STOP_LOSS'] != stoploss:
+        if dbDict['STOP_LOSS'] != stoploss:
             anyChange = True
         return anyChange
 
 
-    def updateAndSendRec(self, persistenceInst, rowDict, baseURL, recChangeCheckOnce=False):
+    def updateAndSendRec(self, persistenceInst, rowDict, baseURL, recChangeCheck):
         isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
 
         # If no recommendation found in DB and if the current recommendation is not close, then
         # Insert the recommendation in DB
         if isInDb:
             status = True
-            if recChangeCheckOnce:
-                status= self.recChanged(rowDict, dbDict['REC_STATUS'], dbDict['HIGH_REC_PRICE'], dbDict['LOW_REC_PRICE'], dbDict['TARGET'], dbDict['STOP_LOSS'])
+            if recChangeCheck:
+                status = self.recChanged(dbDict, rowDict['REC_STATUS'], rowDict['HIGH_REC_PRICE'], rowDict['LOW_REC_PRICE'], rowDict['TARGET'], rowDict['STOP_LOSS'])
             if status:
                 # The recommendation has changed, else this function wont be called
                 self.__logger.info('Existing recommendation changed %s', rowDict)
                 recDict = self.__prepareRecDict(rowDict)
                 status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
                 rowDict['ACK'] = 'ACK' if status else 'NACK'
-                persistenceInst.updateDb(rowDict, [['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 #else: Nothing to be done
         else:
             if(rowDict['REC_STATUS'] != 'CLOSE'):

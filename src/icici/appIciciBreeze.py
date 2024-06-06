@@ -166,7 +166,8 @@ class AppIciciDirectBreezeBroker():
 
         if self.marketOpen:
             if self.squareOff:
-                self.__workflow.closeAllOpenIntraDayPositions()
+                if self.tradeIntraDay:
+                    self.__workflow.closeAllOpenIntraDayPositions()
                 self.__workflow.closeAllHiddenRecs(persistenceInsts)
 
             self.__workflow.reconcileRecs(persistenceInsts)
@@ -218,7 +219,7 @@ class AppIciciDirectBreezeBroker():
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
             else:
                 persistenceInst = self.persistenceInv if tickDict['PRODUCT'] == 'CASH' else self.persistenceIntraDay
-                self.__workflow.updateAndSendRec(persistenceInst, tickDict, self.__paytmBaseURL, 'v1/rec')
+                self.__workflow.updateAndSendRec(persistenceInst, tickDict, self.__paytmBaseURL, recChangeCheck=True)
 
 
     def setVisibility(self, hiddenDict):
