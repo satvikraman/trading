@@ -93,7 +93,7 @@ class Workflow():
         
         mandatoryKeys = ['STOCK', 'SOURCE', 'MKT', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'PRODUCT', 'BUY_SELL', 'REC_DATE', 'REC_TIME', 'REC_STATUS', 'EXP_DATE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
-        mandatoryDervKeys = ['LOT_SIZE']
+        mandatoryDervKeys = ['LOT']
                 
         recDict = {}
 
@@ -422,7 +422,10 @@ class Workflow():
         
         canOrder = True
         qty = remQty
-        orderType = self.__parent.intraDayOrderType if dbDict['PRODUCT'] == 'MARGIN' else 'LMT'
+        if dbDict['PRODUCT'] == 'CASH':
+            orderType = 'LMT'
+        else:
+            orderType = self.__parent.intraDayOrderType if dbDict['PRODUCT'] == 'MARGIN' else self.__parent.fnoOrderType
         if orderType == 'LMT':
             limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
         else:
@@ -612,7 +615,7 @@ class Workflow():
         recDict['STOP_LOSS'] = float(recDict['STOP_LOSS'])
 
         if recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-            qty = 1
+            qty = recDict['LOT']
         else:
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
             qty = max(int(amountPerOrder / avgPrice), 1)
@@ -750,9 +753,9 @@ class Workflow():
             self.__lock.release()
 
 
-    def refreshCMP(self):
+    def refreshCMP(self, persistenceInsts):
         fetched = {}
-        for persistenceInst in [self.__parent.persistenceInv, self.__parent.persistenceIntraDay, self.__parent.persistenceFnO]:
+        for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
             self.__lock.acquire()
@@ -780,7 +783,7 @@ class Workflow():
         # Get the CMP of all recommendations (margin or otherwise) that have not closed
         if not self.__parent.useWebsocket:
             self.__logger.debug("Getting CMP data")
-            self.refreshCMP()
+            self.refreshCMP(persistenceInsts)
 
         for persistenceInst in persistenceInsts:
             if persistenceInst == None:
@@ -911,11 +914,10 @@ class Workflow():
             if visible:
                 val = dbDict['SRC_SYMBOL'] + '-' + dbDict['STRATEGY'] + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
                 visibilityDict['VISIBLE'].append(val)
-                if (dbDict['VISIBLE'] != 'VISIBLE'):
-                    dbDict['VISIBLE'] = 'VISIBLE'
-                    persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-                    self.__logger.info("Changing rec's visibility to visible => %s", dbDict)
-            elif (dbDict['VISIBLE'] == 'VISIBLE') or dbDict['REC_STATUS'] != 'CLOSE':
+                dbDict['VISIBLE'] = 'VISIBLE'
+                persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                self.__logger.info("Changing rec's visibility to visible => %s", dbDict)
+            elif dbDict['REC_STATUS'] != 'CLOSE':
                 dbDict['VISIBLE'] = 'HIDDEN'
                 dbDict['REC_STATUS'] = 'CLOSE'
                 persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])

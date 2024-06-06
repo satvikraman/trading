@@ -34,12 +34,12 @@ class MapIciciToNseStock():
         return rowDict
     
 
-    def mapICICSymbolToMktSymbol(self, stkName=None, iciciSymbol=None, strategy=None, mkt='NSE'):
+    def mapICICSymbolToMktSymbol(self, stkName=None, iciciSymbol=None, product=None, mkt='NSE'):
         status = False
         rowDict = {'SECURITY_ID': '', 'MKT': '', 'MKT_SYMBOL': '', 'ICICI_SYMBOL': ''}
         marketCode = {'BSE': '1', 'NSE': '4', 'NDX': '13', 'MCX': '6', 'NFO': '4'}
 
-        if bool(re.search(r'OPTION', strategy, re.IGNORECASE)):
+        if bool(re.search(r'OPTION', product, re.IGNORECASE)):
             mkt = 'NFO'
             product = 'OPTION'
             dataset = self.__dataset[mkt]
@@ -64,9 +64,9 @@ class MapIciciToNseStock():
                         rowDict['MKT'] = mkt
                         rowDict['MKT_SYMBOL'] = shortName + '-' + expiryDate + '-' + strikePrice + '-' + optionType
                         rowDict['ICICI_SYMBOL'] = iciciSymbol
-                        rowDict["LOT_SIZE"] = iciciRow["LotSize"]
+                        rowDict["LOT"] = int(iciciRow["LotSize"])
                         break
-        elif bool(re.search(r'FUTURE', strategy, re.IGNORECASE)):
+        elif bool(re.search(r'FUTURE', product, re.IGNORECASE)):
             mkt = 'NFO'
             product = 'FUTURE'
             dataset = self.__dataset[mkt]            
@@ -86,11 +86,11 @@ class MapIciciToNseStock():
                         rowDict['MKT'] = mkt
                         rowDict['MKT_SYMBOL'] = shortName + '-' + expiryDate
                         rowDict['ICICI_SYMBOL'] = iciciSymbol
-                        rowDict["LOT_SIZE"] = iciciRow["LotSize"]
+                        rowDict["LOT"] = int(iciciRow["LotSize"])
                         break
         else:
             # Equity investment. Could be intraday as well
-            product = 'MARGIN' if strategy == 'MARGIN' else 'CASH'
+            product = 'MARGIN' if product == 'MARGIN' else 'CASH'
             dataset = self.__dataset[mkt]
             dataLevel = '1'
             with(open(dataset, 'r')) as icicicsv:
@@ -102,6 +102,7 @@ class MapIciciToNseStock():
                         rowDict['MKT'] = mkt
                         rowDict['MKT_SYMBOL'] = iciciRow[' "ExchangeCode"']
                         rowDict['ICICI_SYMBOL'] = iciciRow[' "ShortName"']
+                        rowDict['LOT'] = 1
                         break
 
-        return status, rowDict['SECURITY_ID'], rowDict['ICICI_SYMBOL'], rowDict['MKT_SYMBOL'], rowDict['MKT'], product
+        return status, rowDict['SECURITY_ID'], rowDict['ICICI_SYMBOL'], rowDict['MKT_SYMBOL'], rowDict['MKT'], rowDict['LOT'], product

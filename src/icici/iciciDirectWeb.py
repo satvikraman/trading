@@ -453,12 +453,10 @@ class IciciDirectWeb():
         visible = False        
         if source == 'iCLICK-2-GAIN':
             key = (iciciSymbol, strategy, recDate, recTime)
-            if key in self.__iclick2GainDict:
-                visible = self.__iclick2GainDict[key]['VISIBLE'] == 'VISIBLE'
+            visible = key in self.__iclick2GainDict
         else:
             key = (stock, strategy, recDate, recTime)            
-            if key in self.__iclick2InvestDict:
-                visible = self.__iclick2InvestDict[key]['VISIBLE'] == 'VISIBLE'
+            visible = key in self.__iclick2InvestDict
         return visible
 
 
@@ -729,7 +727,7 @@ class IciciDirectWeb():
                 cell1Dict['SECURITY_ID'] = '' 
                 cell1Dict['PRODUCT'] = re.sub(r's$', '', cell1Dict['STRATEGY'], flags=re.IGNORECASE)
             else:
-                status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'], iciciSymbol=cell1Dict['SRC_SYMBOL'])
+                status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['LOT'], cell1Dict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'], iciciSymbol=cell1Dict['SRC_SYMBOL'])
                 if not status:
                     self.__logger.error("Unable to map STRATEGY=%s STOCK=%s SRC_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
                     return rowDict
@@ -750,9 +748,8 @@ class IciciDirectWeb():
                 self.__extractRecCloseInfo(rowDict)
             
             rowDict['SOURCE'] = 'iCLICK-2-GAIN'
-            self.__iclick2GainDict[key] = {'DICT': rowDict, 'VISIBLE': 'VISIBLE'}
+            self.__iclick2GainDict[key] = {'DICT': rowDict}
         else: 
-            self.__iclick2GainDict[key]['VISIBLE'] = 'VISIBLE'
             rowDictTmp = self.__iclick2GainDict[key]['DICT']
             status, rowDictTmp = self.__recChanged(rowDictTmp, recStatus, cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
                                                    cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])
@@ -775,15 +772,14 @@ class IciciDirectWeb():
         
         key = (cell1Dict['STOCK'], cell1Dict['STRATEGY'], cell3Dict['REC_DATE'], cell3Dict['REC_TIME'])
         if key not in self.__iclick2InvestDict:
-            status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], product = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'])
+            status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['LOT'], product = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'])
             _, cell1Dict['EXP_DATE'] = self.__suggestInvPeriodExpDate(cell1Dict['STRATEGY'], cell1Dict['SRC_SYMBOL'], cell3Dict['REC_DATE'], cell1Dict['INV_PERIOD'])
             cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
             rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell7Dict}
             rowDict['SOURCE'] = 'iCLICK-2-INVEST'
             rowDict['PRODUCT'] = product
-            self.__iclick2InvestDict[key] = {'DICT': rowDict, 'VISIBLE': 'VISIBLE'}
+            self.__iclick2InvestDict[key] = {'DICT': rowDict}
         else:
-            self.__iclick2InvestDict[key]['VISIBLE'] = 'VISIBLE'
             rowDictTmp = self.__iclick2InvestDict[key]['DICT']
             status, rowDictTmp = self.__recChanged(rowDictTmp, cell7Dict['REC_STATUS'], cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
                                                    cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])

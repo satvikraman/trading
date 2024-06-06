@@ -76,6 +76,7 @@ class AppPaytmBroker():
             self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
             self.amountPerIntraDayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
             self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
+            self.fnoOrderType = self.__config['APP']['FNO_ORDER_TYPE']
             self.__logger.info('Max Amount Per Cash Order %d', self.amountPerOrder)
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
@@ -332,7 +333,8 @@ class AppPaytmBroker():
 
 
     def refreshCMP(self):
-        self.__workflow.refreshCMP()
+        persistenceInsts = [self.persistenceInv, self.persistenceIntraDay]
+        self.__workflow.refreshCMP(persistenceInsts)
 
 
     def setCMP(self, wsMessages):
@@ -451,9 +453,7 @@ if __name__ == '__main__':
     while not exitTime:
         time.sleep(15)
 
-    # Wait for the paytm thread to complete execution
-    while threading.active_count() > 0:
-        time.sleep(1)
+    exit()
 
 # Individual order Status transitions as
 # OPEN --> CLOSE

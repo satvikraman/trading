@@ -123,11 +123,14 @@ class AppIciciDirectBreezeBroker():
             self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
             self.checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
             self.tradeIntraDay = self.__config['APP']['TRADE_INTRADAY_ORDER'].upper() == 'YES'
+            self.tradeFno = self.__config['APP']['TRADE_FNO_ORDER'].upper() == 'YES'
             self.amountPerIntradayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
             self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
+            self.fnoOrderType = self.__config['APP']['FNO_ORDER_TYPE']
             self.cmp = {}
 
-            self.__workflow.refreshCMP()
+            if self.tradeIntraDay:
+                self.__workflow.refreshCMP([self.persistenceIntraDay])
 
 
     def strategiesToInvest(self, source, strategy):
@@ -159,10 +162,11 @@ class AppIciciDirectBreezeBroker():
 
 
     def runBrokerPeriodicChecks(self):
+        persistenceInsts = []
+        if self.tradeFno:
+            persistenceInsts = persistenceInsts + [self.persistenceFnO]
         if self.tradeIntraDay:
-            persistenceInsts = [self.persistenceIntraDay]
-        else:
-            persistenceInsts = []
+            persistenceInsts = persistenceInsts + [self.persistenceIntraDay]
 
         if self.marketOpen:
             if self.squareOff:
@@ -214,7 +218,7 @@ class AppIciciDirectBreezeBroker():
         if tickDict != None:
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                 pass
-                #self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
+                #self.__workflow.handleRec(tickDict, None)
             elif self.tradeIntraDay and tickDict['PRODUCT'] == 'MARGIN':
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
             else:
@@ -282,6 +286,4 @@ if __name__ == '__main__':
     while not exitTime:
         time.sleep(15)
 
-    # Wait for the paytm thread to complete execution
-    while threading.active_count() > 0:
-        time.sleep(1)
+    exit()

@@ -321,29 +321,21 @@ class IciciDirectBreeze():
 
             recDateTime = ticks['recommended_date'].split(' ')
             tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
+            tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
 
             iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
             iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
             invPeriod, tickDict['EXP_DATE'] = self.__suggestInvPeriod(tickDict['STRATEGY'], iciciSymbol, tickDict['REC_DATE'])
-            tickDict['VISIBLE'] = 'VISIBLE'
 
             iciciSymbol = re.sub(r'^.*\(', '', ticks['stock_name'])
             iciciSymbol = re.sub(r'\).*$', '', iciciSymbol)
-            status, securityID, iciciSymbol, mktSymbol, mkt, product = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NSE')
+            status, tickDict['SECURITY_ID'], tickDict['ICICI_SYMBOL'], tickDict['MKT_SYMBOL'], tickDict['MKT'], tickDict['LOT'], tickDict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NSE')
             if not status:
                 return None
 
-            tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.__mapBreezeUpdateInfoToRecStatus(ticks['recommended_update'], product)
+            tickDict['REC_STATUS'], tickDict['UPDATE_ACTION_1'], tickDict['UPDATE_TIME_1'], tickDict['UPDATE_ACTION_2'], tickDict['UPDATE_TIME_2'] = self.__mapBreezeUpdateInfoToRecStatus(ticks['recommended_update'], tickDict['PRODUCT'])
             if ticks['iclick_status'] == 'closed':
                 tickDict['REC_STATUS'] = 'CLOSE'
-
-            # Mandatory keys
-            tickDict['PRODUCT'] = product
-            tickDict['MKT_SYMBOL'] = mktSymbol
-            tickDict['ICICI_SYMBOL'] = iciciSymbol
-            tickDict['SECURITY_ID'] = securityID
-            # Important keys
-            tickDict['MKT'] = mkt
 
             # Mandatory price keys
             tickDict['LOW_REC_PRICE'] = float(ticks['recommended_price_from'])
@@ -351,31 +343,25 @@ class IciciDirectBreeze():
             tickDict['TARGET'] = float(ticks['target_price'])
             tickDict['STOP_LOSS'] = float(ticks['sltp_price'])
             
-            # Mandatory leverage keys
-            tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
-
             # Price keys
             tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
             tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
             tickDict['EXIT_PRICE'] = ticks['exit_price']
         else:
-            return None
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'^\s+|\s+$', '', ticks['underlying'])
             tickDict['SOURCE'] = 'BREEZE-FnO'
-            if 'Spread' in ticks['portfolio_name']:
-                tickDict['STRATEGY'] = 'FnO_HEDGE'
-                tickDict['PORTFOLIO_ID'] = ticks['portfolio_id']
-                tickDict['LEG_NO'] = ticks['leg_no']
-            else:
-                tickDict['STRATEGY'] = re.sub('futures', 'future', ticks['product_type'], re.IGNORECASE).upper()
+            tickDict['STRATEGY'] = ticks['portfolio_name']
+            tickDict['PORTFOLIO_ID'] = ticks['portfolio_id']
+            tickDict['LEG_NO'] = ticks['leg_no']
             tickDict['BUY_SELL'] = ticks['action'].upper()
             #if not self.__parent.strategiesToInvest(tickDict['SOURCE'], tickDict['STRATEGY']):
             #    return None
 
             recDateTime = ticks['strategy_date'].split(' ')
             tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
+            tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])            
             tickDict = self.__mapFnOCallActionToRecStatus(tickDict, ticks)
             tickDict['UPDATE_ACTION_1'] = ticks['call_action']
             tickDict['UPDATE_TIME_1'] = ticks['modification_date']
@@ -385,34 +371,22 @@ class IciciDirectBreeze():
             expDate = datetime.datetime.strftime(datetime.datetime.strptime(expDate, '%Y-%m-%d'), '%d-%b-%Y')
             tickDict['EXP_DATE'] = expDate
 
-            tickDict['VISIBLE'] = 'VISIBLE'
-
-            if tickDict['STRATEGY'] == 'OPTIONS':
+            productTyp = ticks['product_type'].upper()
+            if  productTyp == 'OPTIONS':
                 iciciSymbol = 'OPT' + '-' + tickDict['STOCK'] + '-' + tickDict['EXP_DATE']
                 iciciSymbol = iciciSymbol + '-' + ticks['strike_price'] + '-'
                 iciciSymbol += 'CE' if ticks['option_type'] == 'call' else 'PE'
             else:
                 iciciSymbol = 'FUT' + '-' + tickDict['STOCK'] + '-' + tickDict['EXP_DATE']
 
-            status, securityID, iciciSymbol, mktSymbol, mkt, product = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, tickDict['STRATEGY'], 'NFO')
+            status, tickDict['SECURITY_ID'], tickDict['ICICI_SYMBOL'], tickDict['MKT_SYMBOL'], tickDict['MKT'], tickDict['LOT'], tickDict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(tickDict['STOCK'], iciciSymbol, productTyp, 'NFO')
             if not status:
                 return None
             
-            # Mandatory keys
-            tickDict['PRODUCT'] = product
-            tickDict['MKT_SYMBOL'] = mktSymbol
-            tickDict['ICICI_SYMBOL'] = iciciSymbol
-            tickDict['SECURITY_ID'] = securityID
-            # Important keys
-            tickDict['MKT'] = mkt
-
             # Mandatory price keys
             tickDict['LOW_REC_PRICE'] = float(ticks['recommended_price_from'])
             tickDict['HIGH_REC_PRICE'] = float(ticks['recommended_price_to'])
             tickDict['TARGET'] = float(ticks['target_price'])
             tickDict['STOP_LOSS'] = float(ticks['stop_loss_price'])
-            
-            # Mandatory leverage keys
-            tickDict['REC_TIME'] = re.sub(r':\d\d$', '', recDateTime[1])
 
         return tickDict
