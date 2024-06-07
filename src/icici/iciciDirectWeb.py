@@ -727,7 +727,7 @@ class IciciDirectWeb():
                 cell1Dict['SECURITY_ID'] = '' 
                 cell1Dict['PRODUCT'] = re.sub(r's$', '', cell1Dict['STRATEGY'], flags=re.IGNORECASE)
             else:
-                status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['LOT'], cell1Dict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'], iciciSymbol=cell1Dict['SRC_SYMBOL'])
+                status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['LOT'], cell1Dict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], iciciSymbol=cell1Dict['SRC_SYMBOL'], product=cell1Dict['STRATEGY'])
                 if not status:
                     self.__logger.error("Unable to map STRATEGY=%s STOCK=%s SRC_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
                     return rowDict
@@ -772,7 +772,7 @@ class IciciDirectWeb():
         
         key = (cell1Dict['STOCK'], cell1Dict['STRATEGY'], cell3Dict['REC_DATE'], cell3Dict['REC_TIME'])
         if key not in self.__iclick2InvestDict:
-            status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['LOT'], product = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], strategy=cell1Dict['STRATEGY'])
+            status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['LOT'], product = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], product=cell1Dict['STRATEGY'])
             _, cell1Dict['EXP_DATE'] = self.__suggestInvPeriodExpDate(cell1Dict['STRATEGY'], cell1Dict['SRC_SYMBOL'], cell3Dict['REC_DATE'], cell1Dict['INV_PERIOD'])
             cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
             rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell7Dict}
@@ -781,8 +781,10 @@ class IciciDirectWeb():
             self.__iclick2InvestDict[key] = {'DICT': rowDict}
         else:
             rowDictTmp = self.__iclick2InvestDict[key]['DICT']
+            if 'STOP_LOSS' in cell7Dict and cell7Dict['STOP_LOSS'] > cell5Dict['STOP_LOSS']:
+                stopLoss = cell7Dict['STOP_LOSS']
             status, rowDictTmp = self.__recChanged(rowDictTmp, cell7Dict['REC_STATUS'], cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
-                                                   cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])
+                                                   cell4Dict['TARGET'], stopLoss)
             if status:
                 rowDict = rowDictTmp
             self.__logger.debug('Generated dictionary %s', rowDict)

@@ -156,14 +156,19 @@ class Workflow():
             else:
                 if bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
                     strategy = 'QUANT DERIVATIVES PICK' if 'QUANT PICKS' in recDict['STRATEGY'] else 'QUANT PICKS'
+                    dayDiffThresh = 7
+                elif bool(re.match(r'.*MOMENTUM|.*GLADIATOR.', recDict['STRATEGY'])):
+                    strategy = 'GLADIATOR STOCKS' if 'MOMENTUM PICK' in recDict['STRATEGY'] else 'MOMENTUM PICK'
+                    dayDiffThresh = 1
                 else:
                     strategy = recDict['STRATEGY']
+                    dayDiffThresh = 1
                 recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
                 dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', strategy]])
                 for dbDict in dbDicts:
                     dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
                     daysDiff = abs((dbDate - recDate).days)
-                    if daysDiff <= 7:
+                    if daysDiff <= dayDiffThresh:
                         isInDb = True
                         break
         else:

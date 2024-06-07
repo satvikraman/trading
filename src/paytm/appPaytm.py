@@ -449,8 +449,9 @@ if __name__ == '__main__':
 
     trade._AppPaytmBroker__logger.info("Markets have closed. Exiting gracefully")
 
-    exitTime = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=45)
+    exitTime = False
     while not exitTime:
+        exitTime = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=45)
         time.sleep(15)
 
     exit()
