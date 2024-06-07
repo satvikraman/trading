@@ -143,32 +143,39 @@ class Workflow():
         isInDb = False
         dbDict = {}
 
-        if bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
-            source = 'iCLICK-2-GAIN' if 'iCLICK-2-INVEST' in recDict['SOURCE'] else 'iCLICK-2-GAIN'
-            recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
-            dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['SOURCE', source]])
-            for dbDict in dbDicts:
-                dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
-                daysDiff = abs((dbDate - recDate).days)
-                if bool(re.match(r'.*QUANT|.*DERIVATIVE.', dbDict['STRATEGY'])) and daysDiff <= 7:
-                    isInDb = True
-                    break
-        else:
-            # Check first if there is only 1 entry ignoring the timestamp ex. Momentum stocks appearing on both iCLICK-2-GAIN and iCLICK-2-INVEST
-            # Else (if there are more than one entry on the same date), check that the time difference is less than 2 mins ex. FnOs on 2 diff streams one_click_fno and i_click_2_gain
+        if recDict['PRODUCT'] == 'CASH':
+            # Check first if there is only 1 entry ignoring the timestamp ex. Gladiator stocks appearing on both iCLICK-2-GAIN and iCLICK-2-INVEST
+            # Else in the case of the QUANT PICKS strategy on iCLICK-2-GAIN, the same stock is listed as QUANT DERIVATIVES PICK on the iCLICK-2-INVEST page 
+            # and the dates can be as far apart as 7 days
+            # Or in a rare case even the Gladiator stocks appear on different dates on iCLICK-2-GAIN and iCLICK-2-INVEST pages. This happens when the 
+            # recommendation appears on the iCLICK-2-GAIN page close to the EOB
             dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
             if len(dbDicts) == 1:
                 isInDb = True
                 dbDict = dbDicts[0]
-            else:                
+            else:
+                if bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
+                    strategy = 'QUANT DERIVATIVES PICK' if 'QUANT PICKS' in recDict['STRATEGY'] else 'QUANT PICKS'
+                else:
+                    strategy = recDict['STRATEGY']
+                recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
+                dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', strategy]])
                 for dbDict in dbDicts:
-                    if dbDict['SOURCE'] != 'iCLICK-2-INVEST':
-                        recDateTime = datetime.datetime.strptime(recDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
-                        dbDateTime  = datetime.datetime.strptime(dbDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
-                        timeDiffSecs = (recDateTime - dbDateTime).total_seconds()
-                        if timeDiffSecs <= 60:
-                            isInDb = True
-                            break
+                    dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
+                    daysDiff = abs((dbDate - recDate).days)
+                    if daysDiff <= 7:
+                        isInDb = True
+                        break
+        else:
+            # In the non-CASH case, there can be multiple entries on the same date. Check that the time difference is less than 2 mins
+            dbDicts = persistenceInst.getDb([['SOURCE', '!iCLICK-2-INVEST'], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+            for dbDict in dbDicts:
+                recDateTime = datetime.datetime.strptime(recDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
+                dbDateTime  = datetime.datetime.strptime(dbDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
+                timeDiffSecs = (recDateTime - dbDateTime).total_seconds()
+                if timeDiffSecs <= 60:
+                    isInDb = True
+                    break
         if isInDb:
             isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                        
         return isInDb, dbDict
