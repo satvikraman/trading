@@ -118,6 +118,8 @@ class AppIciciDirectBreezeBroker():
             self.squareOff = False
             self.marketOpen = False
             self.timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
+            self.intraDayLeeway = float(self.__config['APP']['INTRADAY_LEEWAY_PERC']) / 100
+            self.fnoLeeway = float(self.__config['APP']['FNO_LEEWAY_PERC']) / 100            
             self.createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
             self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
             self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
@@ -181,24 +183,34 @@ class AppIciciDirectBreezeBroker():
 
 
     def findOrderStatusAndQtyInfo(self, dbDict, orderNum):
-        status, qty, trdQty = self.__iciciDirectBreeze.get_order_detail(dbDict['MKT'], orderNum)
+        #status, qty, trdQty = self.__iciciDirectBreeze.get_order_detail(dbDict['MKT'], orderNum)
+        status = True
+        qty = trdQty = dbDict['QTY']
         return status, qty, trdQty
     
 
     def getLastTradedPrice(self, dbDict):
         product = dbDict['PRODUCT']
-        status, ltp = self.__iciciDirectBreeze.get_quotes(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, dbDict['EXP_DATE'])
+        #status, ltp = self.__iciciDirectBreeze.get_quotes(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, dbDict['EXP_DATE'])
+        status = True
+        ltp = dbDict['HIGH_REC_PRICE']
         return status, ltp
 
 
     def cancelOrder(self, dbDict, orderNum):
-        status, message, orderNum = self.__iciciDirectBreeze.cancel_order(dbDict['MKT'], orderNum)
+        #status, message, orderNum = self.__iciciDirectBreeze.cancel_order(dbDict['MKT'], orderNum)
+        status = True
+        message = 'Dummy Order Message'
+        orderNum = 'Dummy'
         return status, message, orderNum
 
 
     def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0):
         product = dbDict['PRODUCT']
-        status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
+        #status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
+        status = True
+        message = 'Dummy Order Message'
+        orderNum = 'Dummy'        
         return status, message, orderNum
 
 
@@ -217,8 +229,7 @@ class AppIciciDirectBreezeBroker():
         tickDict = self.__iciciDirectBreeze.getRecDictFromTick(ticks)
         if tickDict != None:
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                pass
-                #self.__workflow.handleRec(tickDict, None)
+                self.__workflow.handleRec(tickDict, None)
             elif self.tradeIntraDay and tickDict['PRODUCT'] == 'MARGIN':
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
             else:

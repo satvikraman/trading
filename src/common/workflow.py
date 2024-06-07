@@ -436,12 +436,21 @@ class Workflow():
         qty = remQty
         if dbDict['PRODUCT'] == 'CASH':
             orderType = 'LMT'
+            limitPrice = dbDict['HIGH_REC_PRICE']
+        elif dbDict['PRODUCT'] == 'MARGIN':
+            orderType = self.__parent.intraDayOrderType 
+            if orderType == 'LMT':
+                if dbDict['BUY_SELL'] == 'BUY':
+                    limitPrice = round(int((dbDict['HIGH_REC_PRICE']  * (1 + self.__parent.intraDayLeeway)) / 0.05) * 0.05, 2)
+                else:
+                    limitPrice = round(int((dbDict['LOW_REC_PRICE']   * (1 - self.__parent.intraDayLeeway)) / 0.05) * 0.05, 2)
         else:
-            orderType = self.__parent.intraDayOrderType if dbDict['PRODUCT'] == 'MARGIN' else self.__parent.fnoOrderType
-        if orderType == 'LMT':
-            limitPrice = dbDict['HIGH_REC_PRICE'] if dbDict['BUY_SELL'] == 'BUY' else dbDict['LOW_REC_PRICE']
-        else:
-            limitPrice = 0
+            orderType = self.__parent.fnoOrderType
+            if orderType == 'LMT':
+                if dbDict['BUY_SELL'] == 'BUY':
+                    limitPrice = round(int((dbDict['HIGH_REC_PRICE']  * (1 + self.__parent.fnoLeeway)) / 0.05) * 0.05, 2)
+                else:
+                    limitPrice = round(int((dbDict['LOW_REC_PRICE']   * (1 - self.__parent.fnoLeeway)) / 0.05) * 0.05, 2)
 
         return canOrder, qty, limitPrice, orderType
     

@@ -347,12 +347,13 @@ class IciciDirectBreeze():
             tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
             tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
             tickDict['EXIT_PRICE'] = ticks['exit_price']
-        else:
+        elif 'strategy_date' in ticks:
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'^\s+|\s+$', '', ticks['underlying'])
             tickDict['SOURCE'] = 'BREEZE-FnO'
-            tickDict['STRATEGY'] = ticks['portfolio_name']
+            tickDict['STRATEGY'] = re.sub('FUTURES', 'FUTURE', ticks['product_type'].upper())
+            tickDict['PORTFOLIO_NAME'] = ticks['portfolio_name']
             tickDict['PORTFOLIO_ID'] = ticks['portfolio_id']
             tickDict['LEG_NO'] = ticks['leg_no']
             tickDict['BUY_SELL'] = ticks['action'].upper()
