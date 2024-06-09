@@ -77,6 +77,7 @@ class AppIcici():
             self.__iciciDirectWeb = IciciDirectWeb(self.__logger, self._mapIcici, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], self.__config['APP']['ICICI_DIRECT_URL'])
             
             self.__timeToRefreshTradeIeas = int(self.__config['APP']['TIMES_TO_REFRESH_TRADE_IDEAS'])
+            self.__browseIClick2Gain = self.__config['APP']['BROWSE_ICLICK2GAIN'].upper() == 'YES'
             
             # Download the latest ICICI dataset once every day
             dotenv.load_dotenv('.env', override=True)
@@ -147,48 +148,49 @@ class AppIcici():
 
 
     def runPeriodicChecks(self, recChangeCheck):
-        # Send all recommendations in DB that haven't be ACK'ed
+        # Send all CASH recommendations in DB that haven't be ACK'ed
         self.__workflow.sendNonAckedRecsFromDb(self.persistenceInv, self.__paytmBaseURL)
-        self.__workflow.sendNonAckedRecsFromDb(self.persistenceIntraDay, self.__iciciBreezeBaseURL)
-        self.__workflow.sendNonAckedRecsFromDb(self.persistenceFnO, self.__iciciBreezeBaseURL)
 
-        if True:
-            # Scrape recommendations from iClick2Invest
-            self.__iciciDirectWeb.browseResearchToClick_2_Invest()
-            self.__iciciDirectWeb.scrapeiClick2Invest()
-            for invRecDict in self.__iciciDirectWeb.getNextiCLICK_2_INVESTTblRow():
-                self.__workflow.updateAndSendRec(self.persistenceInv, invRecDict, self.__paytmBaseURL, recChangeCheck)
+        # Scrape recommendations from iClick2Invest
+        self.__iciciDirectWeb.browseResearchToClick_2_Invest()
+        self.__iciciDirectWeb.scrapeiClick2Invest()
+        for invRecDict in self.__iciciDirectWeb.getNextiCLICK_2_INVESTTblRow():
+            self.__workflow.updateAndSendRec(self.persistenceInv, invRecDict, self.__paytmBaseURL, recChangeCheck)
 
         # Scrape recommendations from iClick2Gain
-        self.__iciciDirectWeb.browseResearchToClick_2_Gain()
-        timesRefresh = self.__timeToRefreshTradeIeas
-        for i in range(timesRefresh):
-            self.__iciciDirectWeb.scrapeiClick2Gain()    
-            for gainRecDict in self.__iciciDirectWeb.getNextiCLICK_2_GAINTblRow():
-                if gainRecDict['PRODUCT'] == 'MARGIN':
-                    pass
-                    #self.__workflow.updateAndSendRec(self.persistenceIntraDay, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheck)
-                elif gainRecDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                    pass
-                    #self.__workflow.updateAndSendRec(self.persistenceFnO, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheck)
-                elif gainRecDict['PRODUCT'] == 'CASH':
-                    self.__workflow.updateAndSendRec(self.persistenceInv, gainRecDict, self.__paytmBaseURL, recChangeCheck)
-                elif gainRecDict['PRODUCT'] in ['COMMODITY FUTURE', 'COMMODITY OPTION']:
-                    pass
-                else:
-                    self.__logger.error("Strategy %s not handled", gainRecDict['STRATEGY'])
+        if self.__browseIClick2Gain:
+            self.__workflow.sendNonAckedRecsFromDb(self.persistenceIntraDay, self.__iciciBreezeBaseURL)
+            self.__workflow.sendNonAckedRecsFromDb(self.persistenceFnO, self.__iciciBreezeBaseURL)
+            self.__iciciDirectWeb.browseResearchToClick_2_Gain()
+            timesRefresh = self.__timeToRefreshTradeIeas
+            for i in range(timesRefresh):
+                self.__iciciDirectWeb.scrapeiClick2Gain()    
+                for gainRecDict in self.__iciciDirectWeb.getNextiCLICK_2_GAINTblRow():
+                    if gainRecDict['PRODUCT'] == 'MARGIN':
+                        pass
+                        #self.__workflow.updateAndSendRec(self.persistenceIntraDay, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheck)
+                    elif gainRecDict['PRODUCT'] in ['OPTION', 'FUTURE']:
+                        pass
+                        #self.__workflow.updateAndSendRec(self.persistenceFnO, gainRecDict, self.__iciciBreezeBaseURL, recChangeCheck)
+                    elif gainRecDict['PRODUCT'] == 'CASH':
+                        self.__workflow.updateAndSendRec(self.persistenceInv, gainRecDict, self.__paytmBaseURL, recChangeCheck)
+                    elif gainRecDict['PRODUCT'] in ['COMMODITY FUTURE', 'COMMODITY OPTION']:
+                        pass
+                    else:
+                        self.__logger.error("Strategy %s not handled", gainRecDict['STRATEGY'])
 
-            time.sleep(1)
+                time.sleep(1)
 
-        self.__workflow.closeLeverageRecsNotVisible(self.persistenceIntraDay, self.__iciciBreezeBaseURL)
-        self.__workflow.closeLeverageRecsNotVisible(self.persistenceFnO, self.__iciciBreezeBaseURL)
+            self.__workflow.closeLeverageRecsNotVisible(self.persistenceIntraDay, self.__iciciBreezeBaseURL)
+            self.__workflow.closeLeverageRecsNotVisible(self.persistenceFnO, self.__iciciBreezeBaseURL)
 
 
     def runPostMarketCloseChecks(self):
         self.__logger.info("Checking for mismatched visibility")
-        self.__workflow.updateMismatchedVisibility(self.persistenceInv, 'iCLICK-2-GAIN', 'EQUITY', self.__paytmBaseURL)
         self.__workflow.updateMismatchedVisibility(self.persistenceInv, 'iCLICK-2-INVEST', 'EQUITY', self.__paytmBaseURL)
-        self.__workflow.updateMismatchedVisibility(self.persistenceFnO, 'iCLICK-2-GAIN', 'DERIVATIVE', self.__iciciBreezeBaseURL)
+        if self.__browseIClick2Gain:
+            self.__workflow.updateMismatchedVisibility(self.persistenceInv, 'iCLICK-2-GAIN', 'EQUITY', self.__paytmBaseURL)
+            self.__workflow.updateMismatchedVisibility(self.persistenceFnO, 'iCLICK-2-GAIN', 'DERIVATIVE', self.__iciciBreezeBaseURL)
         #self.closeExpiredRecs('EQUITY', dryRun=False)
         #self.closeExpiredRecs('FnO', dryRun=False)
 
@@ -212,8 +214,7 @@ if __name__ == '__main__':
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
         trade.runPeriodicChecks(recChangeCheck)
         recChangeCheck = False
-        if not marketOpen:
-            time.sleep(15)
+        time.sleep(15)
             
     time.sleep(60)
     if marketClose:

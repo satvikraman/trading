@@ -200,11 +200,7 @@ class Workflow():
     def __investForSatvik(self, strategy):
         # Define the list of strategies that should be invested for Satvik
         satvikStrategies = ['MOMENTUM PICK']
-        # If the current recommendation's strategy is in the list above, return True
-        invest = False
-        if strategy in satvikStrategies: 
-            invest = True
-        return invest
+        return strategy in satvikStrategies
 
 
     def __isLateAdd(self, recDict):
@@ -441,16 +437,16 @@ class Workflow():
             orderType = self.__parent.intraDayOrderType 
             if orderType == 'LMT':
                 if dbDict['BUY_SELL'] == 'BUY':
-                    limitPrice = round(int((dbDict['HIGH_REC_PRICE']  * (1 + self.__parent.intraDayLeeway)) / 0.05) * 0.05, 2)
+                    limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['HIGH_REC_PRICE'] // 100) * self.__parent.intraDayLeeway
                 else:
-                    limitPrice = round(int((dbDict['LOW_REC_PRICE']   * (1 - self.__parent.intraDayLeeway)) / 0.05) * 0.05, 2)
+                    limitPrice = dbDict['LOW_REC_PRICE']  - (dbDict['LOW_REC_PRICE'] // 100) * self.__parent.intraDayLeeway
         else:
             orderType = self.__parent.fnoOrderType
             if orderType == 'LMT':
                 if dbDict['BUY_SELL'] == 'BUY':
-                    limitPrice = round(int((dbDict['HIGH_REC_PRICE']  * (1 + self.__parent.fnoLeeway)) / 0.05) * 0.05, 2)
+                    limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['HIGH_REC_PRICE'] // 100) * self.__parent.fnoLeeway
                 else:
-                    limitPrice = round(int((dbDict['LOW_REC_PRICE']   * (1 - self.__parent.fnoLeeway)) / 0.05) * 0.05, 2)
+                    limitPrice = dbDict['LOW_REC_PRICE']  - (dbDict['LOW_REC_PRICE'] // 100) * self.__parent.fnoLeeway
 
         return canOrder, qty, limitPrice, orderType
     
@@ -630,18 +626,14 @@ class Workflow():
 
     def __addNewRec(self, persistenceInst, recDict, amountPerOrder, holdQty=0):
         status = False
-        recDict['HIGH_REC_PRICE'] = float(recDict['HIGH_REC_PRICE'])
-        recDict['LOW_REC_PRICE'] = float(recDict['LOW_REC_PRICE'])
-        recDict['TARGET'] = float(recDict['TARGET'])
-        recDict['STOP_LOSS'] = float(recDict['STOP_LOSS'])
 
         if recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
             qty = recDict['LOT']
         else:
+            #if recDict['PRODUCT'] == 'MARGIN':
+            #    amountPerOrder *= self.__parent.timesMargin
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
-            qty = max(int(amountPerOrder / avgPrice), 1)
-            margin = self.__parent.timesMargin if recDict['PRODUCT'] == 'MARGIN' else 1
-            qty *= margin
+            qty = max(int(amountPerOrder // avgPrice), 1)
 
         # Security ID of the stock 
         recDict['POS_QTY'] = 0
