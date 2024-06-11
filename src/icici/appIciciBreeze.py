@@ -118,8 +118,8 @@ class AppIciciDirectBreezeBroker():
             self.squareOff = False
             self.marketOpen = False
             self.timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
-            self.intraDayLeeway = float(self.__config['APP']['INTRADAY_LEEWAY_PERC']) / 100
-            self.fnoLeeway = float(self.__config['APP']['FNO_LEEWAY_PERC']) / 100            
+            self.intraDayLeeway = float(self.__config['APP']['INTRADAY_LEEWAY_PERC'])
+            self.fnoLeeway = float(self.__config['APP']['FNO_LEEWAY_PERC'])            
             self.createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
             self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
             self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
@@ -131,6 +131,8 @@ class AppIciciDirectBreezeBroker():
             self.fnoOrderType = self.__config['APP']['FNO_ORDER_TYPE']
             self.cmp = {}
 
+            self.websocketSubscription('ADD', '4.1!2885')
+            self.websocketSubscription('ADD', '4.1!1660')
             if self.tradeIntraDay:
                 self.__workflow.refreshCMP([self.persistenceIntraDay])
 
@@ -222,6 +224,7 @@ class AppIciciDirectBreezeBroker():
         try:
             self.cmp[ticks['symbol']]['LTP'] = ticks['last']
         except Exception as e:
+            self.cmp[ticks['symbol']] = {}
             self.__logger.critical("securityId %s not in self.__cmp. Error: %s", ticks['symbol'], e)
 
 
@@ -229,7 +232,8 @@ class AppIciciDirectBreezeBroker():
         tickDict = self.__iciciDirectBreeze.getRecDictFromTick(ticks)
         if tickDict != None:
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                self.__workflow.handleRec(tickDict, None)
+                pass
+                #self.__workflow.handleRec(tickDict, None)
             elif self.tradeIntraDay and tickDict['PRODUCT'] == 'MARGIN':
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
             else:

@@ -781,6 +781,7 @@ class IciciDirectWeb():
             self.__iclick2InvestDict[key] = {'DICT': rowDict}
         else:
             rowDictTmp = self.__iclick2InvestDict[key]['DICT']
+            stopLoss = cell5Dict['STOP_LOSS']
             if 'STOP_LOSS' in cell7Dict and cell7Dict['STOP_LOSS'] > cell5Dict['STOP_LOSS']:
                 stopLoss = cell7Dict['STOP_LOSS']
             status, rowDictTmp = self.__recChanged(rowDictTmp, cell7Dict['REC_STATUS'], cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 

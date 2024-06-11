@@ -86,8 +86,8 @@ class AppPaytmBroker():
             self.marketOpen = False
             self.useWebsocket = False
             self.timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
-            self.intraDayLeeway = float(self.__config['APP']['INTRADAY_LEEWAY_PERC']) / 100
-            self.fnoLeeway = float(self.__config['APP']['FNO_LEEWAY_PERC']) / 100
+            self.intraDayLeeway = float(self.__config['APP']['INTRADAY_LEEWAY_PERC'])
+            self.fnoLeeway = float(self.__config['APP']['FNO_LEEWAY_PERC'])
             self.createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
             self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
             self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
@@ -349,7 +349,7 @@ class AppPaytmBroker():
 
 
     def setVisibility(self, hiddenDict):
-        self.__workflow.setvisibility(hiddenDict)
+        self.__workflow.setVisibility(hiddenDict)
 
 
     def handleRec(self, recDict):
