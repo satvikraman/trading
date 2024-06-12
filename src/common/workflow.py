@@ -869,7 +869,7 @@ class Workflow():
             # Handle the visibility of Satvik's strategy
             strategy = dbDict['STRATEGY']
             strategy = re.sub(r'^SR-', '', strategy)
-            val = dbDict['SRC_SYMBOL'] + '-' + strategy + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
+            val = dbDict['MKT_SYMBOL'] + '-' + strategy + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
             if val in hiddenDict['VISIBLE']:
                 visibility = 'VISIBLE'
             else:
@@ -890,7 +890,7 @@ class Workflow():
 
 
     def __callRestAPI(self, recDict, baseURL, endPoint, method='POST'):
-        if recDict == None:
+        if recDict == None or baseURL == None:
             return True
     
         retries = 2
@@ -925,7 +925,7 @@ class Workflow():
             visible = self.__parent.isVisible(dbDict['SOURCE'], dbDict['STOCK'], dbDict['SRC_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'])
             # Close the recommendation that was not found
             if visible:
-                val = dbDict['SRC_SYMBOL'] + '-' + dbDict['STRATEGY'] + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
+                val = dbDict['MKT_SYMBOL'] + '-' + dbDict['STRATEGY'] + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
                 visibilityDict['VISIBLE'].append(val)
                 dbDict['VISIBLE'] = 'VISIBLE'
                 persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
@@ -988,15 +988,13 @@ class Workflow():
         return anyChange, sendRecIfReq
 
 
-    def updateAndSendRec(self, persistenceInst, rowDict, baseURL, recChangeCheck):
+    def updateAndSendRec(self, persistenceInst, rowDict, baseURL):
         isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
 
         # If no recommendation found in DB and if the current recommendation is not close, then
         # Insert the recommendation in DB
         if isInDb:
-            anyChange = sendRecIfReq = True
-            if recChangeCheck:
-                anyChange, sendRecIfReq = self.recChanged(dbDict, rowDict)
+            anyChange, sendRecIfReq = self.recChanged(dbDict, rowDict)
             if anyChange:
                 # The recommendation has changed, else this function wont be called
                 self.__logger.info('Existing recommendation changed. Send: %s rowDict: %s', sendRecIfReq, rowDict)

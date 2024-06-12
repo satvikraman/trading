@@ -233,7 +233,7 @@ class AppIciciDirectBreezeBroker():
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
             else:
                 persistenceInst = self.persistenceInv if tickDict['PRODUCT'] == 'CASH' else self.persistenceIntraDay
-                self.__workflow.updateAndSendRec(persistenceInst, tickDict, self.__paytmBaseURL, recChangeCheck=True)
+                self.__workflow.updateAndSendRec(persistenceInst, tickDict, self.__paytmBaseURL)
 
 
     def setVisibility(self, hiddenDict):

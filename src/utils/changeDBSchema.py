@@ -15,7 +15,7 @@ from persistence import persistence
 class app():
     def __init__(self, paytmConfig, iciciConfig=None):
         self.__logger = None
-        if(os.path.isfile(paytmConfig)):
+        if paytmConfig != None and (os.path.isfile(paytmConfig)):
             self.__config = configparser.ConfigParser()
             self.__config.read(paytmConfig)
             if self.__logger == None:
@@ -68,7 +68,7 @@ class app():
 
 
     def cleanSpecificStocks(self):
-        self.__persistence1.removeFromDb([['STRATEGY', 'MARGIN']])
+        self.__persistence1.removeFromDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', 'OPEN']])
         
 
     def mapICICSymbolToMktSymbol(self, strategy, stkName=None, shortName=None):
@@ -183,9 +183,9 @@ if __name__ == '__main__':
     #trade.changeIciciSchema()
     
     # Backup DB. We will work on the original DB
-    #trade = app('./src/paytm/payTmMoney.ini')
-    #trade.changePayTmSchema()
+    trade = app('./src/paytm/payTmMoney.ini')
+    trade.cleanSpecificStocks()
 
-    trade = app('./src/paytm/payTmMoney.ini', './src/icici/iciciDirect.ini')
-    trade.checkPayTmInIcici()
+    #trade = app('./src/paytm/payTmMoney.ini', './src/icici/iciciDirect.ini')
+    #trade.checkPayTmInIcici()
 
