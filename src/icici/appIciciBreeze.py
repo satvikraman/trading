@@ -56,7 +56,7 @@ class AppIciciDirectBreezeBroker():
             brz_session_token_valid_until = os.environ.get('brz_session_token_valid_until', '')
             today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
             if brz_session_token_valid_until.upper() != today:
-                self.__iciciDirectWeb = IciciDirectWeb(self.__logger, None, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], None)
+                self.__iciciDirectWeb = IciciDirectWeb(self, self.__logger, None, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], None)
                 loginURL = self.__iciciDirectBreeze.getBreezeLoginURL()
                 sessionToken = self.__iciciDirectWeb.getBreezeSessionToken(loginURL, self.__config['APP']['USE_PUSHBULLET'], self.__config['APP']['USE_SPREADSHEET'], 
                                                                             self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
@@ -129,6 +129,7 @@ class AppIciciDirectBreezeBroker():
             self.amountPerIntradayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
             self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
             self.fnoOrderType = self.__config['APP']['FNO_ORDER_TYPE']
+            self.MarginBuyAsCash = self.__config['APP']['MARGIN_BUY_AS_CASH'].upper() == 'YES'
             self.cmp = {}
 
             self.websocketSubscription('ADD', '4.1!2885')

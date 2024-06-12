@@ -970,6 +970,7 @@ class Workflow():
 
     def recChanged(self, dbDict, recStatus, highRecPrice, lowRecPrice, target, stoploss):
         anyChange, dbDict = self.__transitionRec(dbDict, recStatus)
+        sendRecIfReq = not(self.__parent.MarginBuyAsCash and anyChange and dbDict['STRATEGY'] == 'MARGIN' and dbDict['PRODUCT'] == 'CASH' and dbDict['UPDATE_ACTION_2'] == 'LOSS')
 
         if dbDict['HIGH_REC_PRICE'] != highRecPrice:
             anyChange = True
@@ -979,7 +980,8 @@ class Workflow():
             anyChange = True
         if dbDict['STOP_LOSS'] != stoploss:
             anyChange = True
-        return anyChange
+
+        return anyChange, sendRecIfReq
 
 
     def updateAndSendRec(self, persistenceInst, rowDict, baseURL, recChangeCheck):
@@ -990,15 +992,19 @@ class Workflow():
         if isInDb:
             status = True
             if recChangeCheck:
-                status = self.recChanged(dbDict, rowDict['REC_STATUS'], rowDict['HIGH_REC_PRICE'], rowDict['LOW_REC_PRICE'], rowDict['TARGET'], rowDict['STOP_LOSS'])
+                status, sendRecIfReq = self.recChanged(dbDict, rowDict['REC_STATUS'], rowDict['HIGH_REC_PRICE'], rowDict['LOW_REC_PRICE'], rowDict['TARGET'], rowDict['STOP_LOSS'])
             if status:
                 # The recommendation has changed, else this function wont be called
-                self.__logger.info('Existing recommendation changed %s', rowDict)
-                recDict = self.__prepareRecDict(rowDict)
-                status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
-                rowDict['ACK'] = 'ACK' if status else 'NACK'
-                persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-                #else: Nothing to be done
+                self.__logger.info('Existing recommendation changed. Send: %s rowDict: %s', sendRec, rowDict)
+                if sendRecIfReq:
+                    recDict = self.__prepareRecDict(rowDict)
+                    status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
+                    rowDict['ACK'] = 'ACK' if status else 'NACK'
+                    persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                else:
+                    rowDict['ACK'] = 'ACK'
+                    persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
+            #else: Nothing to be done
         else:
             if(rowDict['REC_STATUS'] != 'CLOSE'):
                 self.__logger.info('New Recommendation %s', rowDict)

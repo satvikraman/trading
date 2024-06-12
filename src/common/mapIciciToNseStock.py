@@ -36,7 +36,7 @@ class MapIciciToNseStock():
 
     def mapICICSymbolToMktSymbol(self, stkName=None, iciciSymbol=None, product=None, mkt='NSE'):
         status = False
-        rowDict = {'SECURITY_ID': '', 'MKT': '', 'MKT_SYMBOL': '', 'ICICI_SYMBOL': ''}
+        rowDict = {'SECURITY_ID': '', 'MKT': '', 'MKT_SYMBOL': '', 'ICICI_SYMBOL': '', 'LOT': ''}
         marketCode = {'BSE': '1', 'NSE': '4', 'NDX': '13', 'MCX': '6', 'NFO': '4'}
 
         if bool(re.search(r'OPTION', product, re.IGNORECASE)):

@@ -224,7 +224,8 @@ class IciciDirectBreeze():
 
     def __mapBreezeUpdateInfoToRecStatus(self, update, product):
         splitUpdate = re.split(r'\d\d:\d\d:\d\d', update)
-        fullClose = ['Book Full Profit', 'TGT1', 'Exit', 'SLTP']
+        fullProfitClose = ['Book Full Profit', 'TGT1']
+        fullLossClose = ['Exit', 'SLTP']
         partialClose = ['Book Partial Profit']
 
         updateAction1 = updateAction2 = updateAction1Time = updateAction2Time = ''
@@ -245,9 +246,16 @@ class IciciDirectBreeze():
         for action in partialClose:
             if bool(re.search(action, update, flags=re.IGNORECASE)):
                 recStatus = 'PARTIAL_CLOSE' if product == 'CASH' else 'CLOSE'
-        for action in fullClose:
-            if bool(re.search(action, update, flags=re.IGNORECASE)):
-                recStatus = 'CLOSE'
+        if recStatus == 'OPEN':
+            for action in fullProfitClose:
+                if bool(re.search(action, update, flags=re.IGNORECASE)):
+                    recStatus = 'CLOSE'
+        if recStatus == 'OPEN':
+            for action in fullLossClose:
+                if bool(re.search(action, update, flags=re.IGNORECASE)):
+                    recStatus = 'CLOSE'
+                    if product == 'MARGIN' and self.__parent.MarginBuyAsCash:
+                        updateAction2 = 'LOSS'
         return recStatus, updateAction1, updateAction1Time, updateAction2, updateAction2Time    
 
 
@@ -347,6 +355,12 @@ class IciciDirectBreeze():
             tickDict['PART_PROFIT_PRICE'] = ticks['part_profit_percentage'].split(',')[0]
             tickDict['FINAL_PROFIT_PRICE'] = ticks['profit_price']
             tickDict['EXIT_PRICE'] = ticks['exit_price']
+
+            # Convert BUY Margin orders as CASH orders
+            if tickDict['PRODUCT'] == 'MARGIN' and tickDict['BUY_SELL'] == 'BUY' and self.__parent.MarginBuyAsCash:
+                tickDict['PRODUCT'] = 'CASH'
+                tickDict['STOP_LOSS'] = tickDict['STOP_LOSS'] - (tickDict['STOP_LOSS'] // 100) * 5
+
         elif 'strategy_date' in ticks:
             tickDict = {}
             # Mandatory keys

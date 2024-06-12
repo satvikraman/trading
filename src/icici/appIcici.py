@@ -74,10 +74,11 @@ class AppIcici():
             self.__iciciBreezeBaseURL = baseURL + ':' + str(self.__config['APP']['ICICI_BREEZE_PORT']) + '/'
 
             self._mapIcici = MapIciciToNseStock(self.__config['DATASET']['NSE_DATASET'], self.__config['DATASET']['BSE_DATASET'], self.__config['DATASET']['FNO_DATASET'])
-            self.__iciciDirectWeb = IciciDirectWeb(self.__logger, self._mapIcici, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], self.__config['APP']['ICICI_DIRECT_URL'])
+            self.__iciciDirectWeb = IciciDirectWeb(self, self.__logger, self._mapIcici, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], self.__config['APP']['ICICI_DIRECT_URL'])
             
             self.__timeToRefreshTradeIeas = int(self.__config['APP']['TIMES_TO_REFRESH_TRADE_IDEAS'])
             self.__browseIClick2Gain = self.__config['APP']['BROWSE_ICLICK2GAIN'].upper() == 'YES'
+            self.MarginBuyAsCash = self.__config['APP']['MARGIN_BUY_AS_CASH'].upper() == 'YES'
             
             # Download the latest ICICI dataset once every day
             dotenv.load_dotenv('.env', override=True)

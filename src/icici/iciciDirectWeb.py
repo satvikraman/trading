@@ -31,7 +31,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 class IciciDirectWeb():
-    def __init__(self, logger, mapIcici, browser, chromeBrowser, edgeBrowser, iciciURL):
+    def __init__(self, parent, logger, mapIcici, browser, chromeBrowser, edgeBrowser, iciciURL):
+        self.__parent = parent
         self.__logger = logger
         self.__mapIcici = mapIcici
         self.__iciciURL = iciciURL
@@ -394,14 +395,24 @@ class IciciDirectWeb():
         return status
 
 
-    def __closeRec(self, updateAction1, updateAction2):
+    def __closeRec(self, updateAction1, updateAction2, product):
         status = False
-        actions = ['Book Full Profit', 'TGT1', 'Exit', 'SLTP']
-        for action in actions:
+        fullProfitClose = ['Book Full Profit', 'TGT1']
+        for action in fullProfitClose:
             if updateAction1.lower() == action.lower() or updateAction2.lower() == action.lower():
                 status = True
                 break
-        return status
+
+        if not status:
+            fullLossClose = ['Exit', 'SLTP']
+            for action in fullLossClose:
+                if updateAction1.lower() == action.lower() or updateAction2.lower() == action.lower():
+                    status = True
+                    if product == 'MARGIN' and self.__parent.MarginBuyAsCash:
+                        updateAction2 = 'LOSS'
+                    break
+
+        return status, updateAction2
     
 
     def __suggestInvPeriodExpDate(self, strategy, iciciSymbol, recDate, invPeriod=None):
@@ -664,7 +675,8 @@ class IciciDirectWeb():
         return rowDict
 
 
-    def __getRecStatusfromGainRow(self, tblRow, tblRowCols):
+    def __getRecStatusfromGainRow(self, tblRow, tblRowCols, product):
+        recStatus = 'OPEN'
         cell9Dict = self.__formatUpdateCell(tblRowCols[8].text)
         # If the style attribute of any table row is tblRow.get_attribute("style") == 'text-decoration: line-through;'
         # i.e. it has been struck-through, it means that recommendation has been dicarded
@@ -675,11 +687,11 @@ class IciciDirectWeb():
         elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
             recStatus = 'CLOSE'
         elif(self.__halfCloseRec(cell9Dict['UPDATE_ACTION_1'])):
-            recStatus = 'PARTIAL_CLOSE'
-        elif(self.__closeRec(cell9Dict['UPDATE_ACTION_1'], cell9Dict['UPDATE_ACTION_2'])):
-            recStatus = 'CLOSE'
+            recStatus = 'PARTIAL_CLOSE' if product == 'CASH' else 'CLOSE'
         else:
-            recStatus = 'OPEN'
+            status, cell9Dict['UPDATE_ACTION_2'] = self.__closeRec(cell9Dict['UPDATE_ACTION_1'], cell9Dict['UPDATE_ACTION_2'], product)
+            if status:
+                recStatus = 'CLOSE'
         
         return recStatus, cell9Dict
 
@@ -716,8 +728,7 @@ class IciciDirectWeb():
         cell5Dict = self.__formatPriceCell(tblRowCols[4].text, 'STOP_LOSS')
         cell6Dict = self.__formatPartProfitCell(tblRowCols[5].text)
         cell7Dict = self.__formatPriceCell(tblRowCols[6].text, 'FINAL_PROFIT_PRICE')
-        cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')        
-        recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols)
+        cell8Dict = self.__formatPriceCell(tblRowCols[7].text, 'EXIT_PRICE')
 
         if key not in self.__iclick2GainDict:
             # Find the corresponding NSE symbol
@@ -731,7 +742,7 @@ class IciciDirectWeb():
                 if not status:
                     self.__logger.error("Unable to map STRATEGY=%s STOCK=%s SRC_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
                     return rowDict
-            self.__logger.debug('SRC_SYMBOL = %s <=> MKT_SYMBOL = %s', cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'])
+            recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols, cell1Dict['PRODUCT'])
             cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
             rowDict = {**cell1Dict, **cell2Dict, **cell3Dict, **cell4Dict, **cell5Dict, **cell6Dict, **cell7Dict, **cell8Dict, **cell9Dict}
             
@@ -751,10 +762,18 @@ class IciciDirectWeb():
             self.__iclick2GainDict[key] = {'DICT': rowDict}
         else: 
             rowDictTmp = self.__iclick2GainDict[key]['DICT']
+            recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols, rowDictTmp['PRODUCT'])
+
             status, rowDictTmp = self.__recChanged(rowDictTmp, recStatus, cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
                                                    cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])
             if status:            
                 rowDict = rowDictTmp
+                rowDict.update(cell9Dict)
+                self.__iclick2GainDict[key]['DICT'] = rowDict
+
+        if rowDict != None and rowDict['PRODUCT'] == 'MARGIN' and rowDict['BUY_SELL'] == 'BUY' and self.__parent.MarginBuyAsCash:
+            rowDict['PRODUCT'] = 'CASH'
+            rowDict['STOP_LOSS'] = rowDict['STOP_LOSS'] - (rowDict['STOP_LOSS'] // 100) * 5
 
         return rowDict
 
@@ -788,6 +807,7 @@ class IciciDirectWeb():
                                                    cell4Dict['TARGET'], stopLoss)
             if status:
                 rowDict = rowDictTmp
+                self.__iclick2InvestDict[key]['DICT'] = rowDict
             self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
 

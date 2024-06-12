@@ -1,5 +1,7 @@
 import logging
 import os
+import time
+import datetime
 
 import google.auth
 from google.auth.transport.requests import Request
@@ -26,9 +28,17 @@ class googleWorkspace():
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         # The file token.json stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
-        # time.
-        if os.path.exists('token.json'):
-            self.__sheetcreds = Credentials.from_authorized_user_file('token.json', SCOPES)
+        # time. Create this authorization every day
+        tokenPath = 'token.json'
+        if os.path.exists():
+            ti_m = os.path.getmtime(tokenPath)
+            m_ti = time.ctime(ti_m)
+            m_time = datetime.datetime.strptime(m_ti, "%a %b %d %H:%M:%S %Y").date()
+            today = datetime.date.today()
+            if m_time < today:
+                os.remove(tokenPath)
+            else:
+                self.__sheetcreds = Credentials.from_authorized_user_file(tokenPath, SCOPES)
         # If there are no (valid) credentials available, let the user log in.
         if not self.__sheetcreds or not self.__sheetcreds.valid:
             if self.__sheetcreds and self.__sheetcreds.expired and self.__sheetcreds.refresh_token:
@@ -38,7 +48,7 @@ class googleWorkspace():
                     'credentials.json', SCOPES)
                 self.__sheetcreds = flow.run_local_server(port=0)
             # Save the credentials for the next run
-            with open('token.json', 'w') as token:
+            with open(tokenPath, 'w') as token:
                 token.write(self.__sheetcreds.to_json())
 
 

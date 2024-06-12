@@ -435,7 +435,7 @@ if __name__ == '__main__':
 
     trade.printMilestones()
     
-    squareOffMinus15 = False
+    squareOffTime = False
     marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
@@ -443,9 +443,9 @@ if __name__ == '__main__':
     
     while marketOpen:
         # Start closing all intraday positions as soon as it is 3:00PM
-        squareOffMinus15  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=15) 
+        squareOffTime  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=00) 
         marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=30)
-        trade.setMarketTimer(squareOffMinus15, marketOpen)
+        trade.setMarketTimer(squareOffTime, marketOpen)
         trade.runPeriodicChecks()
         time.sleep(1)
 
