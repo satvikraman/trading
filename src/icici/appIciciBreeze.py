@@ -140,7 +140,7 @@ class AppIciciDirectBreezeBroker():
 
     def strategiesToInvest(self, source, strategy):
         allStrategies = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS']}
-        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS']}
+        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE']}
 
         status = False
         if strategy in strategiesToInvest[source]:
@@ -194,17 +194,12 @@ class AppIciciDirectBreezeBroker():
 
     def getLastTradedPrice(self, dbDict):
         product = dbDict['PRODUCT']
-        #status, ltp = self.__iciciDirectBreeze.get_quotes(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, dbDict['EXP_DATE'])
-        status = True
-        ltp = dbDict['HIGH_REC_PRICE']
+        status, ltp = self.__iciciDirectBreeze.get_quotes(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, dbDict['EXP_DATE'])
         return status, ltp
 
 
     def cancelOrder(self, dbDict, orderNum):
-        #status, message, orderNum = self.__iciciDirectBreeze.cancel_order(dbDict['MKT'], orderNum)
-        status = True
-        message = 'Dummy Order Message'
-        orderNum = 'Dummy'
+        status, message, orderNum = self.__iciciDirectBreeze.cancel_order(dbDict['MKT'], orderNum)
         return status, message, orderNum
 
 
@@ -233,8 +228,7 @@ class AppIciciDirectBreezeBroker():
         tickDict = self.__iciciDirectBreeze.getRecDictFromTick(ticks)
         if tickDict != None:
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                pass
-                #self.__workflow.handleRec(tickDict, None)
+                self.__workflow.handleRec(tickDict, None)
             elif self.tradeIntraDay and tickDict['PRODUCT'] == 'MARGIN':
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
             else:

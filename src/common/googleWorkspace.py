@@ -30,7 +30,7 @@ class googleWorkspace():
         # created automatically when the authorization flow completes for the first
         # time. Create this authorization every day
         tokenPath = 'token.json'
-        if os.path.exists():
+        if os.path.exists(tokenPath):
             ti_m = os.path.getmtime(tokenPath)
             m_ti = time.ctime(ti_m)
             m_time = datetime.datetime.strptime(m_ti, "%a %b %d %H:%M:%S %Y").date()

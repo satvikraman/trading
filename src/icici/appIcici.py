@@ -153,10 +153,11 @@ class AppIcici():
         self.__workflow.sendNonAckedRecsFromDb(self.persistenceInv, self.__paytmBaseURL)
 
         # Scrape recommendations from iClick2Invest
-        self.__iciciDirectWeb.browseResearchToClick_2_Invest()
-        self.__iciciDirectWeb.scrapeiClick2Invest()
-        for invRecDict in self.__iciciDirectWeb.getNextiCLICK_2_INVESTTblRow():
-            self.__workflow.updateAndSendRec(self.persistenceInv, invRecDict, self.__paytmBaseURL, recChangeCheck)
+        if True:
+            self.__iciciDirectWeb.browseResearchToClick_2_Invest()
+            self.__iciciDirectWeb.scrapeiClick2Invest()
+            for invRecDict in self.__iciciDirectWeb.getNextiCLICK_2_INVESTTblRow():
+                self.__workflow.updateAndSendRec(self.persistenceInv, invRecDict, self.__paytmBaseURL, recChangeCheck)
 
         # Scrape recommendations from iClick2Gain
         if self.__browseIClick2Gain:
@@ -214,7 +215,7 @@ if __name__ == '__main__':
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) 
         marketClose = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=30)
         trade.runPeriodicChecks(recChangeCheck)
-        recChangeCheck = False
+        #recChangeCheck = False
         time.sleep(15)
             
     time.sleep(60)

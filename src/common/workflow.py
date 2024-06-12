@@ -122,9 +122,9 @@ class Workflow():
         if recDict['PRODUCT'] in ['MARGIN']:
             return True
         
-        recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
-        todaysDate = self.__today
-        expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y")
+        recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y").date()
+        todaysDate = self.__today.date()
+        expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y").date()
 
         if expDate >= todaysDate:
             if expDate > recDate:
@@ -968,18 +968,22 @@ class Workflow():
             persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
 
-    def recChanged(self, dbDict, recStatus, highRecPrice, lowRecPrice, target, stoploss):
-        anyChange, dbDict = self.__transitionRec(dbDict, recStatus)
-        sendRecIfReq = not(self.__parent.MarginBuyAsCash and anyChange and dbDict['STRATEGY'] == 'MARGIN' and dbDict['PRODUCT'] == 'CASH' and dbDict['UPDATE_ACTION_2'] == 'LOSS')
+    def recChanged(self, dbDict, rowDict):
+        recStatusChanged, dbDict = self.__transitionRec(dbDict, rowDict['REC_STATUS'])
+        sendRecIfReq = not(self.__parent.MarginBuyAsCash and recStatusChanged and rowDict['STRATEGY'] == 'MARGIN' and rowDict['PRODUCT'] == 'CASH' and rowDict['UPDATE_ACTION_2'] == 'LOSS')
 
-        if dbDict['HIGH_REC_PRICE'] != highRecPrice:
+        anyChange = False
+        if dbDict['HIGH_REC_PRICE'] != rowDict['HIGH_REC_PRICE']:
             anyChange = True
-        if dbDict['LOW_REC_PRICE'] != lowRecPrice:
+        if dbDict['LOW_REC_PRICE'] != rowDict['LOW_REC_PRICE']:
             anyChange = True
-        if dbDict['TARGET'] != target:
+        if dbDict['TARGET'] != rowDict['TARGET']:
             anyChange = True
-        if dbDict['STOP_LOSS'] != stoploss:
+        if dbDict['STOP_LOSS'] != rowDict['STOP_LOSS']:
             anyChange = True
+
+        sendRecIfReq = sendRecIfReq or anyChange
+        anyChange = anyChange or recStatusChanged
 
         return anyChange, sendRecIfReq
 
@@ -990,12 +994,12 @@ class Workflow():
         # If no recommendation found in DB and if the current recommendation is not close, then
         # Insert the recommendation in DB
         if isInDb:
-            status = True
+            anyChange = sendRecIfReq = True
             if recChangeCheck:
-                status, sendRecIfReq = self.recChanged(dbDict, rowDict['REC_STATUS'], rowDict['HIGH_REC_PRICE'], rowDict['LOW_REC_PRICE'], rowDict['TARGET'], rowDict['STOP_LOSS'])
-            if status:
+                anyChange, sendRecIfReq = self.recChanged(dbDict, rowDict)
+            if anyChange:
                 # The recommendation has changed, else this function wont be called
-                self.__logger.info('Existing recommendation changed. Send: %s rowDict: %s', sendRec, rowDict)
+                self.__logger.info('Existing recommendation changed. Send: %s rowDict: %s', sendRecIfReq, rowDict)
                 if sendRecIfReq:
                     recDict = self.__prepareRecDict(rowDict)
                     status = self.__callRestAPI(recDict, baseURL, 'v1/rec')

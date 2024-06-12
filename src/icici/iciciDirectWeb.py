@@ -771,10 +771,6 @@ class IciciDirectWeb():
                 rowDict.update(cell9Dict)
                 self.__iclick2GainDict[key]['DICT'] = rowDict
 
-        if rowDict != None and rowDict['PRODUCT'] == 'MARGIN' and rowDict['BUY_SELL'] == 'BUY' and self.__parent.MarginBuyAsCash:
-            rowDict['PRODUCT'] = 'CASH'
-            rowDict['STOP_LOSS'] = rowDict['STOP_LOSS'] - (rowDict['STOP_LOSS'] // 100) * 5
-
         return rowDict
 
 
@@ -808,6 +804,7 @@ class IciciDirectWeb():
             if status:
                 rowDict = rowDictTmp
                 self.__iclick2InvestDict[key]['DICT'] = rowDict
+
             self.__logger.debug('Generated dictionary %s', rowDict)
         return rowDict
 
