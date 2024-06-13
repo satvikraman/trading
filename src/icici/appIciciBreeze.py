@@ -294,7 +294,7 @@ if __name__ == '__main__':
 
     exitTime = False
     while not exitTime:
-        exitTime = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=45)
+        exitTime = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=35)
         time.sleep(15)
 
     exit()

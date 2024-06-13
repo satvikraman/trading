@@ -740,7 +740,7 @@ class IciciDirectWeb():
             else:
                 status, cell1Dict['SECURITY_ID'], cell1Dict['SRC_SYMBOL'], cell1Dict['MKT_SYMBOL'], cell1Dict['MKT'], cell1Dict['LOT'], cell1Dict['PRODUCT'] = self.__mapIcici.mapICICSymbolToMktSymbol(stkName=cell1Dict['STOCK'], iciciSymbol=cell1Dict['SRC_SYMBOL'], product=cell1Dict['STRATEGY'])
                 if not status:
-                    self.__logger.error("Unable to map STRATEGY=%s STOCK=%s SRC_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
+                    #self.__logger.error("Unable to map STRATEGY=%s STOCK=%s SRC_SYMBOL=%s", cell1Dict['STRATEGY'], cell1Dict['STOCK'], key[0])
                     return rowDict
             recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols, cell1Dict['PRODUCT'])
             cell2Dict = self.__formatPriceCell(tblRowCols[1].text, 'CMP')
@@ -763,12 +763,11 @@ class IciciDirectWeb():
         else: 
             rowDictTmp = self.__iclick2GainDict[key]['DICT']
             recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols, rowDictTmp['PRODUCT'])
-
+            rowDictTmp.update(cell9Dict)
             status, rowDictTmp = self.__recChanged(rowDictTmp, recStatus, cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
                                                    cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])
             if status:            
                 rowDict = rowDictTmp
-                rowDict.update(cell9Dict)
                 self.__iclick2GainDict[key]['DICT'] = rowDict
 
         return rowDict
