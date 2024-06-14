@@ -763,6 +763,9 @@ class IciciDirectWeb():
         else: 
             rowDictTmp = self.__iclick2GainDict[key]['DICT']
             recStatus, cell9Dict = self.__getRecStatusfromGainRow(tblRow, tblRowCols, rowDictTmp['PRODUCT'])
+            rowDictTmp.update(cell6Dict)
+            rowDictTmp.update(cell7Dict)
+            rowDictTmp.update(cell8Dict)
             rowDictTmp.update(cell9Dict)
             status, rowDictTmp = self.__recChanged(rowDictTmp, recStatus, cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
                                                    cell4Dict['TARGET'], cell5Dict['STOP_LOSS'])

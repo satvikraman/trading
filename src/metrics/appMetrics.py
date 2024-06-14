@@ -1,7 +1,9 @@
 import configparser
+import csv
 import datetime
 import logging
 import os
+import pandas as pd
 import sys
 import threading
 import time
@@ -20,84 +22,63 @@ from persistence import persistence
 
 METRIC_START_DATE = '22-May-2024'
 
-COLUMN = Enum('COLUMN', ['DATE', 'STRATEGY', 'STOCK', 'SYMBOL', 'OPEN_PRICE', 'TARGET', 'STOPLOSS', 'TYPE', 'CLOSE_PRICE', 'LOT', 'CLOSE_QTY', 'OPEN_QTY', 'CASHFLOW', 'PnL', 'END'], start=0)
-HEADS = [
-        {'HEAD': 'ICICI EQUITY', 'SLNO': 0, 'SOURCE': ['iCLICK-2-GAIN'], 'STRATEGY': ['MARGIN']},
-        {'HEAD': 'ICICI EQUITY', 'SLNO': 1, 'SOURCE': ['iCLICK-2-GAIN', 'iCLICK-2-INVEST'], 'STRATEGY': ['CONVICTION IDEAS', 'EQUITY MODEL PORTFOLIO', 'GLADIATOR STOCKS', 
-                                                                                                    'IDIRECT INSTINCT', 'INITIATING COVERAGE', 'MARGIN TRADING FUNDING (MTF)', 
-                                                                                                    'MARKET STRATEGY', 'MOMENTUM PICK', 'QUANT DERIVATIVES PICK', 'RESULT UPDATE', 
-                                                                                                    'SHUBH NIVESH', 'STOCK TALES', 'STOCKS ON THE MOVE', 'TECHNO FUNDA', 'TOP PICKS', 
-                                                                                                    'YEARLY DERIVATIVES', 'YEARLY TECHNICAL PICKS', 'MOMENTUM PICK', 
-                                                                                                    'GLADIATOR STOCKS', 'QUANT PICKS']}, 
-        {'HEAD': 'ICICI BREEZE', 'SLNO': 2, 'SOURCE': ['BREEZE'], 'STRATEGY': []}, 
-        {'HEAD': 'ICICI Equity FnO', 'SLNO': 3, 'SOURCE': ['iCLICK-2-GAIN'], 'STRATEGY': ['OPTIONS', 'FUTURE']},
-        {'HEAD': 'Paytm Equity', 'SLNO': 4, 'SOURCE': ['PAYTM-EQ'], 'STRATEGY': []}, 
-        {'HEAD': 'Paytm FnO', 'SLNO': 5, 'SOURCE': ['PAYTM-FnO'], 'STRATEGY': []}]
+class csvRW():
+    def __init__(self, fName, rowDict):
+        if not os.path.exists(fName):
+            df = pd.DataFrame([rowDict])
+            df.to_csv(fName, index=False, header=True)
+
+        self.__fName = fName
+        self.df = pd.read_csv(self.__fName)
+
+    def readRow(self, rowNum):
+        rowNum -= 1 # Exclude header
+        return self.df.loc[rowNum-1] # Indexing is 0 based after excluding header
+    
+    def writeRow(self, rowNum, writeDict):
+        rowNum -= 1 # Exclude header
+        self.df.loc[rowNum - 1] = writeDict
+        self.df.to_csv(self.__fName, index=False, header=True)
+        return self.df.loc[rowNum-1]
 
 class Metrics():
-    def __init__(self, configFile):
+    def __init__(self, configFile, readDb, source, product):
         if(os.path.isfile(configFile)):
             self.__configFile = configFile
             self.__config = configparser.ConfigParser()
             self.__config.read(configFile)
             
-            if(self.__config['APP']['LOG_LEVEL'] == 'DEBUG'):
+            if(self.__config['LOGGING']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
-            elif(self.__config['APP']['LOG_LEVEL'] == 'INFO'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'INFO'):
                 level = logging.INFO
-            elif(self.__config['APP']['LOG_LEVEL'] == 'WARNING'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'WARNING'):
                 level = logging.WARNING
-            elif(self.__config['APP']['LOG_LEVEL'] == 'ERROR'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'ERROR'):
                 level = logging.ERROR
-            elif(self.__config['APP']['LOG_LEVEL'] == 'CRITICAL'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'CRITICAL'):
                 level = logging.CRITICAL
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
 
-            self.__persistenceInv = persistence(configFile, self.__config['DATABASE']['DB_EQUITY'])
-            self.__persistenceIntraDay = persistence(configFile, self.__config['DATABASE']['DB_INTRADAY'])
-            self.__persistenceFnO = persistence(configFile, self.__config['DATABASE']['DB_FNO'])
+            formatter = logging.Formatter('%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s')
+            fileHandler = logging.FileHandler(filename=self.__config['LOGGING']['LOG_FILE'])
+            consoleHandler = logging.StreamHandler()
+            fileHandler.setFormatter(formatter)
+            consoleHandler.setFormatter(formatter)
+            logging.getLogger('').addHandler(consoleHandler)
+            logging.getLogger('').addHandler(fileHandler)
 
-            # Connect to Google sheets
-            spreadsheetID = self.__config['APP']['SPREADSHEET_ID']
-            sheetName = self.__config['APP']['SHEET_NAME']
-            self.__google = googleWorkspace(spreadsheetID, sheetName)
-            self.__google.authorize()
-            self.__google.buildSheets()
-            self.__google.buildDrive()
-
+            self.__amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
+            self.__metricsDbPath = self.__config['DATABASE']['METRICS_DB_PATH']
+            self.__persistenceMetric = persistence(self.__logger, self.__config['DATABASE']['METRICS_DB_NAME'])
+            self.__persistenceIn = persistence(self.__logger, readDb)
+            self.__readDbSource = source
+            self.__readDbProduct = product
+            self.__csvrw = None
             self.__metricsStartDate = datetime.datetime.strptime(METRIC_START_DATE, "%d-%b-%Y")
+            self.__rowDict = {'DATE': '', 'STRATEGY': '', 'STOCK': '', 'SYMBOL': '', 'TARGET': 0, 'STOP_LOSS': 0, 'LOT': 0, 'TYPE': '', 'OPEN_PRICE': 0, 'OPEN_QTY': 0, 'CLOSE_PRICE': 0, 'CLOSE_QTY': 0}
 
-
-    def getBucket(self, source, strategy):
-        bucketName = None
-        bucketSlNo = None
-
-        for head in HEADS:
-            if strategy in head['STRATEGY']:
-                bucketName = head['HEAD']
-                bucketSlNo = head['SLNO']
-                break
-        
-        if bucketName == None:
-            for head in HEADS:
-                if source in head['SOURCE']:
-                    bucketName = head['HEAD']
-                    bucketSlNo = head['SLNO']                    
-        
-        return bucketName, bucketSlNo
-
-
-    def getColChar(self, colNum):
-        chars = "abcdefghijklmnopqrstuvwxyz"
-        colChar = ""
-        while colNum > len(chars):
-            colNumQ = colNum // len(chars)
-            colChar += chars[colNumQ - 1]
-            colNum = colNum - (colNumQ * len(chars))
-        colChar += chars[colNum - 1]
-        return colChar
-    
     
     def __checkDate(self, date1, date2):
         status = False
@@ -107,30 +88,38 @@ class Metrics():
             status = True
         return status
 
+
     def updateCells(self, updateRow, recDict, dbDict, isInDb, newRow):
         if isInDb:
-            if not self.__checkDate(updateRow[COLUMN.DATE.value], recDict['REC_DATE']) or updateRow[COLUMN.STRATEGY.value] != recDict['STRATEGY'] or \
-               updateRow[COLUMN.STOCK.value] != recDict['STOCK'] or updateRow[COLUMN.SYMBOL.value] != recDict['MKT_SYMBOL']:
+            if not self.__checkDate(updateRow['DATE'], recDict['REC_DATE']) or updateRow['STRATEGY'] != recDict['STRATEGY'] or \
+               updateRow['STOCK'] != recDict['STOCK'] or updateRow['SYMBOL'] != recDict['MKT_SYMBOL']:
                 self.__logger.warning("Values Differ. recDict = %s row#: %d, updateRow = %s", recDict, dbDict['ROW'], updateRow)
                 return False
         else:
             dbDict = {}
             dbDict['ROW'] = newRow
             newRow += 1
+            dbDict['SOURCE'] = recDict['SOURCE']
             dbDict['REC_DATE'] = recDict['REC_DATE']
             dbDict['REC_TIME'] = recDict['REC_TIME']
             dbDict['STRATEGY'] = recDict['STRATEGY']
             dbDict['STOCK'] = recDict['STOCK']
             dbDict['MKT_SYMBOL'] = recDict['MKT_SYMBOL']
-
-            updateRow[COLUMN.DATE.value] = dbDict['REC_DATE']
-            updateRow[COLUMN.STRATEGY.value] = dbDict['STRATEGY']
-            updateRow[COLUMN.STOCK.value] = dbDict['STOCK']
-            updateRow[COLUMN.SYMBOL.value] = dbDict['MKT_SYMBOL']
-
-        dbDict['OPEN_PRICE'] = -recDict['HIGH_REC_PRICE'] if recDict['BUY_SELL'].upper() == 'BUY' else recDict['LOW_REC_PRICE']
-        dbDict['TARGET'] = recDict['TARGET']
-        dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
+            dbDict['OPEN_PRICE'] = -recDict['HIGH_REC_PRICE'] if recDict['BUY_SELL'].upper() == 'BUY' else recDict['LOW_REC_PRICE']
+            dbDict['TARGET'] = recDict['TARGET']
+            dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
+            dbDict['LOT'] = recDict['LOT']
+                    
+            updateRow['DATE'] = dbDict['REC_DATE']
+            updateRow['STRATEGY'] = dbDict['STRATEGY']
+            updateRow['STOCK'] = dbDict['STOCK']
+            updateRow['SYMBOL'] = dbDict['MKT_SYMBOL']
+            updateRow['OPEN_PRICE'] = dbDict['OPEN_PRICE']
+            updateRow['TARGET'] = dbDict['TARGET']
+            updateRow['STOP_LOSS'] = recDict['STOP_LOSS']
+            updateRow['TYPE'] = 'OPEN'
+            updateRow['LOT'] = dbDict['LOT']
+            updateRow['OPEN_QTY'] = dbDict['LOT']
 
         if 'REC_CLOSE_DATE' in recDict:
             dbDict['REC_CLOSE_DATE'] = recDict['REC_CLOSE_DATE']
@@ -138,7 +127,7 @@ class Metrics():
             closePrice = closePrice if recDict['BUY_SELL'].upper() == 'BUY' else -closePrice
             dbDict['CLOSE_PRICE'] = closePrice
             finalClosePrice = closePrice
-            updateRow[COLUMN.CLOSE_PRICE.value] = finalClosePrice
+            updateRow['CLOSE_PRICE'] = finalClosePrice
         
         if 'REC_CLOSE2_DATE' in recDict:
             dbDict['REC_CLOSE2_DATE'] = recDict['REC_CLOSE2_DATE']
@@ -146,93 +135,61 @@ class Metrics():
             closePrice2 = closePrice2 if recDict['BUY_SELL'].upper() == 'BUY' else -closePrice2
             dbDict['CLOSE2_PRICE'] = closePrice2
             finalClosePrice = (dbDict['CLOSE_PRICE'] + closePrice2) / 2
-            updateRow[COLUMN.CLOSE_PRICE.value] = finalClosePrice
-                
-        if recDict['STRATEGY'] in ['OPTIONS', 'FUTURE'] or recDict['SOURCE'] in ['PAYTM-FnO']:
-            dbDict['LOT'] = recDict['LOT'] if 'LOT' in recDict else 1
-        else:
-            dbDict['LOT'] = 1
+            updateRow['CLOSE_PRICE'] = finalClosePrice
 
-        updateRow[COLUMN.OPEN_PRICE.value] = dbDict['OPEN_PRICE']
-        updateRow[COLUMN.TARGET.value] = dbDict['TARGET']
-        updateRow[COLUMN.STOPLOSS.value] = recDict['STOP_LOSS']
-        updateRow[COLUMN.TYPE.value] = 'OPEN'
-        updateRow[COLUMN.LOT.value] = dbDict['LOT']
-        return updateRow, dbDict, newRow
+        return updateRow.copy(), dbDict, newRow
 
 
-    def updateRows(self, persistenceInst, recDict, dbDict, isInDb, addCloseEntry, addClose2Entry):
-        bucketName, bucketSlNo = self.getBucket(recDict['SOURCE'], recDict['STRATEGY'])
-        readStartColNum   = bucketSlNo * (COLUMN.END.value + 1) + 1
-        readEndColNum     = readStartColNum + COLUMN.OPEN_QTY.value
-        writeEndColNum    = readStartColNum + COLUMN.CLOSE_QTY.value
-        readStartColChar  = self.getColChar(readStartColNum)
-        readEndColChar    = self.getColChar(readEndColNum)
-        writeStartColChar = readStartColChar
-        writeEndColChar   = self.getColChar(writeEndColNum)
-
-        isHeadInDb, headDict = persistenceInst.isInDb([['HEAD', bucketName]])
+    def updateRows(self, recDict, dbDict, isInDb, addCloseEntry, addClose2Entry):
+        bucketName = recDict['SOURCE'] + '-' + recDict['PRODUCT']
+        isHeadInDb, headDict = self.__persistenceMetric.isInDb([['HEAD', bucketName]])
         if not isHeadInDb:
-            headDict = {'HEAD': bucketName, 'ROW': 5}
-            persistenceInst.insertDb(headDict, [['HEAD', bucketName]])
+            headDict = {'HEAD': bucketName, 'ROW': 2} #Start writinf from the 2nd row
+            self.__persistenceMetric.insertDb(headDict, [['HEAD', bucketName]])
         newRow = headDict['ROW']
 
         row = dbDict['ROW'] if isInDb else newRow
-        readStartCol = readStartColChar + str(row)
-        readEndCol   = readEndColChar + str(row)
         if isInDb:
-            status, updateRow = self.__google.readFromCell(readStartCol, readEndCol)
-            updateRow = updateRow[0]
+            updateRow = self.__csvrw.readRow(row)
         else:
-            status = True
-            updateRow = [' '] * COLUMN.CASHFLOW.value
+            updateRow = self.__rowDict
         
-        status2 = status3 = status4 = False
-        if status:
-            writeStartCol = writeStartColChar + str(row)
-            writeEndCol   = writeEndColChar + str(row)
-            updateRow, dbDict, newRow = self.updateCells(updateRow, recDict, dbDict, isInDb, newRow)
-            status2 = self.__google.writeToCell(writeStartCol, writeEndCol, [updateRow[:COLUMN.CLOSE_QTY.value + 1]])
-            if status2:
-                status, updateRow = self.__google.readFromCell(readStartCol, readEndCol)
-                if status:
-                    updateRow = updateRow[0]
+        updateRow, dbDict, newRow = self.updateCells(updateRow, recDict, dbDict, isInDb, newRow)
+        self.__csvrw.writeRow(dbDict['ROW'], updateRow)
 
-                if addCloseEntry:
-                    updateRow[COLUMN.CLOSE_QTY.value] = updateRow[COLUMN.OPEN_QTY.value] if recDict['REC_STATUS'] == 'CLOSE' else int(updateRow[COLUMN.OPEN_QTY.value])//2
-                    status2 = self.__google.writeToCell(writeStartCol, writeEndCol, [updateRow[:COLUMN.CLOSE_QTY.value + 1]])
-                    row = dbDict['CLOSE_ROW'] if 'CLOSE_ROW' in dbDict else newRow
-                    writeStartCol = writeStartColChar + str(row)
-                    writeEndCol   = writeEndColChar + str(row)                
-                    updateRow[COLUMN.DATE.value] = dbDict['REC_CLOSE_DATE']
-                    updateRow[COLUMN.TYPE.value] = 'CLOSE'
-                    updateRow[COLUMN.CLOSE_PRICE.value] = dbDict['CLOSE_PRICE']
-                    status3 = self.__google.writeToCell(writeStartCol, writeEndCol, [updateRow[:COLUMN.CLOSE_QTY.value + 1]])
-                    if status3 and 'CLOSE_ROW' not in dbDict:
-                        dbDict['CLOSE_ROW'] = row
-                        newRow += 1
+        if addCloseEntry:
+            updateRow['CLOSE_QTY'] = updateRow['OPEN_QTY'] if recDict['REC_STATUS'] == 'CLOSE' else int(updateRow['OPEN_QTY'])//2
+            self.__csvrw.writeRow(dbDict['ROW'], updateRow)
 
-                if addClose2Entry:
-                    updateRow[COLUMN.CLOSE_QTY.value] = updateRow[COLUMN.OPEN_QTY.value]
-                    status2 = self.__google.writeToCell(writeStartCol, writeEndCol, [updateRow[:COLUMN.CLOSE_QTY.value + 1]])
-                    row = dbDict['CLOSE2_ROW'] if 'CLOSE2_ROW' in dbDict else newRow
-                    writeStartCol = writeStartColChar + str(row)
-                    writeEndCol   = writeEndColChar + str(row)                
-                    updateRow[COLUMN.DATE.value] = dbDict['REC_CLOSE2_DATE']
-                    updateRow[COLUMN.TYPE.value] = 'CLOSE'
-                    updateRow[COLUMN.CLOSE_PRICE.value] = dbDict['CLOSE2_PRICE']
-                    status4 = self.__google.writeToCell(writeStartCol, writeEndCol, [updateRow[:COLUMN.CLOSE_QTY.value + 1]])
-                    if status4 and 'CLOSE2_ROW' not in dbDict:
-                        dbDict['CLOSE2_ROW'] = row
-                        newRow += 1
+            row = dbDict['CLOSE_ROW'] if 'CLOSE_ROW' in dbDict else newRow              
+            updateRow['DATE'] = dbDict['REC_CLOSE_DATE']
+            updateRow['TYPE'] = 'CLOSE'
+            updateRow['CLOSE_PRICE'] = dbDict['CLOSE_PRICE']
+            self.__csvrw.writeRow(row, updateRow)
             
-            if status2 or status3 or status4:
-                headDict['ROW'] = newRow
-                persistenceInst.updateDb(headDict, [['HEAD', bucketName]])
-                if isInDb:
-                    persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-                else:
-                    persistenceInst.insertDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])            
+            if 'CLOSE_ROW' not in dbDict:
+                dbDict['CLOSE_ROW'] = row
+                newRow += 1
+
+        if addClose2Entry:
+            updateRow['CLOSE_QTY'] = updateRow['OPEN_QTY'] - updateRow['CLOSE_QTY']
+            self.__csvrw.writeRow(dbDict['ROW'], updateRow)
+
+            row = dbDict['CLOSE2_ROW'] if 'CLOSE2_ROW' in dbDict else newRow
+            updateRow['DATE'] = dbDict['REC_CLOSE2_DATE']
+            updateRow['TYPE'] = 'CLOSE'
+            updateRow['CLOSE_PRICE'] = dbDict['CLOSE2_PRICE']
+            self.__csvrw.writeRow(row, updateRow)
+            if 'CLOSE2_ROW' not in dbDict:
+                dbDict['CLOSE2_ROW'] = row
+                newRow += 1
+        
+        headDict['ROW'] = newRow
+        self.__persistenceMetric.updateDb(headDict, [['HEAD', bucketName]])
+        if isInDb:
+            self.__persistenceMetric.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+        else:
+            self.__persistenceMetric.insertDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])            
 
 
     def handlrec(self, recDict, filterDate):
@@ -260,34 +217,22 @@ class Metrics():
         if not (addOpenEntry or addCloseEntry or addClose2Entry):
             return status
 
-        if recDict['STRATEGY'] == 'MARGIN':
-            persistenceInst = self.__persistenceIntraDay
-        elif recDict['STRATEGY'] in ['OPTIONS', 'FUTURE'] or recDict['SOURCE'] in ['PAYTM-FnO']:
-            persistenceInst = self.__persistenceFnO
-        else:
-            persistenceInst = self.__persistenceInv        
-        isInDb, dbDict = persistenceInst.isInDb([['STOCK', recDict['STOCK']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+        isInDb, dbDict = self.__persistenceMetric.isInDb([['SOURCE', recDict['SOURCE']], ['STOCK', recDict['STOCK']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
 
-        self.updateRows(persistenceInst, recDict, dbDict, isInDb, addCloseEntry, addClose2Entry)
+        self.updateRows(recDict, dbDict, isInDb, addCloseEntry, addClose2Entry)
 
         
-    def offlineAdd(self, db, startDate, endDate, source=None, strategies=[]):
-        oredStrategies = None
+    def offlineAdd(self, startDate, endDate, strategies=[]):
+        csvName = self.__readDbSource + '-' + self.__readDbProduct + '.csv'
+        self.__csvrw = csvRW(self.__metricsDbPath + csvName, self.__rowDict)
+
         if len(strategies) > 0:
             oredStrategies = strategies[0]
-        for strategy in strategies[1:]:
-            oredStrategies = oredStrategies + '|' + strategy
-
-        dbInst = persistence(self.__configFile, db)
-
-        if source != None and oredStrategies != None:
-            dbDicts = dbInst.getDb([['SOURCE', source],['STRATEGY', oredStrategies]])
-        elif source != None:
-            dbDicts = dbInst.getDb([['SOURCE', source]])
-        elif oredStrategies != None:
-            dbDicts = dbInst.getDb([['STRATEGY', oredStrategies]])
+            for strategy in strategies[1:]:
+                oredStrategies = oredStrategies + '|' + strategy
+            dbDicts = self.__persistenceIn.getDb([['SOURCE', self.__readDbSource], ['PRODUCT', self.__readDbProduct], ['STRATEGY', oredStrategies]])
         else:
-            dbDicts = dbInst.getDb([['STRATEGY', oredStrategies]])
+            dbDicts = self.__persistenceIn.getDb([['SOURCE', self.__readDbSource], ['PRODUCT', self.__readDbProduct]])
 
         start = datetime.datetime.strptime(startDate, '%d-%b-%Y')
         end   = datetime.datetime.strptime(endDate, '%d-%b-%Y')
@@ -298,8 +243,13 @@ class Metrics():
                 self.handlrec(dbDict, filterDate)
             filterDate += datetime.timedelta(days=1)
 
-metrics = Metrics('./src/metrics/metrics.ini')
 
 if __name__ == '__main__':
-    metrics.offlineAdd('./db/backup/iciciDirectIntraDay.json', '28-May-2024', '28-May-2024', 'iCLICK-2-GAIN')
+    metrics = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'OPTION')
+    metrics.offlineAdd('01-Jun-2024', '13-Jun-2024')
     print("All Done")
+
+    #row = csvrw.readRow(4)
+    #writeDict = {'TARGET': 10}
+    #row = csvrw.writeRow(4, writeDict)    
+    #csvrw.commitCSV()
