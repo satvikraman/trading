@@ -161,8 +161,8 @@ class AppIcici():
 
         # Scrape recommendations from iClick2Gain
         if self.__browseIClick2Gain:
-            self.__workflow.sendNonAckedRecsFromDb(self.persistenceIntraDay, self.__iciciBreezeBaseURL)
-            self.__workflow.sendNonAckedRecsFromDb(self.persistenceFnO, self.__iciciBreezeBaseURL)
+            self.__workflow.sendNonAckedRecsFromDb(self.persistenceIntraDay, None)
+            self.__workflow.sendNonAckedRecsFromDb(self.persistenceFnO, None)
             self.__iciciDirectWeb.browseResearchToClick_2_Gain()
             timesRefresh = self.__timeToRefreshTradeIeas
             for i in range(timesRefresh):
@@ -181,8 +181,8 @@ class AppIcici():
 
                 time.sleep(1)
 
-            self.__workflow.closeLeverageRecsNotVisible(self.persistenceIntraDay, self.__iciciBreezeBaseURL)
-            self.__workflow.closeLeverageRecsNotVisible(self.persistenceFnO, self.__iciciBreezeBaseURL)
+            self.__workflow.closeLeverageRecsNotVisible(self.persistenceIntraDay, None)
+            self.__workflow.closeLeverageRecsNotVisible(self.persistenceFnO, None)
 
 
     def runPostMarketCloseChecks(self):
@@ -201,8 +201,6 @@ class AppIcici():
 
 if __name__ == '__main__':
     trade = AppIcici('./src/icici/iciciDirect.ini')
-    trade._AppIcici__workflow.sendNonAckedRecsFromDb(trade.persistenceIntraDay, trade._AppIcici__iciciBreezeBaseURL)
-    exit
 
     # Open the browser and scrape recommendations from ICICI Direct
     trade.openIciciSession()

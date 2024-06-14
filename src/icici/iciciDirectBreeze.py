@@ -243,9 +243,6 @@ class IciciDirectBreeze():
         updateAction2Time = '' if updateAction2Time == None else updateAction2Time.group(0)
 
         recStatus = 'OPEN'
-        for action in partialClose:
-            if bool(re.search(action, update, flags=re.IGNORECASE)):
-                recStatus = 'PARTIAL_CLOSE' if product == 'CASH' else 'CLOSE'
         if recStatus == 'OPEN':
             for action in fullProfitClose:
                 if bool(re.search(action, update, flags=re.IGNORECASE)):
@@ -256,6 +253,11 @@ class IciciDirectBreeze():
                     recStatus = 'CLOSE'
                     if product == 'MARGIN' and self.__parent.MarginBuyAsCash:
                         updateAction2 = 'LOSS'
+        if recStatus == 'OPEN':
+            for action in partialClose:
+                if bool(re.search(action, update, flags=re.IGNORECASE)):
+                    recStatus = 'PARTIAL_CLOSE' if product == 'CASH' else 'CLOSE'
+
         return recStatus, updateAction1, updateAction1Time, updateAction2, updateAction2Time    
 
 

@@ -603,8 +603,8 @@ class IciciDirectWeb():
             stopLoss = re.match(r'^.*at\D*(\d+)\D*', cell, re.IGNORECASE)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])            
-        elif re.match('.*revised stoploss', cell, re.IGNORECASE):
-            stopLoss = re.match(r'.*revised stoploss\D*(\d+)', cell, re.IGNORECASE)
+        elif re.match('.*revise.*stoploss', cell, re.IGNORECASE):
+            stopLoss = re.match(r'.*revise.*stoploss\D*(\d+)', cell, re.IGNORECASE)
             if stopLoss != None:
                 resDict['STOP_LOSS'] = self.__convPriceToFloat(stopLoss.groups()[0])
         elif re.match('Others', cell, re.IGNORECASE) or re.match('', cell, re.IGNORECASE):
@@ -686,12 +686,12 @@ class IciciDirectWeb():
         # i.e. the background colour has been changed to grey it has been closed
         elif(tblRow.get_attribute('style') == 'background-color: rgb(211, 211, 211);'):
             recStatus = 'CLOSE'
-        elif(self.__halfCloseRec(cell9Dict['UPDATE_ACTION_1'])):
-            recStatus = 'PARTIAL_CLOSE' if product == 'CASH' else 'CLOSE'
         else:
             status, cell9Dict['UPDATE_ACTION_2'] = self.__closeRec(cell9Dict['UPDATE_ACTION_1'], cell9Dict['UPDATE_ACTION_2'], product)
             if status:
                 recStatus = 'CLOSE'
+            elif(self.__halfCloseRec(cell9Dict['UPDATE_ACTION_1'])):
+                recStatus = 'PARTIAL_CLOSE' if product == 'CASH' else 'CLOSE'
         
         return recStatus, cell9Dict
 
@@ -799,7 +799,7 @@ class IciciDirectWeb():
         else:
             rowDictTmp = self.__iclick2InvestDict[key]['DICT']
             stopLoss = cell5Dict['STOP_LOSS']
-            if 'STOP_LOSS' in cell7Dict and cell7Dict['STOP_LOSS'] > cell5Dict['STOP_LOSS']:
+            if 'STOP_LOSS' in cell7Dict:
                 stopLoss = cell7Dict['STOP_LOSS']
             status, rowDictTmp = self.__recChanged(rowDictTmp, cell7Dict['REC_STATUS'], cell3Dict['HIGH_REC_PRICE'], cell3Dict['LOW_REC_PRICE'], 
                                                    cell4Dict['TARGET'], stopLoss)

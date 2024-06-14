@@ -68,7 +68,11 @@ class app():
 
 
     def cleanSpecificStocks(self):
-        self.__persistence1.removeFromDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', 'OPEN']])
+        dbDicts = self.__persistence1.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', 'OPEN']])
+        if len(dbDicts) > 0:
+            for dbDict in dbDicts:
+                print("MARGIN %s Not opened any position")
+            self.__persistence1.removeFromDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', 'OPEN']])
         
 
     def mapICICSymbolToMktSymbol(self, strategy, stkName=None, shortName=None):

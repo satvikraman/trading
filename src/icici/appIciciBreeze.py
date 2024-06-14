@@ -156,7 +156,7 @@ class AppIciciDirectBreezeBroker():
 
 
     def handleRec(self, recDict):
-        status = self.__workflow.handleRec(recDict)
+        status = self.__workflow.handleRec(recDict, self.amountPerIntradayOrder)
         return status
 
 
