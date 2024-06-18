@@ -71,7 +71,7 @@ class AppPaytmBroker():
             if dryRun:
                 self.__payTmMoney = payTmMoneyMock(configFile)
             else:
-                self.__payTmMoney = payTmMoney(self.__logger, int(self.__config['PAYTM-MONEY']['NUM_RETRIES']))
+                self.__payTmMoney = payTmMoney(self.__logger, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'])
 
             self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
             self.amountPerIntraDayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
@@ -203,7 +203,7 @@ class AppPaytmBroker():
 
 
     def openPayTmMoneySession(self):
-        self.__payTmMoney.payTmLogin()
+        self.__payTmMoney.payTmLogin(self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
 
 
     def checkOpenOrders(self):

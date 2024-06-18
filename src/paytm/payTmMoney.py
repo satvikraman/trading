@@ -2,20 +2,33 @@ import logging
 import csv
 import datetime
 import os
+import re
 import sys
 import time
 import configparser
 import random, string
 import dotenv
 
+from selenium import webdriver
+from selenium.common.exceptions import WebDriverException, NoSuchWindowException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 sys.path.append('../pyPMClient')
 from pmClient import PMClient
 from pmClient import WebSocketClient
+sys.path.append('./src/common')
+from googleWorkspace import googleWorkspace
 
 class payTmMoney:
-    def __init__(self, logger, retries):
+    def __init__(self, logger, browser, chromeBrowser, edgeBrowser):
         self.__logger = logger
-        self.__retries = retries
+        self.__retries = 2
 
         dotenv.load_dotenv('./.env', override=True)
         self.__api_key = os.environ.get('api_key', '')
@@ -23,9 +36,124 @@ class payTmMoney:
         self.__request_token = os.environ.get('request_token', '')
         self.__state_key = os.environ.get('state_key', '')
         self.__orderBook = None
-    
+        self.__browser = None
+        self.__google = None
+        if browser == 'CHROME':
+            self.__browserDriver = chromeBrowser
+            self.__browser = webdriver.Chrome(self.__browserDriver)
+        elif browser == 'EDGE':
+            self.__browserDriver = edgeBrowser
+            self.__browser = webdriver.Edge(self.__browserDriver)            
+
+
+    def __handleException(self, e):
+        pattern = r".*(disconnected: not connected to DevTools|no such window)"
+        if re.match(pattern,  str(e), re.IGNORECASE):
+            self.__logger.critical("ERROR: %s", e)
+            self.__logger.critical("EXITING")            
+            assert(False)
+        else:
+            self.__logger.error("ERROR: %s", e)
+        time.sleep(1)
         
-    def payTmLogin(self):
+
+    def __getWebElement(self, xpath, check, singular=True):
+        nextStep = False
+        attempts = 0
+        element = None
+        elements = []
+        while not nextStep and attempts < 3:
+            try:
+                if check == 'PRESENCE':
+                    if singular:
+                        element = WebDriverWait(self.__browser, 5).until(EC.presence_of_element_located((By.XPATH, xpath)))
+                    else:
+                        elements = WebDriverWait(self.__browser, 5).until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+                elif check == 'VISIBILITY':
+                    if singular:
+                        element = WebDriverWait(self.__browser, 5).until(EC.visibility_of_element_located((By.XPATH, xpath)))
+                    else:
+                        elements = WebDriverWait(self.__browser, 5).until(EC.visibility_of_all_elements_located((By.XPATH, xpath)))
+                elif check == 'CLICKABLE':
+                    element = WebDriverWait(self.__browser, 5).until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                    element.click()
+                    time.sleep(5)
+                else:
+                    assert(False)
+                nextStep = True
+            except Exception as e:
+                attempts += 1
+                self.__handleException(e)
+
+        return element if singular else elements
+
+
+    def __getRequestToken(self, loginURL, spreadsheetID, sheetName):
+        self.__google = googleWorkspace(spreadsheetID, sheetName)
+        self.__google.authorize()
+        self.__google.buildSheets()
+        self.__google.buildDrive()
+        
+        self.__google.writeToCell('A11', 'B14', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
+        self.__google.writeToCell('C12', 'C13', [[' '], [' ']])
+        self.__google.writeToCell('A11', 'A11', [['Ready for PayTm login sequence']])
+        goahead = False
+        while not goahead:
+            status, value = self.__google.readFromCell('B11', 'B11')
+            if status and value[0][0].upper() == 'YES':
+                goahead = True
+            else:
+                time.sleep(1)        
+
+        self.__browser.get(loginURL)
+        time.sleep(5)
+
+        mobile = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/fieldset/input', 'PRESENCE')
+        mobile.send_keys(os.environ.get('mobile', ''))
+        pwd = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/div[1]/fieldset/input', 'PRESENCE')
+        pwd.send_keys(os.environ.get('paytm_pwd', ''))
+        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/span/button', 'CLICKABLE')
+
+        self.__google.writeToCell('A12', 'A12', [['Enter the 6 digit OTP1']])
+        OTPnotrecv = True
+        while OTPnotrecv:
+            status, value = self.__google.readFromCell('B12', 'C12')
+            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
+                OTPnotrecv = False
+            else:
+                time.sleep(1)
+
+        otpIn = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div[2]/div[2]/div/input', 'PRESENCE', False)
+        for i in range(len(value[0][0])):
+            otpIn[i].send_keys(int(value[0][0][i]))        
+        time.sleep(1)
+        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[3]/span/button', 'CLICKABLE')
+        time.sleep(5)
+        self.__getWebElement('//*[@id="newroot"]/div/div/div/div[1]/div[2]/div/div[2]/button', 'CLICKABLE')
+
+        self.__google.writeToCell('A13', 'A13', [['Enter the 6 digit OTP2']])
+        OTPnotrecv = True
+        while OTPnotrecv:
+            status, value = self.__google.readFromCell('B13', 'C13')
+            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
+                OTPnotrecv = False
+            else:
+                time.sleep(1)
+        otpIn = self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[2]/div/div[2]/div/div/input', 'PRESENCE', False)
+        for i in range(len(value[0][0])):
+            otpIn[i].send_keys(int(value[0][0][i]))
+        time.sleep(1)
+        self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[3]/button', 'CLICKABLE')
+
+        requestToken = re.search(r'.*&requestToken=(\w+)&.*', self.__browser.current_url, re.IGNORECASE)
+        if requestToken != None:
+            requestToken = requestToken.group(1)
+            self.__google.writeToCell('A14', 'A14', [['Got request Token successfully']])
+        
+        self.__browser.close()            
+        return requestToken
+        
+    def payTmLogin(self, spreadsheetID, sheetName):
         self.__pm = PMClient(api_key=self.__api_key, api_secret=self.__api_secret)
         valid_until_date = os.environ.get('valid_until_date', '')
         valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
@@ -33,7 +161,12 @@ class payTmMoney:
             self.__state_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
             dotenv.set_key('./.env', "state_key", self.__state_key)
             loginURL = self.__pm.login(self.__state_key)
-            self.__request_token = input("Enter the request token after logging into {} : ".format(loginURL))
+
+            if self.__browser != None:
+                self.__request_token = self.__getRequestToken(loginURL, spreadsheetID, sheetName)
+            else:
+                self.__request_token = input("Enter the request token after logging into {} : ".format(loginURL))
+
             dotenv.set_key('./.env', "request_token", self.__request_token)
             self.__token_dict = self.__pm.generate_session(self.__request_token)
             self.__access_token = self.__token_dict['access_token']
