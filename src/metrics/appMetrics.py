@@ -77,7 +77,7 @@ class Metrics():
             self.__readDbProduct = product
             self.__csvrw = None
             self.__metricsStartDate = datetime.datetime.strptime(METRIC_START_DATE, "%d-%b-%Y")
-            self.__rowDict = {'DATE': '', 'STRATEGY': '', 'STOCK': '', 'SYMBOL': '', 'TARGET': 0, 'STOP_LOSS': 0, 'LOT': 0, 'TYPE': '', 'OPEN_PRICE': 0, 'OPEN_QTY': 0, 'CLOSE_PRICE': 0, 'CLOSE_QTY': 0}
+            self.__rowDict = {'DATE': '', 'STRATEGY': '', 'STOCK': '', 'SYMBOL': '', 'TARGET': 0, 'STOP_LOSS': 0, 'LOT': 0, 'TYPE': '', 'OPEN_PRICE': 0, 'OPEN_QTY': 0, 'CLOSE_PRICE': 0, 'CLOSE_QTY': 0, 'DTE': 0}
 
     
     def __checkDate(self, date1, date2):
@@ -91,8 +91,8 @@ class Metrics():
 
     def updateCells(self, updateRow, recDict, dbDict, isInDb, newRow):
         if isInDb:
-            if not self.__checkDate(updateRow['DATE'], recDict['REC_DATE']) or updateRow['STRATEGY'] != recDict['STRATEGY'] or \
-               updateRow['STOCK'] != recDict['STOCK'] or updateRow['SYMBOL'] != recDict['MKT_SYMBOL']:
+            if not (self.__checkDate(updateRow['DATE'], recDict['REC_DATE']) or updateRow['STRATEGY'] != recDict['STRATEGY'] or \
+               updateRow['STOCK'] != recDict['STOCK'] or updateRow['SYMBOL'] != recDict['MKT_SYMBOL']):
                 self.__logger.warning("Values Differ. recDict = %s row#: %d, updateRow = %s", recDict, dbDict['ROW'], updateRow)
                 return False
         else:
@@ -120,6 +120,7 @@ class Metrics():
             updateRow['TYPE'] = 'OPEN'
             updateRow['LOT'] = dbDict['LOT']
             updateRow['OPEN_QTY'] = dbDict['LOT']
+            updateRow['DTE'] = (datetime.datetime.strptime(recDict['EXP_DATE'], '%d-%b-%Y') - datetime.datetime.strptime(recDict['REC_DATE'], '%d-%b-%Y')).days
 
         if 'REC_CLOSE_DATE' in recDict:
             dbDict['REC_CLOSE_DATE'] = recDict['REC_CLOSE_DATE']
@@ -151,8 +152,10 @@ class Metrics():
         row = dbDict['ROW'] if isInDb else newRow
         if isInDb:
             updateRow = self.__csvrw.readRow(row)
+            if len(updateRow['DATE']) != 11:
+                updateRow['DATE'] = datetime.datetime.strftime(datetime.datetime.strptime(updateRow['DATE'], '%d-%b-%y'), '%d-%b-%Y')
         else:
-            updateRow = self.__rowDict
+            updateRow = self.__rowDict.copy()
         
         updateRow, dbDict, newRow = self.updateCells(updateRow, recDict, dbDict, isInDb, newRow)
         self.__csvrw.writeRow(dbDict['ROW'], updateRow)
@@ -245,8 +248,13 @@ class Metrics():
 
 
 if __name__ == '__main__':
-    metrics = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'OPTION')
-    metrics.offlineAdd('01-Jun-2024', '13-Jun-2024')
+    endDate = '14-Jun-2024'
+    metrics1 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'OPTION')
+    metrics1.offlineAdd('01-Jun-2024', endDate)
+
+    metrics2 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'FUTURE')
+    metrics2.offlineAdd('01-Jun-2024', endDate)
+
     print("All Done")
 
     #row = csvrw.readRow(4)

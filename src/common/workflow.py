@@ -121,20 +121,28 @@ class Workflow():
     def __isInvPeriodLeft(self, recDict):
         if recDict['PRODUCT'] in ['MARGIN']:
             return True
-        
-        recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y").date()
-        todaysDate = self.__today.date()
-        expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y").date()
-
-        if expDate >= todaysDate:
-            if expDate > recDate:
-                expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
-                status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
-            else:
-                # IntraDay and 0 DTE OPTION and FUTURE will land here
-                status = True
         else:
-            status = False
+            recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y").date()
+            todaysDate = self.__today.date()
+            expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y").date()
+            
+            if recDict['PRODUCT'] == 'CASH':
+                if expDate >= todaysDate:
+                    if expDate > recDate:
+                        expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
+                        status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
+                    else:
+                        # IntraDay Buy as Cash will land here
+                        status = True if recDict['STRATEGY'] == 'MARGIN' else False
+                else:
+                    status = False
+            elif recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
+                status = (todaysDate == recDate) and (expDate - recDate).days >= 7
+                
+
+
+        
+
 
         return status
 
@@ -149,7 +157,7 @@ class Workflow():
             # and the dates can be as far apart as 7 days
             # Or in a rare case even the Gladiator stocks appear on different dates on iCLICK-2-GAIN and iCLICK-2-INVEST pages. This happens when the 
             # recommendation appears on the iCLICK-2-GAIN page close to the EOB
-            dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+            dbDicts = persistenceInst.getDb([['SOURCE', '!'+recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
             if len(dbDicts) == 1:
                 isInDb = True
                 dbDict = dbDicts[0]
@@ -162,7 +170,7 @@ class Workflow():
                     dayDiffThresh = 1
                 else:
                     strategy = recDict['STRATEGY']
-                    dayDiffThresh = 1
+                    dayDiffThresh = 1 if strategy != 'MARGIN' else 0
                 recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
                 dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', strategy]])
                 for dbDict in dbDicts:
