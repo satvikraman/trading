@@ -71,7 +71,7 @@ class app():
         dbDicts = self.__persistence1.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
         if len(dbDicts) > 0:
             for dbDict in dbDicts:
-                print("Stock:%s QTY:%s ENTRY: %s TARGET: %s STOPLOSS: %s", dbDict['STOCK'], dbDict['POS_HOLD_QTY'], dbDict['HIGH_REC_PRICE'], dbDict['TARGET'], dbDict['STOP_LOSS'])
+                print("Stock: {} QTY: {} ENTRY: {} TARGET: {} STOPLOSS: {}".format(dbDict['STOCK'], dbDict['POS_HOLD_QTY'], dbDict['HIGH_REC_PRICE'], dbDict['TARGET'], dbDict['STOP_LOSS']))
                 
         #dbDicts = self.__persistence1.getDb([['STRATEGY', 'MARGIN'], ['POS_HOLD_STATUS', 'OPEN']])
         #if len(dbDicts) > 0:
