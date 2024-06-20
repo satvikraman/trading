@@ -36,14 +36,12 @@ class payTmMoney:
         self.__request_token = os.environ.get('request_token', '')
         self.__state_key = os.environ.get('state_key', '')
         self.__orderBook = None
-        self.__browser = None
         self.__google = None
+        self.__browser = browser
         if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
-            self.__browser = webdriver.Chrome(self.__browserDriver)
         elif browser == 'EDGE':
             self.__browserDriver = edgeBrowser
-            self.__browser = webdriver.Edge(self.__browserDriver)            
 
 
     def __handleException(self, e):
@@ -163,6 +161,7 @@ class payTmMoney:
             loginURL = self.__pm.login(self.__state_key)
 
             if self.__browser != None:
+                self.__browser = webdriver.Chrome(self.__browserDriver) if self.__browser == 'CHROME' else webdriver.Edge(self.__browserDriver)
                 self.__request_token = self.__getRequestToken(loginURL, spreadsheetID, sheetName)
             else:
                 self.__request_token = input("Enter the request token after logging into {} : ".format(loginURL))
