@@ -161,7 +161,7 @@ class Workflow():
             if len(dbDicts) == 1:
                 isInDb = True
                 dbDict = dbDicts[0]
-            else:
+            elif recDict['STRATEGY'] != 'MARGIN':
                 if bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
                     strategy = 'QUANT DERIVATIVES PICK' if 'QUANT PICKS' in recDict['STRATEGY'] else 'QUANT PICKS'
                     dayDiffThresh = 7
@@ -170,7 +170,7 @@ class Workflow():
                     dayDiffThresh = 1
                 else:
                     strategy = recDict['STRATEGY']
-                    dayDiffThresh = 1 if strategy != 'MARGIN' else 0
+                    dayDiffThresh = 1
                 recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
                 dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', strategy]])
                 for dbDict in dbDicts:
@@ -196,11 +196,10 @@ class Workflow():
 
     def __isInDb(self, persistenceInst, recDict):
         isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
-
         if not isInDb:
             isInDb, dbDict = self.__sameRecFromDiffSource(persistenceInst, recDict)
-            if not isInDb:
-                dbDict = {}
+        if not isInDb:
+            dbDict = {}
 
         return isInDb, dbDict
     
