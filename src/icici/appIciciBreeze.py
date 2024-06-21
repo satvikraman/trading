@@ -94,7 +94,7 @@ class AppIciciDirectBreezeBroker():
             brz_session_token_valid_until = os.environ.get('brz_session_token_valid_until', '')
             today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
             if brz_session_token_valid_until.upper() != today:
-                self.checkOpenOrders(self.persistenceInsts)
+                self.checkOpenOrders()
                 self.__iciciDirectWeb = IciciDirectWeb(self, self.__logger, None, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], None)
                 loginURL = self.__iciciDirectBreeze.getBreezeLoginURL()
                 sessionToken = self.__iciciDirectWeb.getBreezeSessionToken(loginURL, self.__config['APP']['USE_PUSHBULLET'], self.__config['APP']['USE_SPREADSHEET'], 
