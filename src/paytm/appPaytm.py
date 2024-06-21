@@ -95,7 +95,7 @@ class AppPaytmBroker():
             self.cmp = {}
 
 
-    def __getHoldingsData(self):
+    def getHoldingsData(self):
         status, self.__holdings = self.__payTmMoney.user_holdings_data()
         # Remove quantities we consider to be a part of the core portfolio so that 
         # we don't need to repeatedly do this calculation. Hold - Core = Trade
@@ -108,28 +108,11 @@ class AppPaytmBroker():
             self.__logger.error("getHoldingsData function returned error")
     
 
-    def __moveOldPosToHolding(self):
-        instruments = ['EQUITY', 'FnO']
-        for persistenceInst in [self.persistenceInv, self.persistenceFnO]:
-            if persistenceInst == None:
-                continue
-            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
-            for dbDict in dbDicts:
-                if dbDict['POS_QTY'] != 0:
-                    posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
-                    if posDate < self.__today.date():
-                        dbDict['HOLD_QTY'] += dbDict['POS_QTY']
-                        dbDict['POS_QTY'] = 0
-                        dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
-                        res = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
-
-
-    def __checkDbHoldingSynch(self):
+    def checkDbHoldingSynch(self, pesistenceInsts):
         status = True
         dbHoldings = []
-        instruments = ['EQUITY', 'FnO']
 
-        for persistenceInst in [self.persistenceInv, self.persistenceFnO]:
+        for persistenceInst in pesistenceInsts:
             if persistenceInst == None:
                 continue
             # Consolidate DB holdings. The same stock could be mentioned across strategies and dates
@@ -207,31 +190,16 @@ class AppPaytmBroker():
 
 
     def checkOpenOrders(self):
-        status = True
         valid_until_date = os.environ.get('valid_until_date', '')
         valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
-        if valid_until_date.lower() != valid_today:
-            for persistenceInst in [self.persistenceInv, self.persistenceFnO]:
-                if persistenceInst == None:
-                    continue
-                dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
-                for dbDict in dbDicts:
-                    if self.__workflow.hasPendingOrders(dbDict, filter='ALL'):
-                        status = False
-                        self.__logger.critical("Stock = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
-                                                dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
-        assert status, 'Open orders check failed'
+        if valid_until_date.lower() != valid_today:        
+            persistenceInsts = [self.persistenceInv]
+            self.__workflow.checkOpenOrders(persistenceInsts)
 
 
     def startupCheck(self):
-        self.__getHoldingsData()
-
-        # Transfer any position until yesterday to holding and set position to 0
-        self.__moveOldPosToHolding()
-
-        # Check if all the holding stocks - core are in DB
-        # Check if all the DB stocks are in holding and in the same quantity
-        status = self.__checkDbHoldingSynch()
+        persistenceInsts = [self.persistenceInv]
+        status = self.__workflow.startupCheck(persistenceInsts)
         assert status, 'Startup check failed. Exiting'
 
 

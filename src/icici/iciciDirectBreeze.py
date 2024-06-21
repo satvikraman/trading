@@ -78,6 +78,30 @@ class IciciDirectBreeze():
         return status
     
 
+    def get_portfolio_holdings(self, exchange):
+        resDictArr = []
+        retries = self.__retries
+        status = False
+        while not status and retries >= 0:
+            try:
+                res = self.__breeze.get_portfolio_holdings(exchange_code=exchange)
+                self.__logger.info('result: %s', res)
+                if res['Status'] == 200:
+                    status = True
+                    for holding in res['Success']:
+                        resDict = {'MKT_SYMBOL': holding['stock_code'], 'HOLD_QTY': int(holding['quantity'])}
+                        resDictArr.append(resDict)
+                else:
+                    status = True
+                    message = res['Error']
+                    self.__logger.error("get_portfolio_holdings : exchange: {} Error: {}".format(exchange, message))                    
+            except Exception as e:
+                retries -= 1
+                self.__logger.error("Error : {}".format(e))
+                time.sleep(1)
+        return status, resDictArr
+
+
     def get_order_detail(self, mkt, orderNum):
         retries = self.__retries
         status = False

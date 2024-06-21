@@ -4,6 +4,7 @@ import datetime
 import logging
 import os
 import pandas as pd
+import re
 import sys
 import threading
 import time
@@ -122,8 +123,8 @@ class Metrics():
             updateRow['OPEN_QTY'] = dbDict['LOT']
             updateRow['DTE'] = (datetime.datetime.strptime(recDict['EXP_DATE'], '%d-%b-%Y') - datetime.datetime.strptime(recDict['REC_DATE'], '%d-%b-%Y')).days
 
-        if 'REC_CLOSE_DATE' in recDict:
-            dbDict['REC_CLOSE_DATE'] = recDict['REC_CLOSE_DATE']
+        if 'REC_CLOSE_DATE' in recDict or recDict['REC_STATUS'] == 'CLOSE':
+            dbDict['REC_CLOSE_DATE'] = recDict['REC_CLOSE_DATE'] if 'REC_CLOSE_DATE' in recDict else re.search(r'\d\d-\w\w\w-\d\d\d\d', recDict['CLOSE_ORDERS'][0]['CREATE_TIME'], re.I).group(0)
             closePrice = float(recDict['CLOSE_PRICE']) if 'CLOSE_PRICE' in recDict else float(recDict['HIGH_REC_PRICE'])
             closePrice = closePrice if recDict['BUY_SELL'].upper() == 'BUY' else -closePrice
             dbDict['CLOSE_PRICE'] = closePrice
@@ -216,6 +217,8 @@ class Metrics():
         if 'REC_CLOSE2_DATE' in recDict and recDict['REC_CLOSE2_DATE'] == filterDateStr:
             assert(recDict['REC_STATUS'] == 'CLOSE')
             addClose2Entry = True
+        if recDict['SOURCE'] == 'BREEZE-iCLICK' and recDict['REC_STATUS'] == 'CLOSE' and re.search(r'\d\d-\w\w\w-\d\d\d\d', recDict['CLOSE_ORDERS'][0]['CREATE_TIME'], re.I).group(0) ==  filterDateStr:
+            addCloseEntry = True
 
         if not (addOpenEntry or addCloseEntry or addClose2Entry):
             return status
@@ -248,16 +251,23 @@ class Metrics():
 
 
 if __name__ == '__main__':
-    endDate = '18-Jun-2024'
+    endDate = '20-Jun-2024'
     metrics1 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'OPTION')
     metrics1.offlineAdd('01-Jun-2024', endDate)
 
     metrics2 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'FUTURE')
     metrics2.offlineAdd('01-Jun-2024', endDate)
 
-    print("All Done")
+    metrics3 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-iCLICK', 'OPTION')
+    metrics3.offlineAdd('01-Jun-2024', endDate)
 
-    #row = csvrw.readRow(4)
-    #writeDict = {'TARGET': 10}
-    #row = csvrw.writeRow(4, writeDict)    
-    #csvrw.commitCSV()
+    metrics4 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-iCLICK', 'FUTURE')
+    metrics4.offlineAdd('12-Jun-2024', endDate)
+
+    metrics5 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-FnO', 'OPTION')
+    metrics5.offlineAdd('01-Jun-2024', endDate)
+
+    metrics6 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-FnO', 'FUTURE')
+    metrics6.offlineAdd('01-Jun-2024', endDate)
+
+    print("All Done")

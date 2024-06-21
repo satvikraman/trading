@@ -51,11 +51,50 @@ class AppIciciDirectBreezeBroker():
             self.__mapIcici = MapIciciToNseStock(self.__config['DATASET']['NSE_DATASET'], self.__config['DATASET']['BSE_DATASET'], self.__config['DATASET']['FNO_DATASET'])
             self.__iciciDirectBreeze = IciciDirectBreeze(self, self.__logger, self.__mapIcici, int(self.__config['APP']['NUM_RETRIES']))
 
+            self.__workflow = Workflow(self, self.__logger)
+
+            backupPath = './src/icici/db/backup'
+            if dbInv == None:
+                dbInv = self.__config['DATABASE']['DB_EQUITY_BREEZE']
+            self.persistenceInv = persistence(self.__logger, dbInv) if self.__workflow.backup(dbInv, backupPath) else None
+
+            if dbIntraDay == None:
+                dbIntraDay = self.__config['DATABASE']['DB_INTRADAY_BREEZE']
+            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay) if self.__workflow.backup(dbIntraDay, backupPath) else None
+
+            if dbFnO == None:
+                dbFnO = self.__config['DATABASE']['DB_FNO_BREEZE']
+            self.persistenceFnO = persistence(self.__logger, dbFnO) if self.__workflow.backup(dbFnO, backupPath) else None
+
+            self.squareOff = False
+            self.marketOpen = False
+            self.timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
+            self.intraDayLeeway = float(self.__config['APP']['INTRADAY_LEEWAY_PERC'])
+            self.fnoLeeway = float(self.__config['APP']['FNO_LEEWAY_PERC'])            
+            self.createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
+            self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
+            self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
+            self.checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
+            self.tradeIntraDay = self.__config['APP']['TRADE_INTRADAY_ORDER'].upper() == 'YES'
+            self.tradeFno = self.__config['APP']['TRADE_FNO_ORDER'].upper() == 'YES'
+            self.amountPerIntradayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
+            self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
+            self.fnoOrderType = self.__config['APP']['FNO_ORDER_TYPE']
+            self.MarginBuyAsCash = self.__config['APP']['MARGIN_BUY_AS_CASH'].upper() == 'YES'
+            self.cmp = {}
+
+            self.persistenceInsts = []
+            if self.tradeFno:
+                self.persistenceInsts = self.persistenceInsts + [self.persistenceFnO]
+            if self.tradeIntraDay:
+                self.persistenceInsts = self.persistenceInsts + [self.persistenceIntraDay]                
+
             dotenv.load_dotenv('.env', override=True)
 
             brz_session_token_valid_until = os.environ.get('brz_session_token_valid_until', '')
             today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
             if brz_session_token_valid_until.upper() != today:
+                self.checkOpenOrders(self.persistenceInsts)
                 self.__iciciDirectWeb = IciciDirectWeb(self, self.__logger, None, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], None)
                 loginURL = self.__iciciDirectBreeze.getBreezeLoginURL()
                 sessionToken = self.__iciciDirectWeb.getBreezeSessionToken(loginURL, self.__config['APP']['USE_PUSHBULLET'], self.__config['APP']['USE_SPREADSHEET'], 
@@ -76,21 +115,6 @@ class AppIciciDirectBreezeBroker():
                 else:
                     exit
             
-            self.__workflow = Workflow(self, self.__logger)
-
-            backupPath = './src/icici/db/backup'
-            if dbInv == None:
-                dbInv = self.__config['DATABASE']['DB_EQUITY_BREEZE']
-            self.persistenceInv = persistence(self.__logger, dbInv) if self.__workflow.backup(dbInv, backupPath) else None
-
-            if dbIntraDay == None:
-                dbIntraDay = self.__config['DATABASE']['DB_INTRADAY_BREEZE']
-            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay) if self.__workflow.backup(dbIntraDay, backupPath) else None
-
-            if dbFnO == None:
-                dbFnO = self.__config['DATABASE']['DB_FNO_BREEZE']
-            self.persistenceFnO = persistence(self.__logger, dbFnO) if self.__workflow.backup(dbFnO, backupPath) else None
-
             if '/test/' in dbInv or '/test/' in dbIntraDay or '/test/' in dbFnO:
                 self.useWebsocket = False
 
@@ -115,27 +139,12 @@ class AppIciciDirectBreezeBroker():
                 if self.persistenceIntraDay != None:
                     self.persistenceIntraDay.removeAll()
 
-            self.squareOff = False
-            self.marketOpen = False
-            self.timesMargin = float(self.__config['APP']['MARGIN_MUL_FACTOR'])
-            self.intraDayLeeway = float(self.__config['APP']['INTRADAY_LEEWAY_PERC'])
-            self.fnoLeeway = float(self.__config['APP']['FNO_LEEWAY_PERC'])            
-            self.createLtpDisFactor = float(self.__config['APP']['CREATE_LTP_DISTANCE_FACTOR'])
-            self.deleteLtpDisFactor = float(self.__config['APP']['DELETE_LTP_DISTANCE_FACTOR'])
-            self.lateAddThreshSecs = int(self.__config['APP']['LATE_ADD_THRESH_SECS'])
-            self.checkPeriodSecs = int(self.__config['APP']['CHECK_PERIOD_SECS'])
-            self.tradeIntraDay = self.__config['APP']['TRADE_INTRADAY_ORDER'].upper() == 'YES'
-            self.tradeFno = self.__config['APP']['TRADE_FNO_ORDER'].upper() == 'YES'
-            self.amountPerIntradayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
-            self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
-            self.fnoOrderType = self.__config['APP']['FNO_ORDER_TYPE']
-            self.MarginBuyAsCash = self.__config['APP']['MARGIN_BUY_AS_CASH'].upper() == 'YES'
-            self.cmp = {}
+
 
             self.websocketSubscription('ADD', '4.1!2885')
             self.websocketSubscription('ADD', '4.1!1660')
             if self.tradeIntraDay:
-                self.__workflow.refreshCMP([self.persistenceIntraDay])
+                self.__workflow.refreshCMP(self.persistenceInsts)
 
 
     def strategiesToInvest(self, source, strategy):
@@ -167,22 +176,24 @@ class AppIciciDirectBreezeBroker():
 
 
     def runBrokerPeriodicChecks(self):
-        persistenceInsts = []
-        if self.tradeFno:
-            persistenceInsts = persistenceInsts + [self.persistenceFnO]
-        if self.tradeIntraDay:
-            persistenceInsts = persistenceInsts + [self.persistenceIntraDay]
-
         if self.marketOpen:
             if self.squareOff:
                 if self.tradeIntraDay:
                     self.__workflow.closeAllOpenIntraDayPositions()
-                self.__workflow.closeAllHiddenRecs(persistenceInsts)
+                self.__workflow.closeAllHiddenRecs(self.persistenceInsts)
 
-            self.__workflow.reconcileRecs(persistenceInsts)
+            self.__workflow.reconcileRecs(self.persistenceInsts)
 
         if not self.marketOpen:
-            self.__workflow.closeAllOpenDeliveryOrders(persistenceInsts)
+            self.__workflow.closeAllOpenDeliveryOrders(self.persistenceInsts)
+
+
+    def checkDbHoldingSynch(self, persistenceInsts):
+        return True
+    
+
+    def getHoldingsData(self):
+        self.__iciciDirectBreeze.get_portfolio_holdings("NFO")
 
 
     def findOrderStatusAndQtyInfo(self, dbDict, orderNum):
@@ -210,6 +221,15 @@ class AppIciciDirectBreezeBroker():
         message = 'Dummy Order Message'
         orderNum = 'Dummy'        
         return status, message, orderNum
+    
+
+    def checkOpenOrders(self):
+        self.__workflow.checkOpenOrders(self.persistenceInsts)        
+
+
+    def startupCheck(self):
+        status = self.__workflow.startupCheck(self.persistenceInsts)
+        assert status, 'Startup check failed. Exiting'
 
 
     def websocketSubscription(self, actionType, scriptId, exchange="NFO", product="CASH"):
@@ -229,8 +249,11 @@ class AppIciciDirectBreezeBroker():
         if tickDict != None:
             if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                 self.__workflow.handleRec(tickDict, None)
-            elif self.tradeIntraDay and tickDict['PRODUCT'] == 'MARGIN':
+                self.__workflow.updateOtherRecKeys(self.persistenceFnO, tickDict)
+            elif self.tradeIntraDay and tickDict['STRATEGY'] == 'MARGIN':
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
+                persistenceInst = self.persistenceInv if tickDict['PRODUCT'] == 'CASH' else self.persistenceIntraDay
+                self.__workflow.updateOtherRecKeys(persistenceInst, tickDict)
             else:
                 persistenceInst = self.persistenceInv if tickDict['PRODUCT'] == 'CASH' else self.persistenceIntraDay
                 self.__workflow.updateAndSendRec(persistenceInst, tickDict, self.__paytmBaseURL)
@@ -271,6 +294,9 @@ def flaskThread():
 
 if __name__ == '__main__':
     trade = AppIciciDirectBreezeBroker('./src/icici/iciciDirect.ini')
+    
+    trade.startupCheck()
+
 
     # Start the flask thread
     flaskThr = threading.Thread(target=flaskThread)

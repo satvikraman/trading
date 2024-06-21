@@ -27,8 +27,8 @@ class app():
 
     def filterSROrder(self):
         strategy = 'SR-MOMENTUM PICK'
-        start = datetime.date(2024, 6, 4)
-        end = datetime.date(2024, 6, 14)
+        start = datetime.date(2024, 6, 14)
+        end = datetime.date(2024, 6, 20)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -44,14 +44,20 @@ class app():
     def filterMarginStrategyRecs(self):
         strategy = 'MARGIN'
         start = datetime.date(2024, 6, 14)
-        end = datetime.date(2024, 6, 14)
+        end = datetime.date(2024, 6, 20)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
             dbDicts = self.__persistence.getDb([['STRATEGY', strategy]])
             for dbDict in dbDicts:
-                print('DATE: ', filterDate, 'STOCK: ', dbDict['MKT_SYMBOL'], 'QTY', dbDict['QTY'])
-                        
+                for orderDict in dbDict['OPEN_ORDERS']:
+                    if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
+                        print('OPEN DATE: ', filterDate, 'STOCK: ', dbDict['MKT_SYMBOL'], 'QTY', dbDict['QTY'])
+
+                for orderDict in dbDict['CLOSE_ORDERS']:
+                    if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
+                        print('CLOSE DATE: ', filterDate, 'STOCK: ', dbDict['MKT_SYMBOL'], 'QTY', dbDict['QTY'])
+
             filterDate += datetime.timedelta(days=1)
             print("----")        
 

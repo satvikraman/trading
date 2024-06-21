@@ -111,6 +111,47 @@ class Workflow():
         return recDict
 
 
+    def checkOpenOrders(self, persistenceInsts):
+        status = True
+        for persistenceInst in persistenceInsts:
+            if persistenceInst == None:
+                continue
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
+            for dbDict in dbDicts:
+                if self.hasPendingOrders(dbDict, filter='ALL'):
+                    status = False
+                    self.__logger.critical("Stock = %s, Strategy = %s REC_DATE = %s : Has open pending orders at the start of the day", 
+                                            dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'])
+        assert status, 'Open orders check failed'    
+
+
+    def __moveOldPosToHolding(self, persistenceInsts):
+        for persistenceInst in persistenceInsts:
+            if persistenceInst == None:
+                continue
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
+            for dbDict in dbDicts:
+                if dbDict['POS_QTY'] != 0:
+                    posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
+                    if posDate < self.__today.date():
+                        dbDict['HOLD_QTY'] += dbDict['POS_QTY']
+                        dbDict['POS_QTY'] = 0
+                        dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
+                        res = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+
+
+    def startupCheck(self, persistenceInsts):
+        self.__parent.getHoldingsData()
+
+        # Transfer any position until yesterday to holding and set position to 0
+        self.__moveOldPosToHolding(persistenceInsts)
+
+        # Check if all the holding stocks - core are in DB
+        # Check if all the DB stocks are in holding and in the same quantity
+        status = self.__parent.checkDbHoldingSynch(persistenceInsts)
+        return status
+
+
 
 
     ############################################################################################################################################
@@ -993,6 +1034,34 @@ class Workflow():
         anyChange = anyChange or recStatusChanged
 
         return anyChange, sendRecIfReq
+
+
+    def updateOtherRecKeys(self, persistenceInst, rowDict):
+        isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
+
+        # If no recommendation found in DB and if the current recommendation is not close, then
+        # Insert the recommendation in DB
+        if isInDb:
+            mandatoryKeys = ['STOCK', 'SOURCE', 'MKT', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'PRODUCT', 'BUY_SELL', 'REC_DATE', 'REC_TIME', 'REC_STATUS', 'EXP_DATE']
+            mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
+            mandatoryDervKeys = ['LOT']                    
+            keysToSend = mandatoryKeys + mandatoryPriceKeys
+            if rowDict['PRODUCT'] in ['OPTION', 'FUTURE']:
+                keysToSend = keysToSend + mandatoryDervKeys
+
+            for key in rowDict.keys():
+                if key not in keysToSend:
+                    dbDict[key] = rowDict[key]
+            
+            # The recommendation has changed, else this function wont be called
+            self.__logger.info('Updating other keys. rowDict: %s', rowDict)
+            persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
+            #else: Nothing to be done
+        else:
+            rowDict['ACK'] = 'ACK'
+            rowDict['POS_HOLD_STATUS'] = 'CLOSE'
+            self.__logger.info("updateOtherRecKeys: Recommendation for %s is new (i.e. not in DB) but setting 'POS_HOLD_STATUS' to 'CLOSE' %s", rowDict['MKT_SYMBOL'], rowDict)
+            res = persistenceInst.insertDb(rowDict, None)
 
 
     def updateAndSendRec(self, persistenceInst, rowDict, baseURL):
