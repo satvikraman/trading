@@ -331,7 +331,7 @@ class IciciDirectBreeze():
         elif re.search(r'Book Part Profit|Book Partial Profit|Book 50%', callAction, re.IGNORECASE):
             tickDict['PART_PROFIT_PRICE'] = float(ticks['last_traded_price'])
             recStatus = 'CLOSE'
-        elif re.search(r'Book Profit|Book Full Profit|TGT|Target 1', callAction, re.IGNORECASE):
+        elif re.search(r'Book Profit|Book Full Profit|TGT|Target 1|Target Achieved', callAction, re.IGNORECASE):
             tickDict['FINAL_PROFIT_PRICE'] = float(ticks['last_traded_price'])
             recStatus = 'CLOSE'
         else:

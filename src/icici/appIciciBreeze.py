@@ -297,7 +297,6 @@ if __name__ == '__main__':
     
     trade.startupCheck()
 
-
     # Start the flask thread
     flaskThr = threading.Thread(target=flaskThread)
     flaskThr.daemon = True

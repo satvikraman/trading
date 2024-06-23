@@ -78,8 +78,47 @@ class Metrics():
             self.__readDbProduct = product
             self.__csvrw = None
             self.__metricsStartDate = datetime.datetime.strptime(METRIC_START_DATE, "%d-%b-%Y")
-            self.__rowDict = {'DATE': '', 'STRATEGY': '', 'STOCK': '', 'SYMBOL': '', 'TARGET': 0, 'STOP_LOSS': 0, 'LOT': 0, 'TYPE': '', 'OPEN_PRICE': 0, 'OPEN_QTY': 0, 'CLOSE_PRICE': 0, 'CLOSE_QTY': 0, 'DTE': 0}
+            if source == 'BREEZE-FnO':
+                self.__rowDict = {'DATE': '', 'STRATEGY': '', 'STOCK': '', 'SYMBOL': '', 'TARGET': 0, 'STOP_LOSS': 0, 'LOT': 0, 'TYPE': '', 'OPEN_PRICE': 0, 'OPEN_QTY': 0, 'CLOSE_PRICE': 0, 'CLOSE_QTY': 0, 'DTE': 0, 'PORTFOLIO_NAME': '', 'PORTFOLIO_ID': 0, 'LEG_NO': 0}
+            else:
+                self.__rowDict = {'DATE': '', 'STRATEGY': '', 'STOCK': '', 'SYMBOL': '', 'TARGET': 0, 'STOP_LOSS': 0, 'LOT': 0, 'TYPE': '', 'OPEN_PRICE': 0, 'OPEN_QTY': 0, 'CLOSE_PRICE': 0, 'CLOSE_QTY': 0, 'DTE': 0}
 
+
+    def __getDateAndPriceFromUpdateAction(self, recDict):
+        status = False
+        dt = closePrice = ""
+        if bool(re.search(r'\d\d\d\d-\d\d-\d\d', recDict['UPDATE_ACTION_1'])):
+            dt = re.search(r'\d\d\d\d-\d\d-\d\d', recDict['UPDATE_ACTION_1']).group(0)
+        if bool(re.search(r'\d\d\d\d-\d\d-\d\d', recDict['UPDATE_TIME_1'])):
+            dt = re.search(r'\d\d\d\d-\d\d-\d\d', recDict['UPDATE_TIME_1']).group(0)
+            
+        dt = datetime.datetime.strftime(datetime.datetime.strptime(dt, '%Y-%m-%d'), '%d-%b-%Y')
+        closePrice = 0
+        if not status:
+            partProfitClose = ['Book Part Profit','Book Partial Profit','Book 50%']
+            for action in partProfitClose:
+                if bool(re.search(action, recDict['UPDATE_ACTION_1'], flags=re.IGNORECASE)):        
+                    status = True
+                    closePrice = recDict['PART_PROFIT_PRICE'] if 'PART_PROFIT_PRICE' in recDict else recDict['TARGET']
+                    closePrice = float(closePrice)
+
+        if not status:
+            fullProfitClose = ['Book Profit','Book Full Profit','TGT','Target 1','Target Achieved']
+            for action in fullProfitClose:
+                if bool(re.search(action, recDict['UPDATE_ACTION_1'], flags=re.IGNORECASE)):        
+                    status = True
+                closePrice = recDict['FINAL_PROFIT_PRICE'] if 'FINAL_PROFIT_PRICE' in recDict and int(recDict['FINAL_PROFIT_PRICE']) != 0 else recDict['TARGET']
+                closePrice = float(closePrice)
+
+        if not status:
+            fullLossClose = ['Exit','Stoploss','SLTP','Square off']
+            for action in fullLossClose:
+                if bool(re.search(action, recDict['UPDATE_ACTION_1'], flags=re.IGNORECASE)):        
+                    status = True
+                    closePrice = recDict['EXIT_PRICE'] if 'EXIT_PRICE' in recDict else recDict['STOP_LOSS']
+                    closePrice = float(closePrice)
+
+        return status, dt, closePrice
     
     def __checkDate(self, date1, date2):
         status = False
@@ -122,10 +161,15 @@ class Metrics():
             updateRow['LOT'] = dbDict['LOT']
             updateRow['OPEN_QTY'] = dbDict['LOT']
             updateRow['DTE'] = (datetime.datetime.strptime(recDict['EXP_DATE'], '%d-%b-%Y') - datetime.datetime.strptime(recDict['REC_DATE'], '%d-%b-%Y')).days
+            if recDict['SOURCE'] == 'BREEZE-FnO':
+                updateRow['PORTFOLIO_NAME'] = dbDict['PORTFOLIO_NAME'] = recDict['PORTFOLIO_NAME']
+                updateRow['PORTFOLIO_ID'] = dbDict['PORTFOLIO_ID'] = recDict['PORTFOLIO_ID']
+                updateRow['LEG_NO'] = dbDict['LEG_NO'] = recDict['LEG_NO']
 
         if 'REC_CLOSE_DATE' in recDict or recDict['REC_STATUS'] == 'CLOSE':
-            dbDict['REC_CLOSE_DATE'] = recDict['REC_CLOSE_DATE'] if 'REC_CLOSE_DATE' in recDict else re.search(r'\d\d-\w\w\w-\d\d\d\d', recDict['CLOSE_ORDERS'][0]['CREATE_TIME'], re.I).group(0)
-            closePrice = float(recDict['CLOSE_PRICE']) if 'CLOSE_PRICE' in recDict else float(recDict['HIGH_REC_PRICE'])
+            dbDict['REC_CLOSE_DATE'] = recDict['REC_CLOSE_DATE']
+            closePrice = float(recDict['CLOSE_PRICE'])
+
             closePrice = closePrice if recDict['BUY_SELL'].upper() == 'BUY' else -closePrice
             dbDict['CLOSE_PRICE'] = closePrice
             finalClosePrice = closePrice
@@ -217,13 +261,26 @@ class Metrics():
         if 'REC_CLOSE2_DATE' in recDict and recDict['REC_CLOSE2_DATE'] == filterDateStr:
             assert(recDict['REC_STATUS'] == 'CLOSE')
             addClose2Entry = True
-        if recDict['SOURCE'] == 'BREEZE-iCLICK' and recDict['REC_STATUS'] == 'CLOSE' and re.search(r'\d\d-\w\w\w-\d\d\d\d', recDict['CLOSE_ORDERS'][0]['CREATE_TIME'], re.I).group(0) ==  filterDateStr:
-            addCloseEntry = True
+        if recDict['SOURCE'] in ['BREEZE-iCLICK', 'BREEZE-FnO'] and recDict['REC_STATUS'] == 'CLOSE':
+            found = False
+            if 'UPDATE_ACTION_1' in recDict and recDict['UPDATE_ACTION_1'] != "":
+                found, closeDate, closePrice = self.__getDateAndPriceFromUpdateAction(recDict)
+            if not found and 'CLOSE_ORDERS' in recDict and len(recDict['CLOSE_ORDERS']) > 0:
+                found = True
+                closeDate = re.search(r'\d\d-\w\w\w-\d\d\d\d', recDict['CLOSE_ORDERS'][0]['CREATE_TIME'], re.I).group(0)
+                closePrice = recDict['HIGH_REC_PRICE'] if recDict['BUY_SELL'] == 'BUY' else recDict['LOW_REC_PRICE']
+            if found:
+                recDict['REC_CLOSE_DATE'] = closeDate
+                recDict['CLOSE_PRICE'] = closePrice
+            else:
+                print("Unable to find closing details")
+            if closeDate == filterDateStr:
+                addCloseEntry = True
 
         if not (addOpenEntry or addCloseEntry or addClose2Entry):
             return status
 
-        isInDb, dbDict = self.__persistenceMetric.isInDb([['SOURCE', recDict['SOURCE']], ['STOCK', recDict['STOCK']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
+        isInDb, dbDict = self.__persistenceMetric.isInDb([['SOURCE', recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']], ['REC_TIME', recDict['REC_TIME']]])
 
         self.updateRows(recDict, dbDict, isInDb, addCloseEntry, addClose2Entry)
 
@@ -251,7 +308,7 @@ class Metrics():
 
 
 if __name__ == '__main__':
-    endDate = '20-Jun-2024'
+    endDate = '21-Jun-2024'
     metrics1 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'OPTION')
     metrics1.offlineAdd('01-Jun-2024', endDate)
 
@@ -262,7 +319,7 @@ if __name__ == '__main__':
     metrics3.offlineAdd('01-Jun-2024', endDate)
 
     metrics4 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-iCLICK', 'FUTURE')
-    metrics4.offlineAdd('12-Jun-2024', endDate)
+    metrics4.offlineAdd('01-Jun-2024', endDate)
 
     metrics5 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-FnO', 'OPTION')
     metrics5.offlineAdd('01-Jun-2024', endDate)

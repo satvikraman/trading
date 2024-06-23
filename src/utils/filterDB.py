@@ -27,8 +27,8 @@ class app():
 
     def filterSROrder(self):
         strategy = 'SR-MOMENTUM PICK'
-        start = datetime.date(2024, 6, 14)
-        end = datetime.date(2024, 6, 20)
+        start = datetime.date(2024, 6, 20)
+        end = datetime.date(2024, 6, 21)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -43,8 +43,8 @@ class app():
 
     def filterMarginStrategyRecs(self):
         strategy = 'MARGIN'
-        start = datetime.date(2024, 6, 14)
-        end = datetime.date(2024, 6, 20)
+        start = datetime.date(2024, 6, 20)
+        end = datetime.date(2024, 6, 21)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -73,5 +73,5 @@ if __name__ == '__main__':
     filter = app('./src/paytm/payTmMoney.ini')
     #filter.filterDb()
 
-    #filter.filterMarginStrategyRecs()
+    filter.filterMarginStrategyRecs()
     filter.filterSROrder()

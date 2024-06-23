@@ -225,9 +225,9 @@ class Workflow():
             dbDicts = persistenceInst.getDb([['SOURCE', '!iCLICK-2-INVEST'], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
             for dbDict in dbDicts:
                 recDateTime = datetime.datetime.strptime(recDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
-                dbDateTime  = datetime.datetime.strptime(dbDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
+                dbDateTime  = datetime.datetime.strptime(dbDict['REC_DATE'] + ' ' + dbDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
                 timeDiffSecs = (recDateTime - dbDateTime).total_seconds()
-                if timeDiffSecs <= 60:
+                if timeDiffSecs <= 120:
                     isInDb = True
                     break
         if isInDb:
@@ -1037,7 +1037,7 @@ class Workflow():
 
 
     def updateOtherRecKeys(self, persistenceInst, rowDict):
-        isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
+        isInDb, dbDict = self.__isInDb(persistenceInst, rowDict)
 
         # If no recommendation found in DB and if the current recommendation is not close, then
         # Insert the recommendation in DB
@@ -1058,8 +1058,19 @@ class Workflow():
             persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
             #else: Nothing to be done
         else:
+            rowDict['POS_QTY'] = 0
+            rowDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
+            rowDict['HOLD_QTY'] = 0
+            rowDict['POS_HOLD_QTY'] = 0
+            rowDict['POS_HOLD_STATUS'] = 'OPEN'
+            rowDict['QTY'] = 0
+            rowDict['LATE_ADD'] = self.__isLateAdd(rowDict)
+            rowDict['VISIBLE'] = 'VISIBLE'
+            rowDict['OPEN_ORDERS'] = []
+            rowDict['CLOSE_ORDERS'] = []
             rowDict['ACK'] = 'ACK'
             rowDict['POS_HOLD_STATUS'] = 'CLOSE'
+
             self.__logger.info("updateOtherRecKeys: Recommendation for %s is new (i.e. not in DB) but setting 'POS_HOLD_STATUS' to 'CLOSE' %s", rowDict['MKT_SYMBOL'], rowDict)
             res = persistenceInst.insertDb(rowDict, None)
 
