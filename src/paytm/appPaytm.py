@@ -385,6 +385,11 @@ if __name__ == '__main__':
     # Connect w/ PayTm's API gateway
     trade.openPayTmMoneySession()
 
+    portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
+    while not portfolioReconcile:
+        portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
+        time.sleep(15)
+
     # Check if the DB and the PayTm portfolio are in synch
     trade.startupCheck()
 
