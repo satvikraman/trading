@@ -308,7 +308,7 @@ class Metrics():
 
 
 if __name__ == '__main__':
-    endDate = '21-Jun-2024'
+    endDate = '24-Jun-2024'
     metrics1 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'OPTION')
     metrics1.offlineAdd('01-Jun-2024', endDate)
 
