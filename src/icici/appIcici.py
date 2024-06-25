@@ -95,6 +95,9 @@ class AppIcici():
                 except Exception as e:
                     self.__logger.critical(e)
 
+    
+    def closeInstance(self):
+        self.__iciciDirectWeb.closeBrowser()
 
     def getStrategiesToInvest(self, source, filter=None):
         if source == 'iCLICK-2-GAIN':
@@ -215,3 +218,6 @@ if __name__ == '__main__':
     time.sleep(60)
     if marketClose:
         trade.runPostMarketCloseChecks()
+
+    trade.closeInstance()
+    exit()
