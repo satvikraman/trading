@@ -1037,6 +1037,7 @@ class Workflow():
 
 
     def updateOtherRecKeys(self, persistenceInst, rowDict):
+        self.__lock.acquire()
         isInDb, dbDict = self.__isInDb(persistenceInst, rowDict)
 
         # If no recommendation found in DB and if the current recommendation is not close, then
@@ -1073,9 +1074,11 @@ class Workflow():
 
             self.__logger.info("updateOtherRecKeys: Recommendation for %s is new (i.e. not in DB) but setting 'POS_HOLD_STATUS' to 'CLOSE' %s", rowDict['MKT_SYMBOL'], rowDict)
             res = persistenceInst.insertDb(rowDict, None)
+        self.__lock.release()
 
 
     def updateAndSendRec(self, persistenceInst, rowDict, baseURL):
+        self.__lock.acquire()
         isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
 
         # If no recommendation found in DB and if the current recommendation is not close, then
@@ -1105,3 +1108,4 @@ class Workflow():
                 rowDict['ACK'] = 'ACK'
                 self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", rowDict['MKT_SYMBOL'], rowDict)
                 res = persistenceInst.insertDb(rowDict, None)
+        self.__lock.release()
