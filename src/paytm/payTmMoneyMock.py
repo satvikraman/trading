@@ -19,15 +19,15 @@ class payTmMoneyMock:
             self.__stockDictArr = []
             self.__cmpDictArr = []
 
-            if(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'DEBUG'):
+            if(self.__config['LOGGING']['LOG_LEVEL'] == 'DEBUG'):
                 level = logging.DEBUG
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'INFO'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'INFO'):
                 level = logging.INFO
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'WARNING'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'WARNING'):
                 level = logging.WARNING
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'ERROR'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'ERROR'):
                 level = logging.ERROR
-            elif(self.__config['PAYTM-MONEY']['LOG_LEVEL'] == 'CRITICAL'):
+            elif(self.__config['LOGGING']['LOG_LEVEL'] == 'CRITICAL'):
                 level = logging.CRITICAL
             self.__logger = logging.getLogger(__name__)
             self.__logger.setLevel(level)
@@ -81,7 +81,7 @@ class payTmMoneyMock:
         return True
 
 
-    def getLastTradedPrice(self, securityId, securityType, exchange='NSE'):
+    def get_live_market_data(self, securityId, securityType, exchange='NSE'):
         status = False
         for dict in self.__cmpDictArr:
             if dict['SECURITY_ID'] == securityId:
@@ -90,7 +90,7 @@ class payTmMoneyMock:
 
         return status, ltp
  
-    def getHoldingsData(self):
+    def user_holdings_data(self):
         status = True
         resDictArr = []
         for dict in self.__stockDictArr:
@@ -98,7 +98,7 @@ class payTmMoneyMock:
             resDictArr.append(resDict)
         return status, resDictArr
 
-    def getSecurityPosition(self, securityId, product, openOrderType, exchange='NSE'):
+    def position_details(self, securityId, product, openOrderType, exchange='NSE'):
         status = True
         pos = openQty = closeQty = 0
         for dict in self.__stockDictArr:
@@ -139,7 +139,7 @@ class payTmMoneyMock:
                     if orderDict['ORDER_STATUS'] != 'CLOSE':
                         qtyToClose = 0
                         if self.__closeOpenOrders:
-                            _, cmp = self.getLastTradedPrice(orderDict['SECURITY_ID'], orderDict['SEGMENT'], exchange='NSE')
+                            _, cmp = self.get_live_market_data(orderDict['SECURITY_ID'], orderDict['SEGMENT'], exchange='NSE')
                             if orderDict['BUY_SELL'] == 'BUY':
                                 if ((orderDict['ORDER_TYPE'] == 'LMT' and cmp <= orderDict['LIMIT']) or (orderDict['ORDER_TYPE'] == 'MKT')):
                                     qtyToClose = int(qty/self.__incompleteOrderFraction)
@@ -173,9 +173,9 @@ class payTmMoneyMock:
                                 orderDict['ORDER_STATUS'] = 'CLOSE'
                             else:
                                 trdQty = orderDict['TRADED_QTY'] + qtyToClose
-                                trdQty = orderDict['TRADED_QTY'] = trdQty
+                                orderDict['TRADED_QTY'] = trdQty
                                 if orderDict['QTY'] - trdQty < qtyToClose:
-                                    orderDict['TRADED_QTY'] = qty
+                                    trdQty = orderDict['TRADED_QTY'] = qty
                                     orderDict['ORDER_STATUS'] = 'CLOSE'
 
                             status = True
@@ -185,10 +185,10 @@ class payTmMoneyMock:
 
         return status, qty, trdQty
 
-    def getOrderBookUpdate(self):
+    def order_book(self):
         return True
 
-    def cancelOrder(self, orderNo):
+    def cancel_order(self, orderNo):
         status = False
         for dict in self.__stockDictArr:
             for orderDict in dict['OPEN_ORDERS']:
@@ -205,7 +205,7 @@ class payTmMoneyMock:
         return status, message, orderNum
 
 
-    def placeOrder(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
+    def place_order(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
         status = True
         prevOrdered = False
         timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")

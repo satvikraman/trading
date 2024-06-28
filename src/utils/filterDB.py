@@ -25,12 +25,41 @@ class app():
         shutil.copyfile(db, backupDb)
 
 
-    def filterSROrder(self, strategy, filterDate):
-        dbDicts = self.__persistence.getDb([['STRATEGY', strategy ]])
-        for dbDict in dbDicts:
-            for orderDict in dbDict['OPEN_ORDERS'] + dbDict['CLOSE_ORDERS']:
-                if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
-                    print('DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
+    def filterSROrder(self):
+        strategy = 'SR-MOMENTUM PICK'
+        start = datetime.date(2024, 6, 25)
+        end = datetime.date(2024, 6, 25)
+        filterDate = start
+        while filterDate <= end:        
+            print("Filtering txs on : ", filterDate)
+            dbDicts = self.__persistence.getDb([['STRATEGY', strategy ]])
+            for dbDict in dbDicts:
+                for orderDict in dbDict['OPEN_ORDERS'] + dbDict['CLOSE_ORDERS']:
+                    if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
+                        print('DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
+            filterDate += datetime.timedelta(days=1)
+            print("----")
+
+
+    def filterMarginStrategyRecs(self):
+        strategy = 'MARGIN'
+        start = datetime.date(2024, 6, 25)
+        end = datetime.date(2024, 6, 25)
+        filterDate = start
+        while filterDate <= end:        
+            print("Filtering txs on : ", filterDate)
+            dbDicts = self.__persistence.getDb([['STRATEGY', strategy]])
+            for dbDict in dbDicts:
+                for orderDict in dbDict['OPEN_ORDERS']:
+                    if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
+                        print('OPEN DATE: ', filterDate, 'STOCK: ', dbDict['MKT_SYMBOL'], 'QTY', dbDict['QTY'])
+
+                for orderDict in dbDict['CLOSE_ORDERS']:
+                    if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
+                        print('CLOSE DATE: ', filterDate, 'STOCK: ', dbDict['MKT_SYMBOL'], 'QTY', dbDict['QTY'])
+
+            filterDate += datetime.timedelta(days=1)
+            print("----")        
 
 
     def filterDb(self):
@@ -41,14 +70,8 @@ class app():
 
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
-    filter = app('./payTmMoney.ini')
+    filter = app('./src/paytm/payTmMoney.ini')
     #filter.filterDb()
 
-    start = datetime.date(2024, 4, 14)
-    end = datetime.date(2024, 4, 30)
-    filterDate = start
-    while filterDate <= end:
-        print("Filtering txs on : ", filterDate)
-        filter.filterSROrder('SR-MOMENTUM PICK', filterDate)
-        filterDate += datetime.timedelta(days=1)
-        print("----")
+    filter.filterMarginStrategyRecs()
+    filter.filterSROrder()

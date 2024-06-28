@@ -1,32 +1,14 @@
-import logging
-import os
 import re
-import configparser
+import threading
 from tinydb import TinyDB, Query, where
 from tinydb.operations import delete
 
 class persistence:
-    def __init__(self, configFile, db, lock=None):
-        if(os.path.isfile(configFile)):
-            self.__config = configparser.ConfigParser()
-            self.__config.read(configFile)
-
-            if(self.__config['DATABASE']['LOG_LEVEL'] == 'DEBUG'):
-                level = logging.DEBUG
-            elif(self.__config['DATABASE']['LOG_LEVEL'] == 'INFO'):
-                level = logging.INFO
-            elif(self.__config['DATABASE']['LOG_LEVEL'] == 'WARNING'):
-                level = logging.WARNING
-            elif(self.__config['DATABASE']['LOG_LEVEL'] == 'ERROR'):
-                level = logging.ERROR
-            elif(self.__config['DATABASE']['LOG_LEVEL'] == 'CRITICAL'):
-                level = logging.CRITICAL
-            self.__logger = logging.getLogger(__name__)
-            self.__logger.setLevel(level)
-        
-            self.__lock = lock
-            self.__db = TinyDB(db)
-            self.__query = Query()
+    def __init__(self, logger, db):
+        self.__logger = logger
+        self.__db = TinyDB(db)
+        self.__lock = None
+        self.__query = Query()
 
 
     def __acquireLock(self):
@@ -81,7 +63,10 @@ class persistence:
 
     def insertDb(self, dict, queryParamVals):
         status = False
-        found, retDict = self.isInDb(queryParamVals)
+        if queryParamVals == None:
+            found = False
+        else:            
+            found, retDict = self.isInDb(queryParamVals)
         if(not found and dict):
             self.__acquireLock()
             res = self.__db.insert(dict)
