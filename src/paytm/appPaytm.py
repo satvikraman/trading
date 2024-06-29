@@ -80,7 +80,11 @@ class AppPaytmBroker():
             self.__logger.info('Max Amount Per Cash Order %d', self.amountPerOrder)
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
-            self.__core = [{'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
+            self.__core = [ {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42},
+                            {'MKT_SYMBOL': 'ICICIGI', 'SECURITY_ID': '21770', 'QTY': 3},
+                            {'MKT_SYMBOL': 'KSB', 'SECURITY_ID': '1949', 'QTY': 1},
+                            {'MKT_SYMBOL': 'LUPIN', 'SECURITY_ID': '10440', 'QTY': 11},
+                            {'MKT_SYMBOL': 'TATASTEEL', 'SECURITY_ID': '3499', 'QTY': 25},]            
 
             self.squareOff = False
             self.marketOpen = False
