@@ -1,5 +1,9 @@
 @echo off
 
+call C:\Users\Admin\anaconda3\Scripts\activate.bat C:\Users\Admin\anaconda3
+call conda activate trd_chrome
+CD /D D:\araman\trading-breeze\trading
+
 :START
 python src/icici/appicici.py
 TIMEOUT /T 5 /NOBREAK
