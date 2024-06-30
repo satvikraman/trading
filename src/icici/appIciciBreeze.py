@@ -148,8 +148,9 @@ class AppIciciDirectBreezeBroker():
 
 
     def strategiesToInvest(self, source, strategy):
-        allStrategies = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS']}
-        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE']}
+        allStrategies = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS'], 
+                         'BREEZE-FnO': ['OPTIONS', 'FUTURE']}
+        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE'], 'BREEZE-FnO': ['OPTIONS', 'FUTURE']}
 
         status = False
         if strategy in strategiesToInvest[source]:
@@ -197,9 +198,7 @@ class AppIciciDirectBreezeBroker():
 
 
     def findOrderStatusAndQtyInfo(self, dbDict, orderNum):
-        #status, qty, trdQty = self.__iciciDirectBreeze.get_order_detail(dbDict['MKT'], orderNum)
-        status = True
-        qty = trdQty = dbDict['QTY']
+        status, qty, trdQty = self.__iciciDirectBreeze.get_order_detail(dbDict['MKT'], orderNum)
         return status, qty, trdQty
     
 
@@ -216,10 +215,7 @@ class AppIciciDirectBreezeBroker():
 
     def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0):
         product = dbDict['PRODUCT']
-        #status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
-        status = True
-        message = 'Dummy Order Message'
-        orderNum = 'Dummy'        
+        status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
         return status, message, orderNum
     
 

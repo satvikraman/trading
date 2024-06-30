@@ -80,7 +80,8 @@ class AppPaytmBroker():
             self.__logger.info('Max Amount Per Cash Order %d', self.amountPerOrder)
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
-            self.__core = [{'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42}]            
+            #self.__core = [ {'MKT_SYMBOL': 'HCLTECH', 'SECURITY_ID': '7229', 'QTY': 42} ]
+            self.__core = []
 
             self.squareOff = False
             self.marketOpen = False
@@ -97,6 +98,17 @@ class AppPaytmBroker():
 
     def getHoldingsData(self):
         status, self.__holdings = self.__payTmMoney.user_holdings_data()
+
+        for core in self.__core:
+            found = False
+            for holding in self.__holdings:
+                if core['MKT_SYMBOL'] == holding['MKT_SYMBOL']:
+                    found = True
+                    break
+            if not found:
+                self.__logger.error("Core stock %s not in holding", core['MKT_SYMBOL'])
+                exit()
+
         # Remove quantities we consider to be a part of the core portfolio so that 
         # we don't need to repeatedly do this calculation. Hold - Core = Trade
         for holding in self.__holdings:

@@ -11,13 +11,9 @@ sys.path.append('./src/common')
 from persistence import persistence
 
 class app():
-    def __init__(self, configFile, db=None, dryRun=False):
-        if os.path.isfile(configFile):
-            self.__config = configparser.ConfigParser()
-            self.__config.read(configFile)
-            db = self.__config['DATABASE']['DB_EQUITY']            
-            self.backupDb(db)
-            self.__persistence = persistence(configFile, db)
+    def __init__(self, db):          
+        self.backupDb(db)
+        self.__persistence = persistence(None, db)
 
 
     def backupDb(self, db):
@@ -27,8 +23,8 @@ class app():
 
     def filterSROrder(self):
         strategy = 'SR-MOMENTUM PICK'
-        start = datetime.date(2024, 6, 25)
-        end = datetime.date(2024, 6, 25)
+        start = datetime.date(2024, 6, 28)
+        end = datetime.date(2024, 6, 28)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -43,35 +39,35 @@ class app():
 
     def filterMarginStrategyRecs(self):
         strategy = 'MARGIN'
-        start = datetime.date(2024, 6, 25)
-        end = datetime.date(2024, 6, 25)
+        start = datetime.date(2024, 6, 1)
+        end = datetime.date(2024, 6, 28)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
-            dbDicts = self.__persistence.getDb([['STRATEGY', strategy]])
+            dbDicts = self.__persistence.getDb([['STRATEGY', strategy+'|AR-MARGIN'], ['MKT_SYMBOL', 'RAMCOCEM']])
             for dbDict in dbDicts:
                 for orderDict in dbDict['OPEN_ORDERS']:
                     if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
-                        print('OPEN DATE: ', filterDate, 'STOCK: ', dbDict['MKT_SYMBOL'], 'QTY', dbDict['QTY'])
+                        print('OPEN DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
 
                 for orderDict in dbDict['CLOSE_ORDERS']:
                     if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
-                        print('CLOSE DATE: ', filterDate, 'STOCK: ', dbDict['MKT_SYMBOL'], 'QTY', dbDict['QTY'])
+                        print('CLOSE DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
 
             filterDate += datetime.timedelta(days=1)
             print("----")        
 
 
     def filterDb(self):
-        dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', 'OPEN']])
+        dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE'], ['STRATEGY', 'MARGIN|AR-MARGIN']])
         for dbDict in dbDicts:
             print(dbDict)
 
 
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
-    filter = app('./src/paytm/payTmMoney.ini')
-    #filter.filterDb()
+    filter = app('./src/icici/db/iciciDirectFnO_Breeze.json')
+    filter.filterDb()
 
-    filter.filterMarginStrategyRecs()
-    filter.filterSROrder()
+    #filter.filterMarginStrategyRecs()
+    #filter.filterSROrder()
