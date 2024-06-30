@@ -46,40 +46,84 @@ class Workflow():
         return status, dbDict
 
 
-    def __hasChanged(self, recDict, dbDict):
-        hasTgtSLChanged = False
-        hasRecPriceChanged = False
+    def __updateOfflineRec(self, recDict, dbDict):
+        modDbDict = False
 
-        if dbDict['POS_HOLD_STATUS'] == 'OPEN':
-            if dbDict['HIGH_REC_PRICE'] < recDict['HIGH_REC_PRICE']:
-                self.__logger.info("Changing HIGH_REC_PRICE: dbDict: {} = recDict {}".format(dbDict['HIGH_REC_PRICE'], recDict['HIGH_REC_PRICE']))
+        if 'ACTION' in recDict:
+            # This is the case where we would like to take an online trade offline. An INIT_TRADE case should not come here otherwise
+            if recDict['ACTION'] == 'INIT_TRADE' and 'ADD_PREFIX' in recDict and recDict['QTY'] == dbDict['QTY']:
+                modDbDict = True
+            elif recDict['ACTION'] == 'TRADE':
+                modDbDict = True
+
+            if modDbDict:
+                dbDict['ACTION'] = recDict['ACTION']
                 dbDict['HIGH_REC_PRICE'] = recDict['HIGH_REC_PRICE']
-                hasRecPriceChanged = True
-
-            if dbDict['LOW_REC_PRICE'] > recDict['LOW_REC_PRICE']:
-                self.__logger.info("Changing LOW_REC_PRICE: dbDict: {} = recDict {}".format(dbDict['LOW_REC_PRICE'], recDict['LOW_REC_PRICE']))
                 dbDict['LOW_REC_PRICE'] = recDict['LOW_REC_PRICE']
-                hasRecPriceChanged = True
+                dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
+                dbDict['TARGET'] = recDict['TARGET']
+                if 'TRIGGER' in recDict:
+                    dbDict['TRIGGER'] = recDict['TRIGGER']
 
-        # Being conservative: Take the max of the STOP_LOSS and min of the TARGET
-        if dbDict['BUY_SELL'] == 'BUY':
-            if dbDict['STOP_LOSS'] < recDict['STOP_LOSS']:
-                self.__logger.info("Changing BUY STOP_LOSS: dbDict: {} = recDict {}".format(dbDict['STOP_LOSS'], recDict['STOP_LOSS']))
-                hasTgtSLChanged = True
-                dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
-            if dbDict['TARGET'] > recDict['TARGET']:
-                self.__logger.info("Changing BUY TARGET: dbDict: {} = recDict {}".format(dbDict['TARGET'], recDict['TARGET']))
-                hasTgtSLChanged = True
-                dbDict['TARGET'] = recDict['TARGET']
+                if recDict['ACTION'] == 'TRADE':
+                    # If the trade didn't go the right way, we may want to buy on dips and add more quantity at a lower cost.
+                    # We should therefore allow transitioning REC_STATUS from POSITION -> OPEN. 
+                    # Also REC_PRICE should be changed here. Under normal updates, we only allow HIGH_REC_PRICE to go higher and LOW_REC_PRICE to go lower
+                    if recDict['REC_STATUS'] == 'OPEN' and dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] in ['OPEN', 'POSITION'] and 'QTY' in recDict:
+                        if recDict['QTY'] > dbDict['QTY']:
+                            dbDict['QTY'] = recDict['QTY']
+                            dbDict['POS_HOLD_STATUS'] = 'OPEN'
+                elif recDict['ACTION'] == 'INIT_TRADE':
+                    # To take this trade offline, we may want to add a prefix to the strategy so that recommendations coming from the recommenders are ignored
+                    # Prefix is added to STRATEGY to fail all db queries. Prefix is also added to SOURCE so that visibility checks fail
+                    # Also set VISIBLE to ensure the trade does not get closed automatically
+                    dbDict['VISIBLE'] = 'VISIBLE'
+                    if not bool(re.match(recDict['ADD_PREFIX'], dbDict['STRATEGY'])):
+                        dbDict['STRATEGY'] = recDict['ADD_PREFIX'] + dbDict['STRATEGY']
+                    if not bool(re.match(recDict['ADD_PREFIX'], dbDict['SOURCE'])):
+                        dbDict['SOURCE'] = recDict['ADD_PREFIX'] + dbDict['SOURCE']
+
+        return modDbDict, dbDict
+
+
+    def __hasChanged(self, recDict, dbDict):
+        modDbDict, dbDict = self.__updateOfflineRec(recDict, dbDict)
+
+        if modDbDict:
+            hasRecPriceChanged = hasTgtSLChanged = True
         else:
-            if dbDict['STOP_LOSS'] > recDict['STOP_LOSS']:
-                self.__logger.info("Changing SELL STOP_LOSS: dbDict: {} = recDict {}".format(dbDict['STOP_LOSS'], recDict['STOP_LOSS']))
-                hasTgtSLChanged = True
-                dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
-            if dbDict['TARGET'] < recDict['TARGET']:
-                self.__logger.info("Changing SELL TARGET: dbDict: {} = recDict {}".format(dbDict['TARGET'], recDict['TARGET']))
-                hasTgtSLChanged = True
-                dbDict['TARGET'] = recDict['TARGET']
+            hasRecPriceChanged = hasTgtSLChanged = False
+
+            if dbDict['POS_HOLD_STATUS'] == 'OPEN':
+                if dbDict['HIGH_REC_PRICE'] < recDict['HIGH_REC_PRICE']:
+                    self.__logger.info("Changing HIGH_REC_PRICE: dbDict: {} = recDict {}".format(dbDict['HIGH_REC_PRICE'], recDict['HIGH_REC_PRICE']))
+                    dbDict['HIGH_REC_PRICE'] = recDict['HIGH_REC_PRICE']
+                    hasRecPriceChanged = True
+
+                if dbDict['LOW_REC_PRICE'] > recDict['LOW_REC_PRICE']:
+                    self.__logger.info("Changing LOW_REC_PRICE: dbDict: {} = recDict {}".format(dbDict['LOW_REC_PRICE'], recDict['LOW_REC_PRICE']))
+                    dbDict['LOW_REC_PRICE'] = recDict['LOW_REC_PRICE']
+                    hasRecPriceChanged = True
+
+            # Being conservative: Take the max of the STOP_LOSS and min of the TARGET
+            if dbDict['BUY_SELL'] == 'BUY':
+                if dbDict['STOP_LOSS'] < recDict['STOP_LOSS']:
+                    self.__logger.info("Changing BUY STOP_LOSS: dbDict: {} = recDict {}".format(dbDict['STOP_LOSS'], recDict['STOP_LOSS']))
+                    hasTgtSLChanged = True
+                    dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
+                if dbDict['TARGET'] > recDict['TARGET']:
+                    self.__logger.info("Changing BUY TARGET: dbDict: {} = recDict {}".format(dbDict['TARGET'], recDict['TARGET']))
+                    hasTgtSLChanged = True
+                    dbDict['TARGET'] = recDict['TARGET']
+            else:
+                if dbDict['STOP_LOSS'] > recDict['STOP_LOSS']:
+                    self.__logger.info("Changing SELL STOP_LOSS: dbDict: {} = recDict {}".format(dbDict['STOP_LOSS'], recDict['STOP_LOSS']))
+                    hasTgtSLChanged = True
+                    dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
+                if dbDict['TARGET'] < recDict['TARGET']:
+                    self.__logger.info("Changing SELL TARGET: dbDict: {} = recDict {}".format(dbDict['TARGET'], recDict['TARGET']))
+                    hasTgtSLChanged = True
+                    dbDict['TARGET'] = recDict['TARGET']
 
         # Check if REC_STATUS needs to change
         hasRecChanged, dbDict = self.__transitionRec(dbDict, recDict['REC_STATUS'])
@@ -94,12 +138,14 @@ class Workflow():
         mandatoryKeys = ['STOCK', 'SOURCE', 'MKT', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'PRODUCT', 'BUY_SELL', 'REC_DATE', 'REC_TIME', 'REC_STATUS', 'EXP_DATE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
         mandatoryDervKeys = ['LOT']
+        optioinalKeys = ['ACTION', 'TRIGGER', 'QTY', 'ADD_PREFIX']
                 
         recDict = {}
 
         keysToSend = mandatoryKeys + mandatoryPriceKeys
         if rowDict['PRODUCT'] in ['OPTION', 'FUTURE']:
             keysToSend = keysToSend + mandatoryDervKeys
+        keysToSend = keysToSend + optioinalKeys
 
         for key in keysToSend:
             if key in rowDict:
@@ -129,8 +175,9 @@ class Workflow():
         for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
-            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
+                # Move position to holding
                 if dbDict['POS_QTY'] != 0:
                     posDate = datetime.datetime.strptime(dbDict['POS_DATE'], '%d-%b-%Y').date()
                     if posDate < self.__today.date():
@@ -138,13 +185,44 @@ class Workflow():
                         dbDict['POS_QTY'] = 0
                         dbDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
                         res = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+    
 
+    def __checkTrdQtyPosHoldSynch(self, persistenceInsts):
+        status = True
+        for persistenceInst in persistenceInsts:
+            if persistenceInst == None:
+                continue
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
+            for dbDict in dbDicts:                
+                # Check that traded_quantity, position and holding are all in synch
+                if dbDict['POS_HOLD_STATUS'] != 'CLOSE':
+                    openQty = 0
+                    for orderDict in dbDict['OPEN_ORDERS']:
+                        openQty += orderDict['TRADED_QTY']
+
+                    closeQty = 0
+                    for orderDict in dbDict['CLOSE_ORDERS']:
+                        closeQty += orderDict['TRADED_QTY']
+
+                    if dbDict['POS_QTY'] + dbDict['HOLD_QTY'] != dbDict['POS_HOLD_QTY']:
+                        status = False
+                        self.__logger.error("For Stock %s Strategy %s REC_DATE %s REC_TIME %s POS_QTY %d HOLD_QTY %d POS_HOLD_QTY %d are not in synch", 
+                                            dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['POS_QTY'], dbDict['HOLD_QTY'], dbDict['POS_HOLD_QTY'])
+
+                    if openQty - closeQty != dbDict['POS_HOLD_QTY']:
+                        status = False
+                        self.__logger.error("For Stock %s Strategy %s REC_DATE %s REC_TIME %s OPEN_QTY %d CLOSE_QTY %d POS_HOLD_QTY %d are not in synch", 
+                                            dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], openQty, closeQty, dbDict['POS_HOLD_QTY'])
+        
+        assert status, 'Traded quantity, Position and Holding synch failed'    
 
     def startupCheck(self, persistenceInsts):
         self.__parent.getHoldingsData()
 
         # Transfer any position until yesterday to holding and set position to 0
         self.__moveOldPosToHolding(persistenceInsts)
+
+        self.__checkTrdQtyPosHoldSynch(persistenceInsts)
 
         # Check if all the holding stocks - core are in DB
         # Check if all the DB stocks are in holding and in the same quantity
@@ -159,31 +237,30 @@ class Workflow():
     ############################################################################################################################################
 
 
-    def __isInvPeriodLeft(self, recDict):
-        if recDict['PRODUCT'] in ['MARGIN']:
-            return True
-        else:
-            recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y").date()
-            todaysDate = self.__today.date()
-            expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y").date()
-            
-            if recDict['PRODUCT'] == 'CASH':
-                if expDate >= todaysDate:
-                    if expDate > recDate:
-                        expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
-                        status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
-                    else:
-                        # IntraDay Buy as Cash will land here
-                        status = True if recDict['STRATEGY'] == 'MARGIN' else False
-                else:
-                    status = False
-            elif recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                status = (todaysDate == recDate) and (expDate - recDate).days >= 7
+    def __canAdd(self, recDict, check):
+        status = False
+        todaysDate = self.__today.strftime("%d-%b-%Y")
+
+        if recDict['REC_DATE'] == todaysDate:
+            if recDict['PRODUCT'] in ['MARGIN']:
+                status = True
+            else:
+                recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y").date()
+                todaysDate = self.__today.date()
+                expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y").date()
                 
-
-
-        
-
+                if recDict['PRODUCT'] == 'CASH':
+                    if expDate >= todaysDate:
+                        if expDate > recDate:
+                            expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
+                            status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
+                        else:
+                            # IntraDay Buy as Cash will land here
+                            status = True if recDict['STRATEGY'] == 'MARGIN' else False
+                    else:
+                        status = False
+                elif recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
+                    status = (todaysDate == recDate) and (expDate - recDate).days >= 6
 
         return status
 
@@ -306,23 +383,26 @@ class Workflow():
                     fetchOrderDetails = True
                 else:
                     lastCheckTime = datetime.datetime.strptime(datetime.datetime.strftime(now, "%d-%b-%Y") + ' ' + dbDict['CHECK_TIME'], "%d-%b-%Y %H:%M:%S")
-                    timeDiff = now - lastCheckTime
-                    if timeDiff.total_seconds() > self.__parent.checkPeriodSecs:
+                    if now < lastCheckTime:
                         fetchOrderDetails = True
                     else:
-                        if dbDict['BUY_SELL'] == 'BUY':
-                            if limitPrice * self.__parent.deleteLtpDisFactor < ltp:
-                                delOrder = True
-                            elif ltp <= limitPrice:
-                                fetchOrderDetails = True
+                        timeDiff = now - lastCheckTime
+                        if timeDiff.total_seconds() > self.__parent.checkPeriodSecs:
+                            fetchOrderDetails = True
                         else:
-                            if limitPrice > ltp * self.__parent.deleteLtpDisFactor:
-                                delOrder = True
-                            elif ltp >= limitPrice:
-                                fetchOrderDetails = True
+                            if dbDict['BUY_SELL'] == 'BUY':
+                                if limitPrice * self.__parent.deleteLtpDisFactor < ltp:
+                                    delOrder = True
+                                elif ltp <= limitPrice:
+                                    fetchOrderDetails = True
+                            else:
+                                if limitPrice > ltp * self.__parent.deleteLtpDisFactor:
+                                    delOrder = True
+                                elif ltp >= limitPrice:
+                                    fetchOrderDetails = True
                 
                 if delOrder:
-                    self.__logger.info("LTP far from limit price. Cancelling order %s for stock %s", orderDict['ORDER_NO'], dbDict['MKT_SYMBOL'])
+                    self.__logger.info("LTP far from limit price. Cancelling order %s for stock %s-%s-%s-%s", orderDict['ORDER_NO'], dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'])
                     _, dbDict = self.__cancelOrder(dbDict)
                     dbDict['CHECK_TIME'] = nowStr
                 if fetchOrderDetails:
@@ -357,7 +437,7 @@ class Workflow():
             posHoldStatus = 'OPEN'
 
         if posHoldStatus != dbDict['POS_HOLD_STATUS']:
-            self.__logger.info("Changing position of stock %s from %s => %s", dbDict['MKT_SYMBOL'], dbDict['POS_HOLD_STATUS'], posHoldStatus)
+            self.__logger.info("Changing position of stock %s-%s-%s-%s from %s => %s", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['POS_HOLD_STATUS'], posHoldStatus)
             dbDict['POS_HOLD_STATUS'] = posHoldStatus
 
         return dbDict
@@ -379,29 +459,29 @@ class Workflow():
             if dbDict['PRODUCT'] in ['MARGIN', 'OPTION', 'FUTURE']:
                 if dbDict['BUY_SELL'] == 'BUY':
                     if (ltp >= dbDict['TARGET']):
-                        self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['TARGET'])
+                        self.__logger.info("Target reached for %s-%s-%s-%s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['TARGET'])
                         dbDict['REC_STATUS'] = 'CLOSE'
                     elif ltp <= dbDict['STOP_LOSS']:
-                        self.__logger.info("Triggering STOP_LOSS for %s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['STOP_LOSS'])
+                        self.__logger.info("Triggering STOP_LOSS for %s-%s-%s-%s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['STOP_LOSS'])
                         dbDict['REC_STATUS'] = 'CLOSE'
                 else:
                     if ltp <= dbDict['TARGET']:
-                        self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['TARGET'])
+                        self.__logger.info("Target reached for %s-%s-%s-%s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['TARGET'])
                         dbDict['REC_STATUS'] = 'CLOSE'
                     elif ltp >= dbDict['STOP_LOSS']:
-                        self.__logger.info("Triggering STOP_LOSS for %s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['STOP_LOSS'])
+                        self.__logger.info("Triggering STOP_LOSS for %s-%s-%s-%s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['STOP_LOSS'])
                         dbDict['REC_STATUS'] = 'CLOSE'
             else:
                 if (ltp >= dbDict['TARGET']):
-                    self.__logger.info("Target reached for %s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], ltp, dbDict['TARGET'])
+                    self.__logger.info("Target reached for %s-%s-%s-%s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['TARGET'])
                     dbDict['REC_STATUS'] = 'CLOSE'
                 elif ltp * 1.01 <= dbDict['STOP_LOSS']:
-                    self.__logger.info("Triggering STOP_LOSS for %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__parent.marketOpen), 
+                    self.__logger.info("Triggering STOP_LOSS for %s-%s-%s-%s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], str(self.__parent.marketOpen), 
                                     ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
                 # Act on SL on a closing basis anyways. If the price has significantly fallen below SL during trading hours the above condition handles that case
                 elif not self.__parent.marketOpen and ltp <= dbDict['STOP_LOSS']:
-                    self.__logger.info("Triggering STOP_LOSS on closing basis %s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], str(self.__parent.marketOpen), 
+                    self.__logger.info("Triggering STOP_LOSS on closing basis %s-%s-%s-%s. MarketOpen = %s LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], str(self.__parent.marketOpen), 
                                         ltp, dbDict['STOP_LOSS'])
                     dbDict['REC_STATUS'] = 'CLOSE'
 
@@ -435,7 +515,7 @@ class Workflow():
                     if self.__parent.useWebsocket:
                         self.__parent.websocketSubscription(actionType, securityId, dbDict['MKT'])
                 else:
-                    self.__logger.critical('Stock %s security_id = %s not in self.__parent.cmp but its only getting unsubscibed now', dbDict['MKT_SYMBOL'], securityId)
+                    self.__logger.critical('Stock %s-%s-%s-%s security_id = %s not in self.__parent.cmp but its only getting unsubscibed now', dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], securityId)
         else:
             # Get the LTP if it is not already available. If it is available, dont fetch. It will get updated the next time the reconcileRecs runs
             if securityId not in self.__parent.cmp:
@@ -467,13 +547,13 @@ class Workflow():
         totalQty = dbDict['QTY']
         remQty = totalQty - posHoldQty
         if remQty < 0:
-            self.__logger.critical("Stock: %s remQty %d is < 0", dbDict['MKT_SYMBOL'], remQty)
+            self.__logger.critical("Stock: %s-%s-%s-%s remQty %d is < 0", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], remQty)
             return False, 0, 0, 'LMT'
         if remQty == 0:
-            self.__logger.error("POS_HOLD_STATUS of stock %s should have gone to POSITION state", dbDict['MKT_SYMBOL'])
+            self.__logger.error("POS_HOLD_STATUS of stock %s-%s-%s-%s should have gone to POSITION state", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'])
             return False, 0, 0, 'LMT'
         if totalQty == 0:
-            self.__logger.critical("Stock: %s totalQty %d is < 0", dbDict['MKT_SYMBOL'], totalQty)
+            self.__logger.critical("Stock: %s-%s-%s-%s totalQty %d is < 0", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], totalQty)
             return False, 0, 0, 'LMT'
         
         canOrder = True
@@ -510,9 +590,9 @@ class Workflow():
         canOrder, qty, limitPrice, orderType = self.__getQtyLimitPrice(dbDict)
         if not canOrder:
             if limitPrice != 0:
-                self.__logger.debug("Price not in recommendation range. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
+                self.__logger.debug("Price not in recommendation range. Stock = %s-%s-%s-%s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['BUY_SELL'], ltp, limitPrice)
             else:
-                self.__logger.error("Qty checks failed. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f QTY = %d POS_HOLD_QTY = %d", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice, dbDict['QTY'], dbDict['POS_HOLD_QTY'])
+                self.__logger.error("Qty checks failed. Stock = %s-%s-%s-%s BUY_SELL = %s LTP = %.2f Limit = %.2f QTY = %d POS_HOLD_QTY = %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['BUY_SELL'], ltp, limitPrice, dbDict['QTY'], dbDict['POS_HOLD_QTY'])
             return False, dbDict
 
         # If orderType == 'LMT', Get the last traded price for this security and see if it is close enough to place an order
@@ -527,12 +607,12 @@ class Workflow():
                     if limitPrice <= ltp * self.__parent.createLtpDisFactor:
                         canOrder = True
                 if not canOrder:
-                    self.__logger.debug("Limit & LTP not near enough. Stock = %s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['BUY_SELL'], ltp, limitPrice)
+                    self.__logger.debug("Limit & LTP not near enough. Stock = %s-%s-%s-%s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['BUY_SELL'], ltp, limitPrice)
                     return False, dbDict
 
         orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, qty, dbDict['BUY_SELL'], orderType, limitPrice)
-        self.__logger.info("Opening position: nseSym=%s, qty=%s, buySell=%s, strategy=%s, orderType=%s, limit=%.2f", 
-                            dbDict['MKT_SYMBOL'], qty, dbDict['BUY_SELL'], dbDict['STRATEGY'], orderType, limitPrice)
+        self.__logger.info("Opening position: nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, orderType=%s, limit=%.2f", 
+                            dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], qty, dbDict['BUY_SELL'], orderType, limitPrice)
 
         if orderStatus:
             # If the order failed for some reason directly transition it to 'CLOSE' state
@@ -556,7 +636,7 @@ class Workflow():
 
         posHoldQty = dbDict['POS_HOLD_QTY']
         if posHoldQty == 0:
-            self.__logger.warning("Nothing to be closed for %s. product = %s posholdQty = %d", dbDict['MKT_SYMBOL'], product, posHoldQty)
+            self.__logger.warning("Nothing to be closed for %s-%s-%s-%s. product = %s posholdQty = %d", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], product, posHoldQty)
             return True, dbDict, ''
 
         orderNum = ''
@@ -575,11 +655,11 @@ class Workflow():
         trigger = 0
         closeQty = (abs(posHoldQty) + 1) // 2 if partial else posHoldQty
 
-        self.__logger.info("Closing position: nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, product, orderType)
+        self.__logger.info("Closing position: nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], closeQty, buySell, product, orderType)
         orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, closeQty, buySell, orderType, limitPrice)
 
         if not orderStatus:
-            self.__logger.error("Unable to close position nseSym=%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], closeQty, buySell, 'INTRADAY', 'MKT')
+            self.__logger.error("Unable to close position nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], closeQty, buySell, 'INTRADAY', 'MKT')
         status = orderStatus
         
         timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
@@ -649,9 +729,29 @@ class Workflow():
         status, closeDbDictOrderNumArr = self.__waitForCloseOrdersToComplete(persistenceInst, closeDbDictOrderNumArr)
 
 
+    def __addOfflineTx(self, recDict, qty):
+        if recDict['QTY'] > 0:
+            recDict['HOLD_QTY'] = recDict['QTY']
+            recDict['POS_HOLD_QTY'] = recDict['QTY']
+            recDict['POS_HOLD_STATUS'] = 'POSITION'
+            timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
+            orderDict = {'BUY_SELL': recDict['BUY_SELL'], 'ORDER_TYPE': 'LMT', 'LIMIT': recDict['HIGH_REC_PRICE'], 'QTY': recDict['QTY'], 'TRADED_QTY': recDict['QTY'], 
+                        'ORDER_NO': 'Dummy', 'ORDER_STATUS': 'CLOSE', 'ORDER_MESSAGE': 'Dummy', 'CREATE_TIME': timeStr}
+            recDict['OPEN_ORDERS'].append(orderDict)
+        else:
+            recDict['QTY'] = qty
+
+        return recDict
+
+
+    def __isModTx(self, dbDict):
+        status = 'ACTION' in dbDict and dbDict['ACTION'] == 'INIT_TRADE'
+        return status
+
+
     def __followOrders(self, persistenceInst, dbDict, hasRecPriceChanged=False):
         if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
-            if self.__parent.marketOpen:
+            if self.__parent.marketOpen and not self.__isModTx(dbDict):
                 self.__openPosition(persistenceInst, dbDict, hasRecPriceChanged)
             self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
             self.__updateRecStatus(persistenceInst, dbDict)
@@ -662,9 +762,11 @@ class Workflow():
 
 
     def __updateRec(self, persistenceInst, recDict, dbDict):
+        # The value of dbDict['STRATEGY] can change. Hence preserve it before calling updateDb
+        dbDictStrategy = dbDict['STRATEGY']
         status, hasRecPriceChanged, dbDict = self.__hasChanged(recDict, dbDict)
         if status:
-            status = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+            status = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDictStrategy], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
             self.__followOrders(persistenceInst, dbDict, hasRecPriceChanged)
         else:
             status = True
@@ -672,7 +774,7 @@ class Workflow():
         return status, dbDict
 
 
-    def __addNewRec(self, persistenceInst, recDict, amountPerOrder, holdQty=0):
+    def __addNewRec(self, persistenceInst, recDict, amountPerOrder):
         status = False
 
         if recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
@@ -686,14 +788,19 @@ class Workflow():
         # Security ID of the stock 
         recDict['POS_QTY'] = 0
         recDict['POS_DATE'] = self.__today.strftime("%d-%b-%Y")
-        recDict['HOLD_QTY'] = holdQty
-        recDict['POS_HOLD_QTY'] = holdQty
+        recDict['HOLD_QTY'] = 0
+        recDict['POS_HOLD_QTY'] = 0
         recDict['POS_HOLD_STATUS'] = 'OPEN'
-        recDict['QTY'] = qty
-        recDict['LATE_ADD'] = self.__isLateAdd(recDict)
         recDict['VISIBLE'] = 'VISIBLE'
         recDict['OPEN_ORDERS'] = []
         recDict['CLOSE_ORDERS'] = []
+        if 'ACTION' in recDict and recDict['ACTION'] == 'INIT_TRADE':
+            recDict['LATE_ADD'] = False
+            recDict = self.__addOfflineTx(recDict, qty)
+        else:
+            recDict['QTY'] = qty
+            recDict['LATE_ADD'] = self.__isLateAdd(recDict)
+
 
         res = persistenceInst.insertDb(recDict, None)
         if res > 0:
@@ -733,7 +840,7 @@ class Workflow():
             if isInDb or recDict['REC_STATUS'] == 'OPEN':
                 if isInDb:
                     status, dbDict = self.__updateRec(persistenceInst, recDict, dbDict)
-                elif self.__isInvPeriodLeft(recDict):
+                elif self.__canAdd(recDict, 'TODAY'):
                     if firstLoop or addForSatvik:
                         status, dbDict = self.__addNewRec(persistenceInst, recDict, amountPerOrder)
                 else:
@@ -1078,34 +1185,41 @@ class Workflow():
 
 
     def updateAndSendRec(self, persistenceInst, rowDict, baseURL):
-        self.__lock.acquire()
-        isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
+        status = True
+        if persistenceInst != None:
+            self.__lock.acquire()
+            isInDb, dbDict = persistenceInst.isInDb([['SOURCE', rowDict['SOURCE']], ['MKT_SYMBOL', rowDict['MKT_SYMBOL']], ['STRATEGY', rowDict['STRATEGY']], ['REC_DATE', rowDict['REC_DATE']], ['REC_TIME', rowDict['REC_TIME']]])
 
-        # If no recommendation found in DB and if the current recommendation is not close, then
-        # Insert the recommendation in DB
-        if isInDb:
-            anyChange, sendRecIfReq = self.recChanged(dbDict, rowDict)
-            if anyChange:
-                # The recommendation has changed, else this function wont be called
-                self.__logger.info('Existing recommendation changed. Send: %s rowDict: %s', sendRecIfReq, rowDict)
-                if sendRecIfReq:
+            # If no recommendation found in DB and if the current recommendation is not close, then
+            # Insert the recommendation in DB
+            if isInDb:
+                anyChange, sendRecIfReq = self.recChanged(dbDict, rowDict)
+                if anyChange:
+                    # The recommendation has changed, else this function wont be called
+                    self.__logger.info('Existing recommendation changed. Send: %s rowDict: %s', sendRecIfReq, rowDict)
+                    if sendRecIfReq:
+                        recDict = self.__prepareRecDict(rowDict)
+                        status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
+                        rowDict['ACK'] = 'ACK' if status else 'NACK'
+                        persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                    else:
+                        rowDict['ACK'] = 'ACK'
+                        persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
+                #else: Nothing to be done
+            else:
+                if(rowDict['REC_STATUS'] != 'CLOSE'):
+                    self.__logger.info('New Recommendation %s', rowDict)
                     recDict = self.__prepareRecDict(rowDict)
-                    status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
+                    status =self.__callRestAPI(recDict, baseURL, 'v1/rec')
                     rowDict['ACK'] = 'ACK' if status else 'NACK'
-                    persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                    res = persistenceInst.insertDb(rowDict, None)
                 else:
                     rowDict['ACK'] = 'ACK'
-                    persistenceInst.updateDb(rowDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
-            #else: Nothing to be done
+                    self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", rowDict['MKT_SYMBOL'], rowDict)
+                    res = persistenceInst.insertDb(rowDict, None)
+            self.__lock.release()
         else:
-            if(rowDict['REC_STATUS'] != 'CLOSE'):
-                self.__logger.info('New Recommendation %s', rowDict)
-                recDict = self.__prepareRecDict(rowDict)
-                status =self.__callRestAPI(recDict, baseURL, 'v1/rec')
-                rowDict['ACK'] = 'ACK' if status else 'NACK'
-                res = persistenceInst.insertDb(rowDict, None)
-            else:
-                rowDict['ACK'] = 'ACK'
-                self.__logger.info("Recommendation for %s is new (i.e. not in DB) but is already closed %s", rowDict['MKT_SYMBOL'], rowDict)
-                res = persistenceInst.insertDb(rowDict, None)
-        self.__lock.release()
+            recDict = self.__prepareRecDict(rowDict)
+            status = self.__callRestAPI(recDict, baseURL, 'v1/rec')
+        
+        return status
