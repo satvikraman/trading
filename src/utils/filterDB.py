@@ -11,13 +11,9 @@ sys.path.append('./src/common')
 from persistence import persistence
 
 class app():
-    def __init__(self, configFile, db=None, dryRun=False):
-        if os.path.isfile(configFile):
-            self.__config = configparser.ConfigParser()
-            self.__config.read(configFile)
-            db = self.__config['DATABASE']['DB_EQUITY']            
-            self.backupDb(db)
-            self.__persistence = persistence(configFile, db)
+    def __init__(self, db):          
+        self.backupDb(db)
+        self.__persistence = persistence(None, db)
 
 
     def backupDb(self, db):
@@ -70,7 +66,7 @@ class app():
 
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
-    filter = app('./src/paytm/payTmMoney.ini')
+    filter = app('./src/icici/db/iciciDirectFnO_Breeze.json')
     filter.filterDb()
 
     #filter.filterMarginStrategyRecs()

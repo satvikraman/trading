@@ -86,6 +86,19 @@ class Workflow():
         return modDbDict, dbDict
 
 
+    def __switchFnoToiCLICK(self, recDict, dbDict):
+        status = False
+        if dbDict['SOURCE'] == 'BREEZE-FnO' and recDict['SOURCE'] == 'BREEZE-iCLICK':
+            self.__logger.info("Switching dbDict %s-%s-%s-%s dbDict SOURCE: %s to recDict %s-%s-%s-%s recDict SOURCE: %s", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['SOURCE'], recDict['MKT_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'], recDict['SOURCE'])
+            dbDict['SOURCE'] = recDict['SOURCE']
+            dbDict['MKT_SYMBOL'] = recDict['MKT_SYMBOL']
+            dbDict['STRATEGY'] = recDict['STRATEGY']
+            dbDict['REC_DATE'] = recDict['REC_DATE']
+            dbDict['REC_TIME'] = recDict['REC_TIME']
+            status = True
+        return status
+
+
     def __hasChanged(self, recDict, dbDict):
         modDbDict, dbDict = self.__updateOfflineRec(recDict, dbDict)
 
@@ -299,11 +312,11 @@ class Workflow():
                         break
         else:
             # In the non-CASH case, there can be multiple entries on the same date. Check that the time difference is less than 2 mins
-            dbDicts = persistenceInst.getDb([['SOURCE', '!iCLICK-2-INVEST'], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+            dbDicts = persistenceInst.getDb([['SOURCE', '!'+recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
             for dbDict in dbDicts:
                 recDateTime = datetime.datetime.strptime(recDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
                 dbDateTime  = datetime.datetime.strptime(dbDict['REC_DATE'] + ' ' + dbDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
-                timeDiffSecs = (recDateTime - dbDateTime).total_seconds()
+                timeDiffSecs = abs((recDateTime - dbDateTime).total_seconds())
                 if timeDiffSecs <= 120:
                     isInDb = True
                     break
@@ -450,7 +463,7 @@ class Workflow():
             ltp = -1
             self.__logger.critical("securityId %s not in self.__parent.cmp. Error: %s", dbDict['SECURITY_ID'], e)
         
-        status = ltp > 0
+        status = ltp > 0 and dbDict['SOURCE'] != 'BREEZE-FnO'
         if status:
             self.__logger.debug("Stock %s LTP = %.2f", dbDict['MKT_SYMBOL'], ltp)
             dbDict = self.__checkLtpAndUpdateOrderStatus(ltp, dbDict)
@@ -763,10 +776,15 @@ class Workflow():
 
     def __updateRec(self, persistenceInst, recDict, dbDict):
         # The value of dbDict['STRATEGY] can change. Hence preserve it before calling updateDb
+        mktSymbol = dbDict['MKT_SYMBOL']
         dbDictStrategy = dbDict['STRATEGY']
-        status, hasRecPriceChanged, dbDict = self.__hasChanged(recDict, dbDict)
-        if status:
-            status = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDictStrategy], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+        dbDictRecDate = dbDict['REC_DATE']
+        dbDictRecTime = dbDict['REC_TIME']
+
+        status1, hasRecPriceChanged, dbDict = self.__hasChanged(recDict, dbDict)
+        status2 = self.__switchFnoToiCLICK(recDict, dbDict)
+        if status1 or status2:
+            status = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', mktSymbol], ['STRATEGY', dbDictStrategy], ['REC_DATE', dbDictRecDate], ['REC_TIME', dbDictRecTime]])
             self.__followOrders(persistenceInst, dbDict, hasRecPriceChanged)
         else:
             status = True
@@ -1143,6 +1161,19 @@ class Workflow():
         return anyChange, sendRecIfReq
 
 
+    def checkIfMultiLeg(self, persistenceInst, rowDict):
+        self.__lock.acquire()
+        dbDicts = persistenceInst.getDb([['PORTFOLIO_ID'], rowDict['PORTFOLIO_ID'], ['REC_DATE'], rowDict['REC_DATE']])
+        if len(dbDicts > 1):
+            for dbDict in dbDicts:
+                dbDict['MULTI_LEG'] = True
+                # If it is a multi-leg strategy we will close recommendations solely based on recommendations. We won't close it on the basis of TARGET and STOP_LOSS
+                self.__logger.info('Setting this as a multi-leg strategy. rowDict: %s', rowDict)
+                persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
+            #else: Nothing to be done
+        self.__lock.release()
+
+
     def updateOtherRecKeys(self, persistenceInst, rowDict):
         self.__lock.acquire()
         isInDb, dbDict = self.__isInDb(persistenceInst, rowDict)
@@ -1161,7 +1192,6 @@ class Workflow():
                 if key not in keysToSend:
                     dbDict[key] = rowDict[key]
             
-            # The recommendation has changed, else this function wont be called
             self.__logger.info('Updating other keys. rowDict: %s', rowDict)
             persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
             #else: Nothing to be done
