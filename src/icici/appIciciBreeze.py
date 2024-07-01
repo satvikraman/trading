@@ -143,7 +143,7 @@ class AppIciciDirectBreezeBroker():
 
             self.websocketSubscription('ADD', '4.1!2885')
             self.websocketSubscription('ADD', '4.1!1660')
-            if self.tradeIntraDay:
+            if self.tradeIntraDay or self.tradeFno:
                 self.__workflow.refreshCMP(self.persistenceInsts)
 
 

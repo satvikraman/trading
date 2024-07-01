@@ -343,6 +343,8 @@ class IciciDirectBreeze():
 
 
     def getRecDictFromTick(self, ticks):
+        tickDict = None
+        
         if 'stock_name' in ticks:
             tickDict = {}
             # Mandatory keys

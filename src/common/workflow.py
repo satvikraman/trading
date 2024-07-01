@@ -463,12 +463,15 @@ class Workflow():
             ltp = -1
             self.__logger.critical("securityId %s not in self.__parent.cmp. Error: %s", dbDict['SECURITY_ID'], e)
         
-        status = ltp > 0 and dbDict['SOURCE'] != 'BREEZE-FnO'
+        status = ltp > 0
+
         if status:
             self.__logger.debug("Stock %s LTP = %.2f", dbDict['MKT_SYMBOL'], ltp)
             dbDict = self.__checkLtpAndUpdateOrderStatus(ltp, dbDict)
             dbDict = self.__getPosStatus(dbDict)
+            persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
 
+        if status and dbDict['SOURCE'] != 'BREEZE-FnO':
             if dbDict['PRODUCT'] in ['MARGIN', 'OPTION', 'FUTURE']:
                 if dbDict['BUY_SELL'] == 'BUY':
                     if (ltp >= dbDict['TARGET']):
