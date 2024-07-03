@@ -60,7 +60,7 @@ class TradingRecommendations():
 
     def __sanityCheck(self, rowDict):
         if rowDict['SOURCE'] != 'XL':
-            if rowDict['QTY'] > 0:
+            if 'QTY' in rowDict and rowDict['QTY'] > 0:
                 rowDict['ADD_PREFIX'] = 'AR-'
                 if rowDict['ACTION'] != 'INIT_TRADE':
                     rowDict['SOURCE'] = rowDict['ADD_PREFIX'] + rowDict['SOURCE']
@@ -90,7 +90,7 @@ class TradingRecommendations():
                         {'COLNUM':12,   'KEY': 'LOW_REC_PRICE',     'MANDATORY': True,      'FORMAT': 'FLOAT',  'DEFAULT': 'HIGH_REC_PRICE'},
                         {'COLNUM':14,   'KEY': 'TARGET',            'MANDATORY': True,      'FORMAT': 'FLOAT',  'DEFAULT': None},
                         {'COLNUM':15,   'KEY': 'STOP_LOSS',         'MANDATORY': True,      'FORMAT': 'FLOAT',  'DEFAULT': None},
-                        {'COLNUM':16,   'KEY': 'QTY',               'MANDATORY': True,      'FORMAT': 'INT',    'DEFAULT': None}]
+                        {'COLNUM':16,   'KEY': 'QTY',               'MANDATORY': False,     'FORMAT': 'INT',    'DEFAULT': None}]
         
         rowDict = {}
         

@@ -84,7 +84,10 @@ class IciciDirectBreeze():
         status = False
         while not status and retries >= 0:
             try:
-                res = self.__breeze.get_portfolio_holdings(exchange_code=exchange)
+                if exchange == 'NFO':
+                    res = self.__breeze.get_portfolio_positions()
+                else:
+                    res = self.__breeze.get_portfolio_holdings(exchange_code=exchange)
                 self.__logger.info('result: %s', res)
                 if res['Status'] == 200:
                     status = True

@@ -121,30 +121,30 @@ class AppIciciDirectBreezeBroker():
             baseURL = re.sub(r'/$', '', self.__config['APP']['BASE_URL'])
             self.__paytmBaseURL = baseURL + ':' + self.__config['APP']['PATYM_PORT'] + '/'            
 
-            # Download the latest ICICI dataset once every day
-            icici_dataset_valid_until_date = os.environ.get('icici_dataset_valid_until_date', '')
-            today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
-            if(icici_dataset_valid_until_date.upper() != today):
-                iciciDatasetPath = "./dataset"
-                iciciDataset = iciciDatasetPath + "SecurityMaster-" + today + ".zip"
-                try:
-                    urllib.request.urlretrieve(self.__config['DATASET']['ICICI_DATASET'], iciciDataset)
-                    with zipfile.ZipFile(iciciDataset, 'r') as zip_ref:
-                        zip_ref.extractall(iciciDatasetPath)
-                    dotenv.set_key('./.env', "icici_dataset_valid_until_date", today)
-                except Exception as e:
-                    self.__logger.critical(e)
-
-                # Clean the intra day dictionary once at the start of the day
-                if self.persistenceIntraDay != None:
-                    self.persistenceIntraDay.removeAll()
-
-
-
             self.websocketSubscription('ADD', '4.1!2885')
             self.websocketSubscription('ADD', '4.1!1660')
             if self.tradeIntraDay or self.tradeFno:
                 self.__workflow.refreshCMP(self.persistenceInsts)
+
+
+    def downloadDataset(self):
+        # Download the latest ICICI dataset once every day
+        icici_dataset_valid_until_date = os.environ.get('icici_dataset_valid_until_date', '')
+        today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
+        if(icici_dataset_valid_until_date.upper() != today):
+            iciciDatasetPath = "./dataset/"
+            iciciDataset = iciciDatasetPath + "SecurityMaster-" + today + ".zip"
+            try:
+                urllib.request.urlretrieve(self.__config['DATASET']['ICICI_DATASET'], iciciDataset)
+                with zipfile.ZipFile(iciciDataset, 'r') as zip_ref:
+                    zip_ref.extractall(iciciDatasetPath)
+                dotenv.set_key('./.env', "icici_dataset_valid_until_date", today)
+            except Exception as e:
+                self.__logger.critical(e)
+
+            # Clean the intra day dictionary once at the start of the day
+            if self.persistenceIntraDay != None:
+                self.persistenceIntraDay.removeAll()
 
 
     def strategiesToInvest(self, source, strategy):
@@ -194,7 +194,7 @@ class AppIciciDirectBreezeBroker():
     
 
     def getHoldingsData(self):
-        self.__iciciDirectBreeze.get_portfolio_holdings("NFO")
+        status, self.__holdings = self.__iciciDirectBreeze.get_portfolio_holdings("NFO")
 
 
     def findOrderStatusAndQtyInfo(self, dbDict, orderNum):
@@ -302,6 +302,8 @@ if __name__ == '__main__':
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=30)
         time.sleep(15)
+    
+    trade.downloadDataset()
 
     while marketOpen:
         squareOff  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=00) 

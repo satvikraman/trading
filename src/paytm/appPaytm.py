@@ -120,11 +120,11 @@ class AppPaytmBroker():
             self.__logger.error("getHoldingsData function returned error")
     
 
-    def checkDbHoldingSynch(self, pesistenceInsts):
+    def checkDbHoldingSynch(self, persistenceInsts):
         status = True
         dbHoldings = []
 
-        for persistenceInst in pesistenceInsts:
+        for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
             # Consolidate DB holdings. The same stock could be mentioned across strategies and dates

@@ -188,7 +188,7 @@ class Workflow():
         for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
-            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
             for dbDict in dbDicts:
                 # Move position to holding
                 if dbDict['POS_QTY'] != 0:
@@ -205,7 +205,7 @@ class Workflow():
         for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
-            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', '!CLOSE']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
             for dbDict in dbDicts:                
                 # Check that traded_quantity, position and holding are all in synch
                 if dbDict['POS_HOLD_STATUS'] != 'CLOSE':
@@ -746,7 +746,7 @@ class Workflow():
 
 
     def __addOfflineTx(self, recDict, qty):
-        if recDict['QTY'] > 0:
+        if 'QTY' in recDict and recDict['QTY'] > 0:
             recDict['HOLD_QTY'] = recDict['QTY']
             recDict['POS_HOLD_QTY'] = recDict['QTY']
             recDict['POS_HOLD_STATUS'] = 'POSITION'
