@@ -213,7 +213,7 @@ class AppIciciDirectBreezeBroker():
         return status, message, orderNum
 
 
-    def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0):
+    def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0, triggerPrice=None):
         product = dbDict['PRODUCT']
         status, message, orderNum = self.__iciciDirectBreeze.place_order(dbDict['ICICI_SYMBOL'], dbDict['MKT'], product, qty, buySell, orderType, limitPrice, dbDict['EXP_DATE'])
         return status, message, orderNum
