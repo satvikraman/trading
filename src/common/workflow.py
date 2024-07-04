@@ -477,16 +477,16 @@ class Workflow():
                     if (ltp >= dbDict['TARGET']):
                         self.__logger.info("Target reached for %s-%s-%s-%s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['TARGET'])
                         dbDict['REC_STATUS'] = 'CLOSE'
-                    elif ltp <= dbDict['STOP_LOSS']:
-                        self.__logger.info("Triggering STOP_LOSS for %s-%s-%s-%s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['STOP_LOSS'])
-                        dbDict['REC_STATUS'] = 'CLOSE'
+                    #elif ltp <= dbDict['STOP_LOSS']:
+                    #    self.__logger.info("Triggering STOP_LOSS for %s-%s-%s-%s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['STOP_LOSS'])
+                    #    dbDict['REC_STATUS'] = 'CLOSE'
                 else:
                     if ltp <= dbDict['TARGET']:
                         self.__logger.info("Target reached for %s-%s-%s-%s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['TARGET'])
                         dbDict['REC_STATUS'] = 'CLOSE'
-                    elif ltp >= dbDict['STOP_LOSS']:
-                        self.__logger.info("Triggering STOP_LOSS for %s-%s-%s-%s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['STOP_LOSS'])
-                        dbDict['REC_STATUS'] = 'CLOSE'
+                    #elif ltp >= dbDict['STOP_LOSS']:
+                    #    self.__logger.info("Triggering STOP_LOSS for %s-%s-%s-%s. LTP = %.2f STOP_LOSS = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['STOP_LOSS'])
+                    #    dbDict['REC_STATUS'] = 'CLOSE'
             else:
                 if (ltp >= dbDict['TARGET']):
                     self.__logger.info("Target reached for %s-%s-%s-%s. LTP = %.2f TARGET = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], ltp, dbDict['TARGET'])

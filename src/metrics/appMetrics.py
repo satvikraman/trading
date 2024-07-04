@@ -308,7 +308,7 @@ class Metrics():
 
 
 if __name__ == '__main__':
-    endDate = '28-Jun-2024'
+    endDate = '03-Jul-2024'
     metrics1 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Web.json', 'iCLICK-2-GAIN', 'OPTION')
     metrics1.offlineAdd('01-Jun-2024', endDate)
 
@@ -321,10 +321,10 @@ if __name__ == '__main__':
     metrics4 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-iCLICK', 'FUTURE')
     metrics4.offlineAdd('01-Jun-2024', endDate)
 
-    metrics5 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-FnO', 'OPTION')
-    metrics5.offlineAdd('01-Jun-2024', endDate)
+    #metrics5 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-FnO', 'OPTION')
+    #metrics5.offlineAdd('01-Jun-2024', endDate)
 
-    metrics6 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-FnO', 'FUTURE')
-    metrics6.offlineAdd('01-Jun-2024', endDate)
+    #metrics6 = Metrics('./src/metrics/metrics.ini', './src/icici/db/iciciDirectFnO_Breeze.json', 'BREEZE-FnO', 'FUTURE')
+    #metrics6.offlineAdd('01-Jun-2024', endDate)
 
     print("All Done")

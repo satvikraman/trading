@@ -23,8 +23,8 @@ class app():
 
     def filterSROrder(self):
         strategy = 'SR-MOMENTUM PICK'
-        start = datetime.date(2024, 6, 28)
-        end = datetime.date(2024, 6, 28)
+        start = datetime.date(2024, 7, 1)
+        end = datetime.date(2024, 7, 3)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -39,12 +39,12 @@ class app():
 
     def filterMarginStrategyRecs(self):
         strategy = 'MARGIN'
-        start = datetime.date(2024, 6, 1)
-        end = datetime.date(2024, 6, 28)
+        start = datetime.date(2024, 7, 1)
+        end = datetime.date(2024, 7, 3)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
-            dbDicts = self.__persistence.getDb([['STRATEGY', strategy+'|AR-MARGIN'], ['MKT_SYMBOL', 'RAMCOCEM']])
+            dbDicts = self.__persistence.getDb([['STRATEGY', strategy+'|AR-MARGIN']])
             for dbDict in dbDicts:
                 for orderDict in dbDict['OPEN_ORDERS']:
                     if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
@@ -66,8 +66,9 @@ class app():
 
 if __name__ == '__main__':
     # Backup DB. We will work on the original DB
-    filter = app('./src/icici/db/iciciDirectFnO_Breeze.json')
-    filter.filterDb()
+    #filter = app('./src/icici/db/iciciDirectFnO_Breeze.json')
+    #filter.filterDb()
 
-    #filter.filterMarginStrategyRecs()
-    #filter.filterSROrder()
+    filter = app('./src/paytm/db/payTmMoney.json')
+    filter.filterMarginStrategyRecs()
+    filter.filterSROrder()
