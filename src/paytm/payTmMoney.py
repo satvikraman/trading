@@ -372,7 +372,10 @@ class payTmMoney:
         return status, message, orderNum
 
 
-    def place_order(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=0, offline=False):
+    def place_order(self, mktSym, securityId, qty, buySell, product, orderType, limitPrice, exchange='NSE', segment='EQUITY', triggerPrice=None):
+        status = False
+        message = orderNum = None
+
         if segment == 'EQUITY':
             product = 'I' if product == 'MARGIN' else 'C'
             segmentCode = 'E'
@@ -382,16 +385,20 @@ class payTmMoney:
 
         txnType = 'B' if buySell == 'BUY' else 'S'
 
-        if(orderType == 'MKT'):
+        if orderType == 'MKT' or orderType == 'SLM':
             price = 0
-        elif(orderType == 'LMT'):
+        elif orderType == 'LMT' or orderType == 'SL':
             price = limitPrice
         else:
             self.__logger.critical('Invalid order type %s', orderType)
-        
+            return status, message, orderNum
+
+        if orderType == 'SL' or orderType == 'SLM':
+            if triggerPrice == None:
+                self.__logger.critical('Either trigger price or ltp is None for stop-loss order type %s', orderType)
+                return status, message, orderNum
+
         retries = self.__retries
-        status = False
-        message = orderNum = None
         while not status and retries >= 0:
             try:
                 self.__logger.info('Placing order: mktSym=%s securityId=%s qty=%s price=%s buysell=%s product=%s orderType=%s', mktSym, securityId, 
@@ -405,8 +412,9 @@ class payTmMoney:
                                             validity="DAY",
                                             order_type=orderType,
                                             price=price,
+                                            trigger_price=triggerPrice,
                                             source="N",
-                                            off_mkt_flag=offline)
+                                            off_mkt_flag=False)
                 if res['status'] == 'success':
                     status = True
                     orderNum = res['data'][0]['order_no']

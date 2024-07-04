@@ -274,14 +274,14 @@ class AppPaytmBroker():
         return status, message, orderNum
     
 
-    def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0):
+    def placeOrder(self, dbDict, qty, buySell, orderType, limitPrice=0, triggerPrice=None):
         product = dbDict['PRODUCT']
         if product in ['OPTION', 'FUTURE']:            
             segment = 'DERIVATIVE'
         else:
             segment = 'EQUITY'
         
-        status, message, orderNum = self.__payTmMoney.place_order(dbDict['MKT_SYMBOL'], dbDict['SECURITY_ID'], qty, buySell, product, orderType, limitPrice, dbDict['MKT'], segment)
+        status, message, orderNum = self.__payTmMoney.place_order(dbDict['MKT_SYMBOL'], dbDict['SECURITY_ID'], qty, buySell, product, orderType, limitPrice, dbDict['MKT'], segment, triggerPrice)
         return status, message, orderNum
 
 
@@ -341,7 +341,6 @@ class AppPaytmBroker():
 
     def on_paytm_sock_open(self):
         # Get the CMP once at the start. This initializes the self.cmp structure and the websocket subscription, if in use
-        self.refreshCMP()
         self.useWebsocket = True
         self.__logger.info("websocket connection with PayTm opened")
 
@@ -403,7 +402,7 @@ if __name__ == '__main__':
         time.sleep(15)
 
     # Check if the DB and the PayTm portfolio are in synch
-    trade.startupCheck()
+    #trade.startupCheck()
 
     # Open and wait until the websocket w/ PayTm opens.
     trade.openPaytmWebsocket(trade.on_paytm_sock_open, trade.on_paytm_sock_message, trade.on_paytm_sock_close, trade.on_paytm_sock_error)
@@ -418,6 +417,7 @@ if __name__ == '__main__':
     flaskThr.daemon = True
     flaskThr.start()
 
+    trade.refreshCMP()
     trade.printMilestones()
     
     squareOffTime = False

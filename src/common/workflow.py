@@ -282,46 +282,58 @@ class Workflow():
         isInDb = False
         dbDict = {}
 
-        if recDict['PRODUCT'] == 'CASH':
-            # Check first if there is only 1 entry ignoring the timestamp ex. Gladiator stocks appearing on both iCLICK-2-GAIN and iCLICK-2-INVEST
-            # Else in the case of the QUANT PICKS strategy on iCLICK-2-GAIN, the same stock is listed as QUANT DERIVATIVES PICK on the iCLICK-2-INVEST page 
-            # and the dates can be as far apart as 7 days
-            # Or in a rare case even the Gladiator stocks appear on different dates on iCLICK-2-GAIN and iCLICK-2-INVEST pages. This happens when the 
-            # recommendation appears on the iCLICK-2-GAIN page close to the EOB
-            dbDicts = persistenceInst.getDb([['SOURCE', '!'+recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
-            if len(dbDicts) == 1:
+        # Sometimes we have seen the exact same recommendation from the same source repeat (i.e. LOW/HIGH REC_PRICE TARGET STOP_LOSS are same) but with a different timestamp. 
+        # If yes, mark isInDb = True
+        dbDicts = persistenceInst.getDb([['SOURCE', recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+        for dbDict in dbDicts:
+            if dbDict['TARGET'] == recDict['TARGET'] and dbDict['STOP_LOSS'] == recDict['STOP_LOSS'] and dbDict['HIGH_REC_PRICE'] == recDict['HIGH_REC_PRICE'] and dbDict['LOW_REC_PRICE'] == recDict['LOW_REC_PRICE']:
                 isInDb = True
-                dbDict = dbDicts[0]
-            elif recDict['STRATEGY'] != 'MARGIN':
-                if bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
-                    strategy = 'QUANT DERIVATIVES PICK' if 'QUANT PICKS' in recDict['STRATEGY'] else 'QUANT PICKS'
-                    dayDiffThresh = 7
-                elif bool(re.match(r'.*MOMENTUM|.*GLADIATOR.', recDict['STRATEGY'])):
-                    strategy = 'GLADIATOR STOCKS' if 'MOMENTUM PICK' in recDict['STRATEGY'] else 'MOMENTUM PICK'
-                    dayDiffThresh = 1
-                else:
-                    strategy = recDict['STRATEGY']
-                    dayDiffThresh = 1
-                recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
-                dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', strategy]])
+                break
+
+        if not isInDb:
+            if recDict['PRODUCT'] == 'CASH':
+                # Check first if there is only 1 entry ignoring the timestamp ex. Gladiator stocks appearing on both iCLICK-2-GAIN and iCLICK-2-INVEST
+                # Else in the case of the QUANT PICKS strategy on iCLICK-2-GAIN, the same stock is listed as QUANT DERIVATIVES PICK on the iCLICK-2-INVEST page 
+                # and the dates can be as far apart as 7 days
+                # Or in a rare case even the Gladiator stocks appear on different dates on iCLICK-2-GAIN and iCLICK-2-INVEST pages. This happens when the 
+                # recommendation appears on the iCLICK-2-GAIN page close to the EOB
+                dbDicts = persistenceInst.getDb([['SOURCE', '!'+recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
+                if len(dbDicts) == 1:
+                    isInDb = True
+                    dbDict = dbDicts[0]
+                elif recDict['STRATEGY'] != 'MARGIN':
+                    if bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
+                        strategy = 'QUANT DERIVATIVES PICK' if 'QUANT PICKS' in recDict['STRATEGY'] else 'QUANT PICKS'
+                        dayDiffThresh = 7
+                    elif bool(re.match(r'.*MOMENTUM|.*GLADIATOR.', recDict['STRATEGY'])):
+                        strategy = 'GLADIATOR STOCKS' if 'MOMENTUM PICK' in recDict['STRATEGY'] else 'MOMENTUM PICK'
+                        dayDiffThresh = 1
+                    else:
+                        strategy = recDict['STRATEGY']
+                        dayDiffThresh = 1
+                    recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y")
+                    dbDicts = persistenceInst.getDb([['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', strategy]])
+                    for dbDict in dbDicts:
+                        dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
+                        daysDiff = abs((dbDate - recDate).days)
+                        if daysDiff <= dayDiffThresh:
+                            isInDb = True
+                            break
+            else:
+                # In the non-CASH case, there can be multiple entries on the same date. Check that the time difference is less than 2 mins
+                dbDicts = persistenceInst.getDb([['SOURCE', '!'+recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
                 for dbDict in dbDicts:
-                    dbDate = datetime.datetime.strptime(dbDict['REC_DATE'], "%d-%b-%Y")
-                    daysDiff = abs((dbDate - recDate).days)
-                    if daysDiff <= dayDiffThresh:
+                    recDateTime = datetime.datetime.strptime(recDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
+                    dbDateTime  = datetime.datetime.strptime(dbDict['REC_DATE'] + ' ' + dbDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
+                    timeDiffSecs = abs((recDateTime - dbDateTime).total_seconds())
+                    if timeDiffSecs <= 120:
                         isInDb = True
                         break
-        else:
-            # In the non-CASH case, there can be multiple entries on the same date. Check that the time difference is less than 2 mins
-            dbDicts = persistenceInst.getDb([['SOURCE', '!'+recDict['SOURCE']], ['MKT_SYMBOL', recDict['MKT_SYMBOL']], ['STRATEGY', recDict['STRATEGY']], ['REC_DATE', recDict['REC_DATE']]])
-            for dbDict in dbDicts:
-                recDateTime = datetime.datetime.strptime(recDict['REC_DATE'] + ' ' + recDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
-                dbDateTime  = datetime.datetime.strptime(dbDict['REC_DATE'] + ' ' + dbDict['REC_TIME'] + ':00', "%d-%b-%Y %H:%M:%S")
-                timeDiffSecs = abs((recDateTime - dbDateTime).total_seconds())
-                if timeDiffSecs <= 120:
-                    isInDb = True
-                    break
+        
+        # If isInDb is True, check if really there is only 1 such entry in the DB before actually declaring isInDb = True
         if isInDb:
             isInDb, dbDict = persistenceInst.isInDb([['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                        
+        
         return isInDb, dbDict
 
 
@@ -626,7 +638,17 @@ class Workflow():
                     self.__logger.debug("Limit & LTP not near enough. Stock = %s-%s-%s-%s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['BUY_SELL'], ltp, limitPrice)
                     return False, dbDict
 
-        orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, qty, dbDict['BUY_SELL'], orderType, limitPrice)
+        triggerPrice = None
+        if 'TRIGGER' in dbDict:
+            triggerPrice = dbDict['TRIGGER']
+            if dbDict['BUY_SELL'] == 'BUY':
+                if ltp < triggerPrice:
+                    orderType = 'SL' if orderType == 'LMT' else 'SLM'
+            else:
+                if ltp > triggerPrice:
+                    orderType = 'SL' if orderType == 'LMT' else 'SLM'            
+
+        orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, qty, dbDict['BUY_SELL'], orderType, limitPrice, triggerPrice)
         self.__logger.info("Opening position: nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, orderType=%s, limit=%.2f", 
                             dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], qty, dbDict['BUY_SELL'], orderType, limitPrice)
 

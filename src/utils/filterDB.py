@@ -23,8 +23,8 @@ class app():
 
     def filterSROrder(self):
         strategy = 'SR-MOMENTUM PICK'
-        start = datetime.date(2024, 7, 1)
-        end = datetime.date(2024, 7, 3)
+        start = datetime.date(2024, 7, 4)
+        end = datetime.date(2024, 7, 4)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -39,8 +39,8 @@ class app():
 
     def filterMarginStrategyRecs(self):
         strategy = 'MARGIN'
-        start = datetime.date(2024, 7, 1)
-        end = datetime.date(2024, 7, 3)
+        start = datetime.date(2024, 7, 4)
+        end = datetime.date(2024, 7, 4)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
