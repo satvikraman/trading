@@ -116,7 +116,7 @@ class IciciDirectBreeze():
                 if res['Status'] == 200:
                     status = True
                     qty = int(res['Success'][0]['quantity'])
-                    trdQty = qty - int(res['Success'][0]['pending_quantity']) - int(res['Success'][0]['cancelled_quantity'])
+                    trdQty = qty - int(res['Success'][0]['pending_quantity'])
                 else:
                     status = True
                     message = res['Error']
@@ -172,7 +172,7 @@ class IciciDirectBreeze():
                     self.__logger.error("cancel_order : orderNum: {} mkt: {} Error: {}".format(orderNum, mkt, message))
             except Exception as e:
                 retries -= 1
-                self.__logger.error("Error : {}".format(e))
+                self.__logger.critical("Exception while cancelling order: exchange_code {} order_id {} error {}".format(mkt, orderId, e))
                 time.sleep(1)            
 
         return status, message, orderNum

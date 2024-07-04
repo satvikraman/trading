@@ -243,7 +243,7 @@ class AppIciciDirectBreezeBroker():
     def getRecDictFromTick(self, ticks):
         tickDict = self.__iciciDirectBreeze.getRecDictFromTick(ticks)
         if tickDict != None:
-            if tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
+            if self.tradeFno and tickDict['PRODUCT'] in ['OPTION', 'FUTURE']:
                 self.__workflow.handleRec(tickDict, None)
                 self.__workflow.updateOtherRecKeys(self.persistenceFnO, tickDict)
             elif self.tradeIntraDay and tickDict['STRATEGY'] == 'MARGIN':
