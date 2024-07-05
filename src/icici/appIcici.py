@@ -85,7 +85,7 @@ class AppIcici():
             icici_dataset_valid_until_date = os.environ.get('icici_dataset_valid_until_date', '')
             today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
             if(icici_dataset_valid_until_date.upper() != today):
-                iciciDatasetPath = "./dataset"
+                iciciDatasetPath = "./dataset/"
                 iciciDataset = iciciDatasetPath + "SecurityMaster-" + today + ".zip"
                 try:
                     urllib.request.urlretrieve(self.__config['DATASET']['ICICI_DATASET'], iciciDataset)

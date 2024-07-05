@@ -402,7 +402,7 @@ if __name__ == '__main__':
         time.sleep(15)
 
     # Check if the DB and the PayTm portfolio are in synch
-    #trade.startupCheck()
+    trade.startupCheck()
 
     # Open and wait until the websocket w/ PayTm opens.
     trade.openPaytmWebsocket(trade.on_paytm_sock_open, trade.on_paytm_sock_message, trade.on_paytm_sock_close, trade.on_paytm_sock_error)
