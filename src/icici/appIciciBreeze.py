@@ -250,7 +250,7 @@ class AppIciciDirectBreezeBroker():
                 self.__workflow.handleRec(tickDict, self.amountPerIntradayOrder)
                 persistenceInst = self.persistenceInv if tickDict['PRODUCT'] == 'CASH' else self.persistenceIntraDay
                 self.__workflow.updateOtherRecKeys(persistenceInst, tickDict)
-            else:
+            elif tickDict['PRODUCT'] in ['MARGIN', 'CASH']:
                 persistenceInst = self.persistenceInv if tickDict['PRODUCT'] == 'CASH' else self.persistenceIntraDay
                 self.__workflow.updateAndSendRec(persistenceInst, tickDict, self.__paytmBaseURL)
 
