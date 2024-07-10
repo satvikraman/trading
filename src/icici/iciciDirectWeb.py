@@ -51,6 +51,8 @@ class IciciDirectWeb():
         elif browser == 'EDGE':
             self.__browserDriver = edgeBrowser
             self.__browser = webdriver.Edge(self.__browserDriver)
+        elif browser == 'FIREFOX':
+            self.__browser = webdriver.Firefox()
 
 
     def __uploadPNGToDriv(self):
