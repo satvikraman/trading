@@ -284,9 +284,6 @@ class IciciDirectWeb():
             if self.__pushbullet != None:
                     self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login into ICICI Breeze on startup")
 
-            self.__browser.refresh()
-            time.sleep(1)
-
             self.__google.writeToCell('A6', 'B8', [[' ', ' '], [' ', ' '], [' ', ' ']])
             self.__google.writeToCell('C7', 'C7', [[' ']])
 
@@ -332,7 +329,7 @@ class IciciDirectWeb():
 
             otpIn = self.__getWebElement("//*[@id='pnlOTP']/div[2]/div[2]/div[3]/div/div", 'PRESENCE', singular=False)
             for i in range(len(value[0][0])):
-                input = otpIn[i].find_element_by_tag_name('input')
+                input = otpIn[i].find_element(By.TAG_NAME, 'input')
                 input.send_keys(int(value[0][0][i]))
             self.__getWebElement("//*[@id='Button1']", 'CLICKABLE')
         
@@ -620,9 +617,9 @@ class IciciDirectWeb():
         status = False
         invPeriod = None
 
-        gridPullRight = tblExpandRow.find_elements_by_class_name("pull-right")
+        gridPullRight = tblExpandRow.find_elements(By.CLASS_NAME, "pull-right")
         if len(gridPullRight) == 1:
-            gridBold = gridPullRight[0].find_element_by_class_name("bold")
+            gridBold = gridPullRight[0].find_element(By.CLASS_NAME, "bold")
             if gridBold.text != '':
                 status = True
                 invPeriod = gridBold.text
@@ -821,7 +818,7 @@ class IciciDirectWeb():
                 for i in range(0, len(tblRows), 2):
                     tblRow = tblRows[i]
                     tblExpandRow = tblRows[i+1]
-                    tblRowCols = tblRow.find_elements_by_tag_name("td")
+                    tblRowCols = tblRow.find_elements(By.TAG_NAME, "td")
                     # If we find a row with 10 entries
                     if(len(tblRowCols) == 10):
                         rowDict = self.__formatiCLICK_2_GAINTblRowToDict(tblRow, tblRowCols, tblExpandRow)
@@ -841,7 +838,7 @@ class IciciDirectWeb():
             try:
                 tblRows = self.__iclick2InvestTblRows
                 for tblRow in tblRows:
-                    tblRowCols = tblRow.find_elements_by_tag_name("td")
+                    tblRowCols = tblRow.find_elements(By.TAG_NAME, "td")
                     # If we find a row with 8 entries
                     if len(tblRowCols) == 8:
                         rowDict = self.__formatiCLICK_2_INVESTTblRowToDict(tblRowCols)

@@ -41,7 +41,7 @@ class payTmMoney:
         if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
         elif browser == 'EDGE':
-            self.__browserDriver = edgeBrowser
+            self.__browserDriver = edgeBrowser           
 
 
     def __handleException(self, e):
@@ -161,7 +161,12 @@ class payTmMoney:
             loginURL = self.__pm.login(self.__state_key)
 
             if self.__browser != None:
-                self.__browser = webdriver.Chrome(self.__browserDriver) if self.__browser == 'CHROME' else webdriver.Edge(self.__browserDriver)
+                if self.__browser == 'CHROME':
+                    self.__browser = webdriver.Chrome(self.__browserDriver)
+                elif self.__browser == 'EDGE':  
+                    self.__browser = webdriver.Edge(self.__browserDriver)
+                elif self.__browser == 'FIREFOX':
+                    self.__browser = webdriver.Firefox()
                 self.__request_token = self.__getRequestToken(loginURL, spreadsheetID, sheetName)
             else:
                 self.__request_token = input("Enter the request token after logging into {} : ".format(loginURL))

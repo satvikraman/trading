@@ -286,6 +286,10 @@ class AppPaytmBroker():
 
 
     def runPeriodicChecks(self):
+        if not self.useWebsocket:
+            time.sleep(5)
+            assert self.useWebsocket, "Paytm websocket connection closed. Exiting"
+    
         persistenceInsts = [self.persistenceInv, self.persistenceIntraDay]
         if self.marketOpen:
             if self.squareOff:

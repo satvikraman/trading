@@ -865,37 +865,40 @@ class Workflow():
         else:
             persistenceInst = self.__parent.persistenceInv
 
-        # Check if we need to freshly invest for Satvik? If yes, set the variable addForSatvik to True
-        addForSatvik = self.__investForSatvik(recDict['STRATEGY'])
-        firstLoop = True
-        # Create a list of strategies to loop over including the one for Satvik        
-        strategyList = [recDict['STRATEGY'], 'SR-' + recDict['STRATEGY']]
-
-        self.__lock.acquire()
-
-        # Loop over all strategies
-        for strategy in strategyList:
-            # Initialize the recDict['STRATEGY] to the strategy for which this loop is running
-            recDict['STRATEGY'] = strategy
-            isInDb, dbDict = self.__isInDb(persistenceInst, recDict)
-            
-            # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
-            if isInDb or recDict['REC_STATUS'] == 'OPEN':
-                if isInDb:
-                    status, dbDict = self.__updateRec(persistenceInst, recDict, dbDict)
-                elif self.__canAdd(recDict, 'TODAY'):
-                    if firstLoop or addForSatvik:
-                        status, dbDict = self.__addNewRec(persistenceInst, recDict, amountPerOrder)
+        if persistenceInst != None:
+            # Check if we need to freshly invest for Satvik? If yes, set the variable addForSatvik to True
+            addForSatvik = self.__investForSatvik(recDict['STRATEGY'])
+            firstLoop = True
+            # Create a list of strategies to loop over including the one for Satvik        
+            strategyList = [recDict['STRATEGY'], 'SR-' + recDict['STRATEGY']]
+    
+            self.__lock.acquire()
+    
+            # Loop over all strategies
+            for strategy in strategyList:
+                # Initialize the recDict['STRATEGY] to the strategy for which this loop is running
+                recDict['STRATEGY'] = strategy
+                isInDb, dbDict = self.__isInDb(persistenceInst, recDict)
+                
+                # If REC_DATE == today() -> Proceed normally. Call update if in DB, else call add
+                if isInDb or recDict['REC_STATUS'] == 'OPEN':
+                    if isInDb:
+                        status, dbDict = self.__updateRec(persistenceInst, recDict, dbDict)
+                    elif self.__canAdd(recDict, 'TODAY'):
+                        if firstLoop or addForSatvik:
+                            status, dbDict = self.__addNewRec(persistenceInst, recDict, amountPerOrder)
+                    else:
+                        status = True
                 else:
                     status = True
-            else:
-                status = True
+                
+                firstLoop = False
+            # Loop ends here
+            self.__lock.release()
+            recDict['STRATEGY'] = strategyList[0]
+        else:
+            status = True
             
-            firstLoop = False
-        # Loop ends here
-        self.__lock.release()
-
-        recDict['STRATEGY'] = strategyList[0]
         return status
 
 
