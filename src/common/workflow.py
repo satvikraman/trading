@@ -649,12 +649,12 @@ class Workflow():
                     orderType = 'SL' if orderType == 'LMT' else 'SLM'            
 
         orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, qty, dbDict['BUY_SELL'], orderType, limitPrice, triggerPrice)
-        self.__logger.info("Opening position: nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, orderType=%s, limit=%.2f", 
-                            dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], qty, dbDict['BUY_SELL'], orderType, limitPrice)
 
         if orderStatus:
             # If the order failed for some reason directly transition it to 'CLOSE' state
             # It is a limit order, so start it as an 'OPEN' order
+            self.__logger.info("Opening position: nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, orderType=%s, limit=%.2f", 
+                                dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], qty, dbDict['BUY_SELL'], orderType, limitPrice)
             timeStr = datetime.datetime.now().strftime("%d-%b-%Y %H:%M") 
             orderDict = {'BUY_SELL': dbDict['BUY_SELL'], 'ORDER_TYPE': orderType, 'LIMIT': limitPrice, 'QTY': qty, 'TRADED_QTY': 0, 
                         'ORDER_NO': orderNum, 'ORDER_STATUS': 'OPEN', 'ORDER_MESSAGE': orderMessage, 'CREATE_TIME': timeStr}
@@ -1220,7 +1220,7 @@ class Workflow():
                 if key not in keysToSend:
                     dbDict[key] = rowDict[key]
             
-            self.__logger.info('Updating other keys. rowDict: %s', rowDict)
+            self.__logger.debug('Updating other keys. rowDict: %s', rowDict)
             persistenceInst.updateDb(dbDict, [['SOURCE', dbDict['SOURCE']], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])                    
             #else: Nothing to be done
         else:
@@ -1237,7 +1237,7 @@ class Workflow():
             rowDict['ACK'] = 'ACK'
             rowDict['POS_HOLD_STATUS'] = 'CLOSE'
 
-            self.__logger.info("updateOtherRecKeys: Recommendation for %s is new (i.e. not in DB) but setting 'POS_HOLD_STATUS' to 'CLOSE' %s", rowDict['MKT_SYMBOL'], rowDict)
+            self.__logger.debug("updateOtherRecKeys: Recommendation for %s is new (i.e. not in DB) but setting 'POS_HOLD_STATUS' to 'CLOSE' %s", rowDict['MKT_SYMBOL'], rowDict)
             res = persistenceInst.insertDb(rowDict, None)
         self.__lock.release()
 

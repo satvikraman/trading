@@ -178,7 +178,7 @@ class AppIcici():
                     elif gainRecDict['PRODUCT'] == 'CASH':
                         self.__workflow.updateAndSendRec(self.persistenceInv, gainRecDict, self.__paytmBaseURL)
                     elif gainRecDict['PRODUCT'] in ['COMMODITY FUTURE', 'COMMODITY OPTION']:
-                        pass
+                        self.__workflow.updateAndSendRec(self.persistenceCommodityFnO, gainRecDict, None)
                     else:
                         self.__logger.error("Strategy %s not handled", gainRecDict['STRATEGY'])
 

@@ -118,9 +118,9 @@ class IciciDirectBreeze():
                     qty = int(res['Success'][0]['quantity'])
                     trdQty = qty - int(res['Success'][0]['pending_quantity'])
                 else:
-                    status = True
                     message = res['Error']
-                    self.__logger.error("get_order_detail : mkt: {} orderNum: {} Error: {}".format(mkt, orderNum, message))                    
+                    self.__logger.error("get_order_detail : mkt: {} orderNum: {} Error: {}".format(mkt, orderNum, message))
+                break
             except Exception as e:
                 retries -= 1
                 self.__logger.error("Error : {}".format(e))
@@ -143,9 +143,9 @@ class IciciDirectBreeze():
                     status = True
                     ltp = res['Success'][0]['ltp']
                 else:
-                    status = True
                     message = res['Error']
                     self.__logger.error("get_quotes : iciciSymbol: {} mkt: {} product: {} expDate: {} Error: {}".format(iciciSymbol, mkt, product, expDate, message))
+                break
             except Exception as e:
                 retries -= 1
                 self.__logger.error("Error : {}".format(e))
@@ -167,9 +167,9 @@ class IciciDirectBreeze():
                     message = res['Success']['message']
                     orderNum = res['Success']['order_id']
                 else:
-                    status = True
                     message = res['Error']
                     self.__logger.error("cancel_order : orderNum: {} mkt: {} Error: {}".format(orderNum, mkt, message))
+                break
             except Exception as e:
                 retries -= 1
                 self.__logger.critical("Exception while cancelling order: exchange_code {} order_id {} error {}".format(mkt, orderId, e))
@@ -203,9 +203,9 @@ class IciciDirectBreeze():
                     message = res['Success']['order_id']
                     orderNum = re.search(r'\d+.*$', message).group(0)
                 else:
-                    status = True
                     message = res['Error']
                     self.__logger.error("place_order : iciciSymbol: {}, mkt: {}, product: {}, qty: {}, buySell: {}, orderType: {}, limitPrice: {}, expDate: {} Error: {}".format(iciciSymbol, mkt, product, qty, buySell, orderType, limitPrice, expDate, message))
+                break
             except Exception as e:
                 retries -= 1
                 self.__logger.error("Error : {}".format(e))
@@ -238,9 +238,9 @@ class IciciDirectBreeze():
                     message = res['Success']['message']
                     orderNum = res['Success']['order_id']
                 else:
-                    status = True
                     message = res['Error']
                     self.__logger.error("place_order : iciciSymbol: {}, mkt: {}, product: {}, qty: {}, buySell: {}, orderType: {}, limitPrice: {}, expDate: {} Error: {}".format(iciciSymbol, mkt, product, qty, buySell, orderType, limitPrice, expDate, message))
+                break
             except Exception as e:
                 retries -= 1
                 self.__logger.error("Error : {}".format(e))
@@ -349,6 +349,7 @@ class IciciDirectBreeze():
         tickDict = None
         
         if 'stock_name' in ticks:
+            self.__logger.info('TICKS: %s', ticks)
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'\(.*$', '', ticks['stock_name'])
@@ -393,6 +394,7 @@ class IciciDirectBreeze():
                 tickDict['STOP_LOSS'] = tickDict['STOP_LOSS'] - (tickDict['STOP_LOSS'] * 5) // 100
 
         elif 'strategy_date' in ticks:
+            self.__logger.info('TICKS: %s', ticks)
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'^\s+|\s+$', '', ticks['underlying'])

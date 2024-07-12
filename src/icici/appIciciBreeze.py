@@ -263,7 +263,6 @@ class AppIciciDirectBreezeBroker():
         if 'symbol' in ticks:
             self.setCMP(ticks)
         else:
-            self.__logger.info('TICKS: %s', ticks)
             self.getRecDictFromTick(ticks)
 
 flask = Flask(__name__)

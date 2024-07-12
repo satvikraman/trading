@@ -426,14 +426,14 @@ class IciciDirectWeb():
             if strategy == 'MARGIN':
                 invPeriod  = '0 DAYS'
                 expDate = recDate
-            elif strategy == 'OPTIONS':
+            elif strategy == 'OPTIONS' or strategy == 'COMMODITY OPTIONS':
                 spliticiciSymbol = iciciSymbol.split('-')
                 expDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
                 recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
                 expiryDate = datetime.datetime.strptime(expDate, "%d-%b-%Y")
                 invPeriod  = (expiryDate - recDate).days
                 invPeriod  = str(invPeriod) + ' ' + 'DAYS*'
-            elif strategy == 'FUTURE':
+            elif strategy == 'FUTURE' or strategy == 'COMMODITY FUTURES':
                 spliticiciSymbol = iciciSymbol.split('-')
                 expDate = spliticiciSymbol[2]+'-'+spliticiciSymbol[3]+'-'+spliticiciSymbol[4]
                 recDate    = datetime.datetime.strptime(recDate, "%d-%b-%Y")
