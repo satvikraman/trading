@@ -273,7 +273,7 @@ class Workflow():
                     else:
                         status = False
                 elif recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                    status = (todaysDate == recDate) and (expDate - recDate).days >= 6
+                    status = (todaysDate == recDate) and (expDate - recDate).days >= 0
 
         return status
 
@@ -593,16 +593,23 @@ class Workflow():
             orderType = self.__parent.intraDayOrderType 
             if orderType == 'LMT':
                 if dbDict['BUY_SELL'] == 'BUY':
-                    limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['HIGH_REC_PRICE'] // 100) * self.__parent.intraDayLeeway
+                    limitPrice = dbDict['HIGH_REC_PRICE']
                 else:
-                    limitPrice = dbDict['LOW_REC_PRICE']  - (dbDict['LOW_REC_PRICE'] // 100) * self.__parent.intraDayLeeway
-        else:
+                    limitPrice = dbDict['LOW_REC_PRICE']
+        elif dbDict['PRODUCT'] == 'OPTION':
             orderType = self.__parent.fnoOrderType
             if orderType == 'LMT':
                 if dbDict['BUY_SELL'] == 'BUY':
-                    limitPrice = dbDict['HIGH_REC_PRICE'] + (dbDict['HIGH_REC_PRICE'] // 100) * self.__parent.fnoLeeway
+                    limitPrice = dbDict['LOW_REC_PRICE']
                 else:
-                    limitPrice = dbDict['LOW_REC_PRICE']  - (dbDict['LOW_REC_PRICE'] // 100) * self.__parent.fnoLeeway
+                    limitPrice = dbDict['HIGH_REC_PRICE']
+        elif dbDict['PRODUCT'] == 'FUTURE':
+            orderType = self.__parent.fnoOrderType
+            if orderType == 'LMT':
+                if dbDict['BUY_SELL'] == 'BUY':
+                    limitPrice = dbDict['LOW_REC_PRICE']
+                else:
+                    limitPrice = dbDict['HIGH_REC_PRICE']
 
         return canOrder, qty, limitPrice, orderType
     
