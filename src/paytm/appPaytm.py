@@ -338,7 +338,12 @@ class AppPaytmBroker():
 
     def handleRec(self, recDict):
         recDict['SECURITY_ID'] = re.sub(r'.*!', '', recDict['SECURITY_ID'])
-        amountPerOrder = self.amountPerIntraDayOrder if recDict['PRODUCT'] == 'MARGIN' else self.amountPerOrder
+        if recDict['PRODUCT'] == 'MARGIN':
+            amountPerOrder = self.amountPerIntraDayOrder
+        elif recDict['PRODUCT'] == 'CASH' and recDict['STRATEGY'] == 'MARGIN':
+            amountPerOrder =  self.amountPerIntraDayOrder
+        else:
+            amountPerOrder = self.amountPerOrder
         status = self.__workflow.handleRec(recDict, amountPerOrder)
         return status
 
@@ -396,6 +401,11 @@ def flaskThread():
 if __name__ == '__main__':
     # Check if there are any open pending orders from y'day
     trade.checkOpenOrders()
+    
+    # Start the flask thread
+    flaskThr = threading.Thread(target=flaskThread)
+    flaskThr.daemon = True
+    flaskThr.start()    
 
     # Connect w/ PayTm's API gateway
     trade.openPayTmMoneySession()
@@ -415,11 +425,6 @@ if __name__ == '__main__':
     paytmWebsocketConnectThr.start()
     while not trade.useWebsocket:
         time.sleep(1)
-
-    # Start the flask thread
-    flaskThr = threading.Thread(target=flaskThread)
-    flaskThr.daemon = True
-    flaskThr.start()
 
     trade.refreshCMP()
     trade.printMilestones()
