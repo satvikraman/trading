@@ -80,7 +80,7 @@ class AppIciciDirectBreezeBroker():
             self.amountPerIntradayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
             self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
             self.fnoOrderType = self.__config['APP']['FNO_ORDER_TYPE']
-            self.MarginBuyAsCash = self.__config['APP']['MARGIN_BUY_AS_CASH'].upper() == 'YES'
+            self.MarginBuyAsCash = self.tradeIntraDay and self.__config['APP']['MARGIN_BUY_AS_CASH'].upper() == 'YES'
             self.cmp = {}
 
             self.persistenceInsts = []
@@ -150,7 +150,7 @@ class AppIciciDirectBreezeBroker():
     def strategiesToInvest(self, source, strategy):
         allStrategies = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE', 'COMMODITY FUTURES', 'COMMODITY OPTIONS', 'CURRENCY FUTURES', 'CURRENCY OPTIONS'], 
                          'BREEZE-FnO': ['OPTIONS', 'FUTURE']}
-        strategiesToInvest = {'BREEZE-iCLICK': ['MARGIN', 'MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS', 'OPTIONS', 'FUTURE'], 'BREEZE-FnO': ['OPTIONS', 'FUTURE']}
+        strategiesToInvest = {'BREEZE-iCLICK': ['MOMENTUM PICK', 'GLADIATOR STOCKS', 'QUANT PICKS'], 'BREEZE-FnO': []}
 
         status = False
         if strategy in strategiesToInvest[source]:
@@ -244,9 +244,8 @@ class AppIciciDirectBreezeBroker():
         tickDict = self.__iciciDirectBreeze.getRecDictFromTick(ticks)
         if tickDict != None:
             if self.tradeFno and tickDict['PRODUCT'] in ['FUTURE']:
-                pass
-                #self.__workflow.handleRec(tickDict, None)
-                #self.__workflow.updateOtherRecKeys(self.persistenceFnO, tickDict)
+                self.__workflow.handleRec(tickDict, None)
+                self.__workflow.updateOtherRecKeys(self.persistenceFnO, tickDict)
             elif self.tradeFno and tickDict['PRODUCT'] in ['OPTION'] and tickDict['SOURCE'] == 'BREEZE-iCLICK':
                 self.__workflow.handleRec(tickDict, None)
                 self.__workflow.updateOtherRecKeys(self.persistenceFnO, tickDict)

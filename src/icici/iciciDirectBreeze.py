@@ -391,8 +391,6 @@ class IciciDirectBreeze():
             # Convert BUY Margin orders as CASH orders
             if tickDict['PRODUCT'] == 'MARGIN' and tickDict['BUY_SELL'] == 'BUY' and self.__parent.MarginBuyAsCash:
                 tickDict['PRODUCT'] = 'CASH'
-                #tickDict['STOP_LOSS'] = min(tickDict['STOP_LOSS'], tickDict['LOW_REC_PRICE'] - (tickDict['TARGET'] - tickDict['HIGH_REC_PRICE']))
-                #tickDict['STOP_LOSS'] = tickDict['STOP_LOSS'] - (tickDict['STOP_LOSS'] * 0) // 100
         elif 'strategy_date' in ticks:
             self.__logger.info('TICKS: %s', ticks)
             tickDict = {}
@@ -404,8 +402,8 @@ class IciciDirectBreeze():
             tickDict['PORTFOLIO_ID'] = ticks['portfolio_id']
             tickDict['LEG_NO'] = ticks['leg_no']
             tickDict['BUY_SELL'] = ticks['action'].upper()
-            #if not self.__parent.strategiesToInvest(tickDict['SOURCE'], tickDict['STRATEGY']):
-            #    return None
+            if not self.__parent.strategiesToInvest(tickDict['SOURCE'], tickDict['STRATEGY']):
+                return None
 
             recDateTime = ticks['strategy_date'].split(' ')
             tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
