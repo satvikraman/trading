@@ -349,7 +349,7 @@ class Workflow():
 
     def __investForSatvik(self, strategy):
         # Define the list of strategies that should be invested for Satvik
-        satvikStrategies = ['MOMENTUM PICK']
+        satvikStrategies = []
         return strategy in satvikStrategies
 
 
