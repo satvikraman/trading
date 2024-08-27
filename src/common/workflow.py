@@ -254,26 +254,25 @@ class Workflow():
         status = False
         todaysDate = self.__today.strftime("%d-%b-%Y")
 
-        if recDict['REC_DATE'] == todaysDate:
-            if recDict['PRODUCT'] in ['MARGIN']:
-                status = True
-            else:
-                recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y").date()
-                todaysDate = self.__today.date()
-                expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y").date()
-                
-                if recDict['PRODUCT'] == 'CASH':
-                    if expDate >= todaysDate:
-                        if expDate > recDate:
-                            expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
-                            status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
-                        else:
-                            # IntraDay Buy as Cash will land here
-                            status = True if recDict['STRATEGY'] == 'MARGIN' else False
+        if recDict['PRODUCT'] in ['MARGIN']:
+            status = True
+        else:
+            recDate = datetime.datetime.strptime(recDict['REC_DATE'], "%d-%b-%Y").date()
+            todaysDate = self.__today.date()
+            expDate = datetime.datetime.strptime(recDict['EXP_DATE'], "%d-%b-%Y").date()
+            
+            if recDict['PRODUCT'] == 'CASH':
+                if expDate >= todaysDate:
+                    if expDate > recDate:
+                        expInvPeriodPerc = (todaysDate - recDate).days * 100 / abs((expDate - recDate).days)
+                        status = True if expInvPeriodPerc >= 0 and expInvPeriodPerc <= 10 else False
                     else:
-                        status = False
-                elif recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
-                    status = (todaysDate == recDate) and (expDate - recDate).days >= 0
+                        # IntraDay Buy as Cash will land here
+                        status = True if recDict['STRATEGY'] == 'MARGIN' else False
+                else:
+                    status = False
+            elif recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
+                status = (todaysDate == recDate) and (expDate - recDate).days >= 0
 
         return status
 
@@ -766,7 +765,9 @@ class Workflow():
             else:
                 cancelDict = dbDict
             
-            partial = True if cancelDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
+            # Disable partial close of order. All orders will be fully closed
+            #partial = True if cancelDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
+            partial = False
             _, closeDbDict, orderNum = self.__closePosition(persistenceInst, cancelDict, partial)
             closeDbDictOrderNumArr.append({'DB_DICT': closeDbDict, 'ORDER_NO': orderNum})
         
@@ -850,7 +851,6 @@ class Workflow():
         else:
             recDict['QTY'] = qty
             recDict['LATE_ADD'] = self.__isLateAdd(recDict)
-
 
         res = persistenceInst.insertDb(recDict, None)
         if res > 0:
