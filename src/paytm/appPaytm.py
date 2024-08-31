@@ -260,6 +260,7 @@ class AppPaytmBroker():
         persistenceInsts = [self.persistenceInv]
         status = self.__workflow.startupCheck(persistenceInsts)
         assert status, 'Startup check failed. Exiting'
+        print('Startup check Passed!!!')
 
 
     def printMilestones(self):
