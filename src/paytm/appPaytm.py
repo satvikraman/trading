@@ -474,8 +474,8 @@ if __name__ == '__main__':
     while not trade.useWebsocket:
         time.sleep(1)
 
-    trade.refreshCMP()
-    trade.printMilestones()
+    #trade.refreshCMP()
+    #trade.printMilestones()
     
     squareOffTime = False
     marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
