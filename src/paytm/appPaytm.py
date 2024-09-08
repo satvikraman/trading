@@ -80,7 +80,16 @@ class AppPaytmBroker():
             self.__logger.info('Max Amount Per Cash Order %d', self.amountPerOrder)
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
-            self.__core = [ {'MKT_SYMBOL': 'SRF', 'SECURITY_ID': '3273', 'QTY': 1},
+            self.__core = [ 
+                            # ARVIND - BREAKOUT
+                            {'MKT_SYMBOL': 'LUPIN',      'SECURITY_ID': '3273', 'QTY': 15},
+                            {'MKT_SYMBOL': 'PFIZER',     'SECURITY_ID': '2643', 'QTY': 9},
+                            {'MKT_SYMBOL': 'BAJAJFINSV', 'SECURITY_ID': '16675','QTY': 10},
+                            # ARVIND - INSIDE BAR
+                            {'MKT_SYMBOL': 'MAZDOCK',    'SECURITY_ID': '509',  'QTY': 5},
+                            # SATVIK
+                            {'MKT_SYMBOL': 'SRF',        'SECURITY_ID': '3273', 'QTY': 1},
+                            {'MKT_SYMBOL': 'DELHIVERY',  'SECURITY_ID': '9599', 'QTY': 8},
                             # MICROCAP
                             {'MKT_SYMBOL': 'WOCKPHARMA', 'SECURITY_ID': '7497',  'QTY': 13},
                             {'MKT_SYMBOL': 'TECHNOE',    'SECURITY_ID': '6445',  'QTY': 8},
@@ -95,7 +104,7 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'GRAVITA',    'SECURITY_ID': '20534', 'QTY': 6},
                             {'MKT_SYMBOL': 'TIMETECHNO', 'SECURITY_ID': '14707', 'QTY': 34},
                             {'MKT_SYMBOL': 'NEULANDLAB', 'SECURITY_ID': '2406',  'QTY': 1},
-                            {'MKT_SYMBOL': 'UFLEX',      'SECURITY_ID': '1053',  'QTY': 16},
+                            {'MKT_SYMBOL': 'NETWEB',     'SECURITY_ID': '17433', 'QTY': 4},
                             {'MKT_SYMBOL': 'IFCI',       'SECURITY_ID': '1491',  'QTY': 188},
                             {'MKT_SYMBOL': 'VMART',      'SECURITY_ID': '29284', 'QTY': 4},
                             {'MKT_SYMBOL': 'KESORAMIND', 'SECURITY_ID': '1859',  'QTY': 64},
@@ -106,7 +115,7 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'TIDEWATER',  'SECURITY_ID': '14019', 'QTY': 5},
                             {'MKT_SYMBOL': 'IIFLSEC',    'SECURITY_ID': '13072', 'QTY': 49},
                             {'MKT_SYMBOL': 'WABAG',      'SECURITY_ID': '20188', 'QTY': 10},
-                            {'MKT_SYMBOL': 'OPTIEMUS',   'SECURITY_ID': '21469', 'QTY': 23},
+                            {'MKT_SYMBOL': 'DHANUKA',    'SECURITY_ID': '24409', 'QTY': 7},
                             # SMALLCAP
                             {'MKT_SYMBOL': 'GLENMARK',   'SECURITY_ID': '7406',  'QTY': 7},
                             {'MKT_SYMBOL': 'COCHINSHIP', 'SECURITY_ID': '21508', 'QTY': 6},
@@ -122,12 +131,17 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'ARE&M',      'SECURITY_ID': '100',   'QTY': 8},
                             {'MKT_SYMBOL': 'BIKAJI',     'SECURITY_ID': '11966', 'QTY': 14},
                             {'MKT_SYMBOL': '360ONE',     'SECURITY_ID': '13061', 'QTY': 11},
-                            {'MKT_SYMBOL': 'KAYNES',     'SECURITY_ID': '12092', 'QTY': 2},
-                            {'MKT_SYMBOL': 'SIGNATURE',  'SECURITY_ID': '18743', 'QTY': 8},
-                            {'MKT_SYMBOL': 'HSCL',       'SECURITY_ID': '14334', 'QTY': 23},
+                            {'MKT_SYMBOL': 'WHIRLPOOL',  'SECURITY_ID': '18011', 'QTY': 4},
+                            {'MKT_SYMBOL': 'NBCC',       'SECURITY_ID': '31415', 'QTY': 65},
+                            {'MKT_SYMBOL': 'GODFRYPHLP', 'SECURITY_ID': '1181',  'QTY': 2},
                             {'MKT_SYMBOL': 'HUDCO',      'SECURITY_ID': '20825', 'QTY': 43},
                             {'MKT_SYMBOL': 'BLUESTARCO', 'SECURITY_ID': '8311',  'QTY': 7},
-                            {'MKT_SYMBOL': 'JAIBALAJI',  'SECURITY_ID': '14076', 'QTY': 13}
+                            {'MKT_SYMBOL': 'ERIS',       'SECURITY_ID': '21154', 'QTY': 9},
+                            {'MKT_SYMBOL': 'CROMPTON',   'SECURITY_ID': '17094', 'QTY': 25},
+                            {'MKT_SYMBOL': 'QUESS',      'SECURITY_ID': '17704', 'QTY': 15},
+                            {'MKT_SYMBOL': 'GRSE',       'SECURITY_ID': '5475',  'QTY': 7},
+                            {'MKT_SYMBOL': 'JUBLPHARMA', 'SECURITY_ID': '3637',  'QTY': 13},
+                            {'MKT_SYMBOL': 'NATCOPHARM', 'SECURITY_ID': '3918',  'QTY': 8},
                             ]
 
             self.squareOff = False
@@ -474,8 +488,8 @@ if __name__ == '__main__':
     while not trade.useWebsocket:
         time.sleep(1)
 
-    #trade.refreshCMP()
-    #trade.printMilestones()
+    trade.refreshCMP()
+    trade.printMilestones()
     
     squareOffTime = False
     marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
