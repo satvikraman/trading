@@ -301,11 +301,11 @@ class Workflow():
                     isInDb = True
                     dbDict = dbDicts[0]
                 elif recDict['STRATEGY'] != 'MARGIN':
-                    if bool(re.match(r'.*QUANT|.*DERIVATIVE.', recDict['STRATEGY'])):
+                    if bool(re.match(r'.*QUANT|.*DERIVATIVE', recDict['STRATEGY'])):
                         strategy = 'QUANT DERIVATIVES PICK' if 'QUANT PICKS' in recDict['STRATEGY'] else 'QUANT PICKS'
                         dayDiffThresh = 7
-                    elif bool(re.match(r'.*MOMENTUM|.*GLADIATOR.', recDict['STRATEGY'])):
-                        strategy = 'GLADIATOR STOCKS' if 'MOMENTUM PICK' in recDict['STRATEGY'] else 'MOMENTUM PICK'
+                    elif bool(re.match(r'.*MOMENTUM|.*GLADIATOR|.*CONVICTION', recDict['STRATEGY'])):
+                        strategy = 'GLADIATOR STOCKS|CONVICTION IDEAS' if 'MOMENTUM PICK' in recDict['STRATEGY'] else 'MOMENTUM PICK'
                         dayDiffThresh = 1
                     else:
                         strategy = recDict['STRATEGY']
