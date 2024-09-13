@@ -98,7 +98,7 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'TIMETECHNO', 'SECURITY_ID': '14707', 'QTY': 35},
                             {'MKT_SYMBOL': 'MOTILALOFS', 'SECURITY_ID': '14947', 'QTY': 19},
                             {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
-                            {'MKT_SYMBOL': 'GRAVITA',    'SECURITY_ID': '20534', 'QTY': 0},
+                            {'MKT_SYMBOL': 'GRAVITA',    'SECURITY_ID': '20534', 'QTY': 6},
                             {'MKT_SYMBOL': 'INDUSTOWER', 'SECURITY_ID': '29135', 'QTY': 33},
                             {'MKT_SYMBOL': 'KIRLOSENG',  'SECURITY_ID': '20936', 'QTY': 11},
                             {'MKT_SYMBOL': 'SHARDAMOTR', 'SECURITY_ID': '10530', 'QTY': 5},
@@ -115,8 +115,6 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'DHANUKA',    'SECURITY_ID': '24409', 'QTY': 9},
                             {'MKT_SYMBOL': 'IIFLSEC',    'SECURITY_ID': '13072', 'QTY': 49},
                             {'MKT_SYMBOL': 'TORNTPOWER', 'SECURITY_ID': '13786', 'QTY': 8},
-                            # CORRECTION
-                            {'MKT_SYMBOL': 'TATACONSUM', 'SECURITY_ID': '3432',  'QTY': 56},                                                        
                             ]
 
             self.squareOff = False
