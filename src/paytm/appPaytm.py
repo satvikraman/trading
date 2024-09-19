@@ -85,10 +85,8 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'LUPIN',      'SECURITY_ID': '3273', 'QTY': 15},
                             {'MKT_SYMBOL': 'PFIZER',     'SECURITY_ID': '2643', 'QTY': 9},
                             {'MKT_SYMBOL': 'BAJAJFINSV', 'SECURITY_ID': '16675','QTY': 10},
-                            # ARVIND - INSIDE BAR
-                            {'MKT_SYMBOL': 'MAZDOCK',    'SECURITY_ID': '509',  'QTY': 5},
+                            # ARVIND
                             # SATVIK
-                            {'MKT_SYMBOL': 'SRF',        'SECURITY_ID': '3273', 'QTY': 1},
                             # MOMENTUM
                             {'MKT_SYMBOL': 'RVNL',       'SECURITY_ID': '9552',  'QTY': 25},
                             {'MKT_SYMBOL': 'POWERINDIA', 'SECURITY_ID': '18457', 'QTY': 1},
