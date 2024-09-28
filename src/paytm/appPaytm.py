@@ -83,7 +83,6 @@ class AppPaytmBroker():
             self.__core = [ 
                             # ARVIND - BREAKOUT
                             {'MKT_SYMBOL': 'LUPIN',      'SECURITY_ID': '3273', 'QTY': 15},
-                            {'MKT_SYMBOL': 'PFIZER',     'SECURITY_ID': '2643', 'QTY': 9},
                             {'MKT_SYMBOL': 'BAJAJFINSV', 'SECURITY_ID': '16675','QTY': 10},
                             # ARVIND
                             # SATVIK
