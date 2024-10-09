@@ -82,31 +82,25 @@ class AppPaytmBroker():
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [ 
                             # ARVIND - BREAKOUT
-                            {'MKT_SYMBOL': 'LUPIN',      'SECURITY_ID': '3273', 'QTY': 15},
-                            {'MKT_SYMBOL': 'BAJAJFINSV', 'SECURITY_ID': '16675','QTY': 10},
-                            # ARVIND
-                            {'MKT_SYMBOL': 'MFSL',       'SECURITY_ID': '2142',  'QTY': 4},
+                            {'MKT_SYMBOL': 'LUPIN',      'SECURITY_ID': '3273',  'QTY': 15},
+                            {'MKT_SYMBOL': 'BAJAJFINSV', 'SECURITY_ID': '16675', 'QTY': 10},
                             {'MKT_SYMBOL': 'VEDL',       'SECURITY_ID': '3063',  'QTY': 13},
-                            # SATVIK
-                            {'MKT_SYMBOL': 'JSWENERGY',  'SECURITY_ID': '17869', 'QTY': 3},
+                            # ARVIND - IPO
+                            {'MKT_SYMBOL': 'BAJAJHFL',   'SECURITY_ID': '25270', 'QTY': 150},
+                            # SATVIK - BREAKOUT
+                            {'MKT_SYMBOL': 'MFSL',       'SECURITY_ID': '2142',  'QTY': 4},
+                            {'MKT_SYMBOL': 'IPCALAB',    'SECURITY_ID': '1633',  'QTY': 4},
                             # MOMENTUM
-                            {'MKT_SYMBOL': 'RVNL',       'SECURITY_ID': '9552',  'QTY': 25},
                             {'MKT_SYMBOL': 'POWERINDIA', 'SECURITY_ID': '18457', 'QTY': 1},
                             {'MKT_SYMBOL': 'PCBL',       'SECURITY_ID': '2649',  'QTY': 22},
                             {'MKT_SYMBOL': 'WABAG',      'SECURITY_ID': '20188', 'QTY': 11},
-                            {'MKT_SYMBOL': 'ARE&M',      'SECURITY_ID': '100',   'QTY': 10},
-                            {'MKT_SYMBOL': 'GODFRYPHLP', 'SECURITY_ID': '1181',  'QTY': 2},
                             {'MKT_SYMBOL': 'MOTILALOFS', 'SECURITY_ID': '14947', 'QTY': 19},
                             {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
                             {'MKT_SYMBOL': 'GRAVITA',    'SECURITY_ID': '20534', 'QTY': 6},
                             {'MKT_SYMBOL': 'INOXWIND',   'SECURITY_ID': '7852',  'QTY': 54},
                             {'MKT_SYMBOL': 'NEULANDLAB', 'SECURITY_ID': '2406',  'QTY': 1},
-                            {'MKT_SYMBOL': 'SHARDAMOTR', 'SECURITY_ID': '10530', 'QTY': 5},
                             {'MKT_SYMBOL': 'BASF',       'SECURITY_ID': '368',   'QTY': 2},
                             {'MKT_SYMBOL': 'NETWEB',     'SECURITY_ID': '17433', 'QTY': 5},
-                            {'MKT_SYMBOL': 'PGEL',       'SECURITY_ID': '25358', 'QTY': 24},
-                            {'MKT_SYMBOL': 'OPTIEMUS',   'SECURITY_ID': '21469', 'QTY': 15},
-                            {'MKT_SYMBOL': 'NAVA',       'SECURITY_ID': '4014',  'QTY': 11},
                             {'MKT_SYMBOL': 'ANANTRAJ',   'SECURITY_ID': '13620', 'QTY': 23},
                             {'MKT_SYMBOL': 'PRESTIGE',   'SECURITY_ID': '20302', 'QTY': 8},
                             {'MKT_SYMBOL': 'TVSHLTD',    'SECURITY_ID': '16853', 'QTY': 1},
