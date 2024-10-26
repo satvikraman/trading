@@ -219,5 +219,7 @@ if __name__ == '__main__':
     if marketClose:
         trade.runPostMarketCloseChecks()
 
+    trade._AppIcici__logger.info("Markets have closed. Exiting gracefully")
+
     trade.closeInstance()
     exit()

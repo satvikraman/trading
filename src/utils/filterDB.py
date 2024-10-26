@@ -55,7 +55,14 @@ class app():
                         print('CLOSE DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
 
             filterDate += datetime.timedelta(days=1)
-            print("----")        
+            print("----")
+
+    def filterZeroStopLossRecs(self):
+        dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+        for dbDict in dbDicts:
+            if dbDict['STOP_LOSS'] == 0:
+                print(dbDict)
+                print("----")        
 
 
     def filterDb(self):
@@ -70,5 +77,6 @@ if __name__ == '__main__':
     #filter.filterDb()
 
     filter = app('./src/paytm/db/payTmMoney.json')
-    filter.filterMarginStrategyRecs()
-    filter.filterSROrder()
+    #filter.filterMarginStrategyRecs()
+    #filter.filterSROrder()
+    filter.filterZeroStopLossRecs()

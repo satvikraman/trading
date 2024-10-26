@@ -237,7 +237,8 @@ class IciciDirectWeb():
             # Check if we have progressed
             time.sleep(5)
             if self.__browser.current_url != self.__iciciURL:
-                self.__google.writeToCell('A4', 'A4', [['Login successful']])
+                if self.__google != None:
+                    self.__google.writeToCell('A4', 'A4', [['Login successful']])
                 if relogin and self.__pushbullet != None:
                     self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Direct successful")                
                 loginNotSuccessful = False
