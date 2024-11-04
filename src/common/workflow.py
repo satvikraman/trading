@@ -49,39 +49,24 @@ class Workflow():
     def __updateOfflineRec(self, recDict, dbDict):
         modDbDict = False
 
-        if 'ACTION' in recDict:
-            # This is the case where we would like to take an online trade offline. An INIT_TRADE case should not come here otherwise
-            if recDict['ACTION'] == 'INIT_TRADE' and 'ADD_PREFIX' in recDict and recDict['QTY'] == dbDict['QTY']:
-                modDbDict = True
-            elif recDict['ACTION'] == 'TRADE':
-                modDbDict = True
+        if 'ACTION' in recDict and recDict['ACTION'] == 'TRADE':
+            modDbDict = True
 
-            if modDbDict:
-                dbDict['ACTION'] = recDict['ACTION']
-                dbDict['HIGH_REC_PRICE'] = recDict['HIGH_REC_PRICE']
-                dbDict['LOW_REC_PRICE'] = recDict['LOW_REC_PRICE']
-                dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
-                dbDict['TARGET'] = recDict['TARGET']
-                if 'TRIGGER' in recDict:
-                    dbDict['TRIGGER'] = recDict['TRIGGER']
+            dbDict['ACTION'] = recDict['ACTION']
+            dbDict['HIGH_REC_PRICE'] = recDict['HIGH_REC_PRICE']
+            dbDict['LOW_REC_PRICE'] = recDict['LOW_REC_PRICE']
+            dbDict['STOP_LOSS'] = recDict['STOP_LOSS']
+            dbDict['TARGET'] = recDict['TARGET']
+            if 'TRIGGER' in recDict:
+                dbDict['TRIGGER'] = recDict['TRIGGER']
 
-                if recDict['ACTION'] == 'TRADE':
-                    # If the trade didn't go the right way, we may want to buy on dips and add more quantity at a lower cost.
-                    # We should therefore allow transitioning REC_STATUS from POSITION -> OPEN. 
-                    # Also REC_PRICE should be changed here. Under normal updates, we only allow HIGH_REC_PRICE to go higher and LOW_REC_PRICE to go lower
-                    if recDict['REC_STATUS'] == 'OPEN' and dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] in ['OPEN', 'POSITION'] and 'QTY' in recDict:
-                        if recDict['QTY'] > dbDict['QTY']:
-                            dbDict['QTY'] = recDict['QTY']
-                            dbDict['POS_HOLD_STATUS'] = 'OPEN'
-                elif recDict['ACTION'] == 'INIT_TRADE':
-                    # To take this trade offline, we may want to add a prefix to the strategy so that recommendations coming from the recommenders are ignored
-                    # Prefix is added to STRATEGY to fail all db queries. Prefix is also added to SOURCE so that visibility checks fail
-                    # Also set VISIBLE to ensure the trade does not get closed automatically
-                    dbDict['VISIBLE'] = 'VISIBLE'
-                    if not bool(re.match(recDict['ADD_PREFIX'], dbDict['STRATEGY'])):
-                        dbDict['STRATEGY'] = recDict['ADD_PREFIX'] + dbDict['STRATEGY']
-                    if not bool(re.match(recDict['ADD_PREFIX'], dbDict['SOURCE'])):
-                        dbDict['SOURCE'] = recDict['ADD_PREFIX'] + dbDict['SOURCE']
+            # If the trade didn't go the right way, we may want to buy on dips and add more quantity at a lower cost.
+            # We should therefore allow transitioning REC_STATUS from POSITION -> OPEN. 
+            # Also REC_PRICE should be changed here. Under normal updates, we only allow HIGH_REC_PRICE to go higher and LOW_REC_PRICE to go lower
+            if recDict['REC_STATUS'] == 'OPEN' and dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] in ['OPEN', 'POSITION'] and 'QTY' in recDict:
+                if recDict['QTY'] > dbDict['QTY']:
+                    dbDict['QTY'] = recDict['QTY']
+                    dbDict['POS_HOLD_STATUS'] = 'OPEN'
 
         return modDbDict, dbDict
 
@@ -151,7 +136,7 @@ class Workflow():
         mandatoryKeys = ['STOCK', 'SOURCE', 'MKT', 'MKT_SYMBOL', 'SECURITY_ID', 'STRATEGY', 'PRODUCT', 'BUY_SELL', 'REC_DATE', 'REC_TIME', 'REC_STATUS', 'EXP_DATE']
         mandatoryPriceKeys = ['LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS']
         mandatoryDervKeys = ['LOT']
-        optioinalKeys = ['ACTION', 'TRIGGER', 'QTY', 'ADD_PREFIX']
+        optioinalKeys = ['ACTION', 'TRIGGER', 'QTY']
                 
         recDict = {}
 
@@ -796,7 +781,7 @@ class Workflow():
 
 
     def __followOrders(self, persistenceInst, dbDict, hasRecPriceChanged=False):
-        if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] == 'OPEN':
+        if dbDict['REC_STATUS'] == 'OPEN' and dbDict['POS_HOLD_STATUS'] in ['OPEN', 'POSITION']:
             if self.__parent.marketOpen and not self.__isModTx(dbDict):
                 self.__openPosition(persistenceInst, dbDict, hasRecPriceChanged)
             self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
@@ -828,13 +813,21 @@ class Workflow():
     def __addNewRec(self, persistenceInst, recDict, amountPerOrder):
         status = False
 
+        # If SL comes as zero, make it atleast a 1:1 risk:reward trade
+        if recDict['STOP_LOSS'] == 0:
+            recDict['STOP_LOSS'] = recDict['HIGH_REC_PRICE'] - (recDict['TARGET'] - recDict['HIGH_REC_PRICE'])
+
         if recDict['PRODUCT'] in ['OPTION', 'FUTURE']:
             qty = recDict['LOT']
         else:
             #if recDict['PRODUCT'] == 'MARGIN':
             #    amountPerOrder *= self.__parent.timesMargin
             avgPrice = (recDict['HIGH_REC_PRICE'] + recDict['LOW_REC_PRICE']) / 2
-            qty = max(int(amountPerOrder // avgPrice), 1)
+            qty1 = max(int(amountPerOrder // avgPrice), 1)
+            qty2 = (self.__parent.portfolioSize * self.__parent.percLossPerTrade / 100) / (recDict['HIGH_REC_PRICE'] - recDict['STOP_LOSS'])
+            qty = min(qty1, qty2)
+            if 'QTY' in recDict:
+               qty = min(qty, recDict['QTY'])
 
         # Security ID of the stock 
         recDict['POS_QTY'] = 0

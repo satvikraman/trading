@@ -73,6 +73,8 @@ class AppPaytmBroker():
             else:
                 self.__payTmMoney = payTmMoney(self.__logger, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'])
 
+            self.portfolioSize = int(self.__config['APP']['PORTFOLIO_SIZE'])
+            self.percLossPerTrade = float(self.__config['APP']['PERC_LOSS_PER_TRADE'])
             self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
             self.amountPerIntraDayOrder = int(self.__config['APP']['AMOUNT_PER_INTRADAY_ORDER'])
             self.intraDayOrderType = self.__config['APP']['INTRADAY_ORDER_TYPE']
@@ -81,38 +83,32 @@ class AppPaytmBroker():
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [ 
-                            # ARVIND - BREAKOUT
-                            {'MKT_SYMBOL': 'LUPIN',      'SECURITY_ID': '3273',  'QTY': 15},
-                            {'MKT_SYMBOL': 'BAJAJFINSV', 'SECURITY_ID': '16675', 'QTY': 10},
-                            {'MKT_SYMBOL': 'VEDL',       'SECURITY_ID': '3063',  'QTY': 13},
-                            {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 4},
-                            {'MKT_SYMBOL': 'STAR',       'SECURITY_ID': '7374',  'QTY': 14},
-                            {'MKT_SYMBOL': 'HCLTECH',    'SECURITY_ID': '7229',  'QTY': 4},
-                            {'MKT_SYMBOL': 'ICICIBANK',  'SECURITY_ID': '4963',  'QTY': 4},
-                            {'MKT_SYMBOL': 'UTIAMC',     'SECURITY_ID': '527',   'QTY': 15},
-                            {'MKT_SYMBOL': 'GODREJAGRO', 'SECURITY_ID': '144',   'QTY': 3},
-                            {'MKT_SYMBOL': 'OBEROIRLTY', 'SECURITY_ID': '20242', 'QTY': 10},
-                            {'MKT_SYMBOL': 'SUVENPHAR',  'SECURITY_ID': '17945', 'QTY': 15},
-                            {'MKT_SYMBOL': 'KARURVYSYA', 'SECURITY_ID': '1838',  'QTY': 90},
-                            # SATVIK - BREAKOUT
-                            {'MKT_SYMBOL': 'MFSL',       'SECURITY_ID': '2142',  'QTY': 4},
-                            {'MKT_SYMBOL': 'IPCALAB',    'SECURITY_ID': '1633',  'QTY': 4},
-                            {'MKT_SYMBOL': 'HDFCBANK',   'SECURITY_ID': '1333',  'QTY': 28},
                             # MOMENTUM
                             {'MKT_SYMBOL': 'POWERINDIA', 'SECURITY_ID': '18457', 'QTY': 1},
-                            {'MKT_SYMBOL': 'WABAG',      'SECURITY_ID': '20188', 'QTY': 11},
-                            {'MKT_SYMBOL': 'MOTILALOFS', 'SECURITY_ID': '14947', 'QTY': 19},
-                            {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
-                            {'MKT_SYMBOL': 'NEULANDLAB', 'SECURITY_ID': '2406',  'QTY': 1},
-                            {'MKT_SYMBOL': 'BASF',       'SECURITY_ID': '368',   'QTY': 2},
-                            {'MKT_SYMBOL': 'NETWEB',     'SECURITY_ID': '17433', 'QTY': 5},
+                            {'MKT_SYMBOL': 'AMBER',      'SECURITY_ID': '1185',  'QTY': 2},
                             {'MKT_SYMBOL': 'ANANTRAJ',   'SECURITY_ID': '13620', 'QTY': 23},
-                            {'MKT_SYMBOL': 'PRESTIGE',   'SECURITY_ID': '20302', 'QTY': 8},
-                            {'MKT_SYMBOL': 'TVSHLTD',    'SECURITY_ID': '16853', 'QTY': 1},
+                            {'MKT_SYMBOL': 'BASF',       'SECURITY_ID': '368',   'QTY': 2},
+                            {'MKT_SYMBOL': 'BSE',        'SECURITY_ID': '19585', 'QTY': 3},
+                            {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 2},
+                            {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
+                            {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 1},
+                            {'MKT_SYMBOL': 'GLENMARK',   'SECURITY_ID': '7406',  'QTY': 7},
                             {'MKT_SYMBOL': 'HSCL',       'SECURITY_ID': '14334', 'QTY': 19},
-                            {'MKT_SYMBOL': 'MARKSANS',   'SECURITY_ID': '10579', 'QTY': 42},
                             {'MKT_SYMBOL': 'IIFLSEC',    'SECURITY_ID': '13072', 'QTY': 49},
                             {'MKT_SYMBOL': 'JUBLPHARMA', 'SECURITY_ID': '3637',  'QTY': 11},
+                            {'MKT_SYMBOL': 'KAYNES',     'SECURITY_ID': '12092', 'QTY': 2},
+                            {'MKT_SYMBOL': 'MARKSANS',   'SECURITY_ID': '10579', 'QTY': 42},
+                            {'MKT_SYMBOL': 'MOTILALOFS', 'SECURITY_ID': '14947', 'QTY': 19},
+                            {'MKT_SYMBOL': 'MCX',        'SECURITY_ID': '31181', 'QTY': 2},
+                            {'MKT_SYMBOL': 'NETWEB',     'SECURITY_ID': '17433', 'QTY': 5},
+                            {'MKT_SYMBOL': 'NEULANDLAB', 'SECURITY_ID': '2406',  'QTY': 1},
+                            {'MKT_SYMBOL': 'OFSS',       'SECURITY_ID': '10738', 'QTY': 1},
+                            {'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 2},
+                            {'MKT_SYMBOL': 'POLYMED',    'SECURITY_ID': '25718', 'QTY': 4},
+                            {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 5},
+                            {'MKT_SYMBOL': 'SUVENPHAR',  'SECURITY_ID': '17945', 'QTY': 9},
+                            {'MKT_SYMBOL': 'TRENT',      'SECURITY_ID': '1964',  'QTY': 2},
+                            {'MKT_SYMBOL': 'WABAG',      'SECURITY_ID': '20188', 'QTY': 11}
                             ]
 
             self.squareOff = False

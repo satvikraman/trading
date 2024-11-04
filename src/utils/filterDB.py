@@ -57,6 +57,32 @@ class app():
             filterDate += datetime.timedelta(days=1)
             print("----")
 
+    def filterInvestOrder(self):
+        start = datetime.date(2024, 10, 8)
+        end = datetime.date(2024, 10, 31)
+        filterDate = start
+        while filterDate <= end:        
+            print("Filtering txs on : ", filterDate)
+            dbDicts = self.__persistence.getDb([['SOURCE', 'iCLICK-2-INVEST']])
+            for dbDict in dbDicts:
+                for orderDict in dbDict['OPEN_ORDERS']:
+                    if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
+                        print('OPEN DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
+
+                for orderDict in dbDict['CLOSE_ORDERS']:
+                    if filterDate.strftime("%d-%b-%Y") in orderDict['CREATE_TIME'] and orderDict['TRADED_QTY'] > 0:
+                        print('CLOSE DATE: ', filterDate, 'STOCK: ', 'Tx: ', orderDict['BUY_SELL'], dbDict['MKT_SYMBOL'], orderDict)
+
+            filterDate += datetime.timedelta(days=1)
+            print("----")        
+
+
+    def filterActiveOrder(self):
+        dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+        for dbDict in dbDicts:
+            print(dbDict)
+            print("----")  
+
     def filterZeroStopLossRecs(self):
         dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
         for dbDict in dbDicts:
@@ -79,4 +105,6 @@ if __name__ == '__main__':
     filter = app('./src/paytm/db/payTmMoney.json')
     #filter.filterMarginStrategyRecs()
     #filter.filterSROrder()
-    filter.filterZeroStopLossRecs()
+    filter.filterActiveOrder()
+    #filter.filterZeroStopLossRecs()
+    #filter.filterInvestOrder()

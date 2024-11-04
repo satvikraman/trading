@@ -58,14 +58,7 @@ class TradingRecommendations():
         return True
 
 
-    def __sanityCheck(self, rowDict):
-        if rowDict['SOURCE'] != 'XL':
-            if 'QTY' in rowDict and rowDict['QTY'] > 0:
-                rowDict['ADD_PREFIX'] = 'AR-'
-                if rowDict['ACTION'] != 'INIT_TRADE':
-                    rowDict['SOURCE'] = rowDict['ADD_PREFIX'] + rowDict['SOURCE']
-                    rowDict['STRATEGY'] = rowDict['ADD_PREFIX'] + rowDict['STRATEGY']
-        
+    def __sanityCheck(self, rowDict):        
         # All INIT_TRADE's should have the REC_STATUS as OPEN. POS_HOLD_STATUS can be POSITION but we are not worried about that here
         if rowDict['ACTION'] == 'INIT_TRADE' and rowDict['REC_STATUS'] != 'OPEN':
             rowDict = {}
@@ -167,4 +160,4 @@ if __name__ == '__main__':
         # Start closing all positions as soon as it is 3:00PM
         marketOpen = datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25) 
         tradeRec.readandSendRec()
-        time.sleep(1)
+        time.sleep(15)
