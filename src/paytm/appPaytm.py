@@ -84,17 +84,13 @@ class AppPaytmBroker():
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [ 
                             # MOMENTUM
-                            {'MKT_SYMBOL': 'POWERINDIA', 'SECURITY_ID': '18457', 'QTY': 1},
                             {'MKT_SYMBOL': 'AMBER',      'SECURITY_ID': '1185',  'QTY': 2},
                             {'MKT_SYMBOL': 'ANANTRAJ',   'SECURITY_ID': '13620', 'QTY': 23},
-                            {'MKT_SYMBOL': 'BASF',       'SECURITY_ID': '368',   'QTY': 2},
                             {'MKT_SYMBOL': 'BSE',        'SECURITY_ID': '19585', 'QTY': 3},
                             {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 2},
                             {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
                             {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 1},
                             {'MKT_SYMBOL': 'GLENMARK',   'SECURITY_ID': '7406',  'QTY': 7},
-                            {'MKT_SYMBOL': 'HSCL',       'SECURITY_ID': '14334', 'QTY': 19},
-                            {'MKT_SYMBOL': 'IIFLSEC',    'SECURITY_ID': '13072', 'QTY': 49},
                             {'MKT_SYMBOL': 'JUBLPHARMA', 'SECURITY_ID': '3637',  'QTY': 11},
                             {'MKT_SYMBOL': 'KAYNES',     'SECURITY_ID': '12092', 'QTY': 2},
                             {'MKT_SYMBOL': 'MARKSANS',   'SECURITY_ID': '10579', 'QTY': 42},
@@ -107,7 +103,6 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'POLYMED',    'SECURITY_ID': '25718', 'QTY': 4},
                             {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 5},
                             {'MKT_SYMBOL': 'SUVENPHAR',  'SECURITY_ID': '17945', 'QTY': 9},
-                            {'MKT_SYMBOL': 'TRENT',      'SECURITY_ID': '1964',  'QTY': 2},
                             {'MKT_SYMBOL': 'WABAG',      'SECURITY_ID': '20188', 'QTY': 11}
                             ]
 
@@ -178,7 +173,7 @@ class AppPaytmBroker():
             if not dbHolding['IN_HOLD'] and dbHolding['HOLD_QTY'] > 0:
                 found = False
                 for holding in self.__holdings:
-                    if (holding['SECURITY_ID'] == dbHolding['SECURITY_ID']):
+                    if (holding['MKT_SYMBOL'] == dbHolding['MKT_SYMBOL']):
                         if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:
@@ -194,7 +189,7 @@ class AppPaytmBroker():
             if not holding['IN_DB'] and holding['HOLD_QTY'] > 0:
                 found = False
                 for dbHolding in dbHoldings:
-                    if holding['MKT_SYMBOL'] == dbHolding['SECURITY_ID']:
+                    if holding['MKT_SYMBOL'] == dbHolding['MKT_SYMBOL']:
                         if holding['HOLD_QTY'] == dbHolding['HOLD_QTY']:
                             found = holding['IN_DB'] = dbHolding['IN_HOLD'] = True
                         else:

@@ -110,7 +110,7 @@ class payTmMoney:
         mobile.send_keys(os.environ.get('mobile', ''))
         pwd = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/div[1]/fieldset/input', 'PRESENCE')
         pwd.send_keys(os.environ.get('paytm_pwd', ''))
-        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/span/button', 'CLICKABLE')
+        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/button', 'CLICKABLE')
 
         self.__google.writeToCell('A12', 'A12', [['Enter the 6 digit OTP1']])
         OTPnotrecv = True
