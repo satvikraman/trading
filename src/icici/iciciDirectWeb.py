@@ -109,7 +109,7 @@ class IciciDirectWeb():
                 self.loginICICIDirect()
 
             # Click on Research
-            research = self.__getWebElement("//*[@id='pnlmnuprod']/ul/li[12]/a", 'CLICKABLE')
+            research = self.__getWebElement("//*[@id='pnlmnuprod']/ul/li[11]/a", 'CLICKABLE')
 
             # Click on IClick2Gain
             iclick2gain = self.__getWebElement("//*[@id='pnlmnudsp']/div[1]/div/ul/li[2]/a", 'CLICKABLE')
@@ -129,7 +129,7 @@ class IciciDirectWeb():
                 self.loginICICIDirect()
 
             # Click on Research
-            research = self.__getWebElement("//*[@id='pnlmnuprod']/ul/li[12]/a", 'CLICKABLE')
+            research = self.__getWebElement("//*[@id='pnlmnuprod']/ul/li[11]/a", 'CLICKABLE')
             # Click on IClick2Invest
             iclick2invest = self.__getWebElement("//*[@id='pnlmnudsp']/div[1]/div/ul/li[1]/a", 'CLICKABLE')
             

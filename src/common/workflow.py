@@ -599,6 +599,9 @@ class Workflow():
     
 
     def __openPosition(self, persistenceInst, dbDict, recPriceChange=False):
+        if not self.__parent.openPosition:
+            return False, dbDict
+
         # If there is an pending open order in the system return
         if self.hasPendingOrders(dbDict, filter='OPEN'):
             if recPriceChange:

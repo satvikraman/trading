@@ -73,6 +73,7 @@ class AppPaytmBroker():
             else:
                 self.__payTmMoney = payTmMoney(self.__logger, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'])
 
+            self.openPosition = self.__config['APP']['OPEN_POSITIOIN'].upper() == 'YES'
             self.portfolioSize = int(self.__config['APP']['PORTFOLIO_SIZE'])
             self.percLossPerTrade = float(self.__config['APP']['PERC_LOSS_PER_TRADE'])
             self.amountPerOrder = int(self.__config['APP']['AMOUNT_PER_ORDER'])
@@ -84,26 +85,32 @@ class AppPaytmBroker():
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [ 
                             # MOMENTUM
-                            {'MKT_SYMBOL': 'AMBER',      'SECURITY_ID': '1185',  'QTY': 2},
-                            {'MKT_SYMBOL': 'ANANTRAJ',   'SECURITY_ID': '13620', 'QTY': 23},
-                            {'MKT_SYMBOL': 'BSE',        'SECURITY_ID': '19585', 'QTY': 3},
-                            {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 2},
+                            {'MKT_SYMBOL': 'AMBER',      'SECURITY_ID': '1185',  'QTY': 3},
+                            {'MKT_SYMBOL': 'ANANTRAJ',   'SECURITY_ID': '13620', 'QTY': 28},
+                            {'MKT_SYMBOL': 'BSE',        'SECURITY_ID': '19585', 'QTY': 4},
+                            {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 3},
                             {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
-                            {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 1},
-                            {'MKT_SYMBOL': 'GLENMARK',   'SECURITY_ID': '7406',  'QTY': 7},
-                            {'MKT_SYMBOL': 'JUBLPHARMA', 'SECURITY_ID': '3637',  'QTY': 11},
-                            {'MKT_SYMBOL': 'KAYNES',     'SECURITY_ID': '12092', 'QTY': 2},
-                            {'MKT_SYMBOL': 'MARKSANS',   'SECURITY_ID': '10579', 'QTY': 42},
-                            {'MKT_SYMBOL': 'MOTILALOFS', 'SECURITY_ID': '14947', 'QTY': 19},
-                            {'MKT_SYMBOL': 'MCX',        'SECURITY_ID': '31181', 'QTY': 2},
-                            {'MKT_SYMBOL': 'NETWEB',     'SECURITY_ID': '17433', 'QTY': 5},
-                            {'MKT_SYMBOL': 'NEULANDLAB', 'SECURITY_ID': '2406',  'QTY': 1},
+                            {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 2},
+                            {'MKT_SYMBOL': 'CDSL',       'SECURITY_ID': '21174', 'QTY': 10},
+                            {'MKT_SYMBOL': 'BAJAJHLDNG', 'SECURITY_ID': '305',   'QTY': 2},
+                            {'MKT_SYMBOL': 'KAYNES',     'SECURITY_ID': '12092', 'QTY': 3},
+                            {'MKT_SYMBOL': 'NEWGEN',     'SECURITY_ID': '1164',  'QTY': 11},
+                            {'MKT_SYMBOL': 'MOTILALOFS', 'SECURITY_ID': '14947', 'QTY': 20},
+                            {'MKT_SYMBOL': 'MCX',        'SECURITY_ID': '31181', 'QTY': 3},
+                            {'MKT_SYMBOL': 'POLICYBZR',  'SECURITY_ID': '6656',  'QTY': 9},
                             {'MKT_SYMBOL': 'OFSS',       'SECURITY_ID': '10738', 'QTY': 1},
-                            {'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 2},
-                            {'MKT_SYMBOL': 'POLYMED',    'SECURITY_ID': '25718', 'QTY': 4},
-                            {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 5},
-                            {'MKT_SYMBOL': 'SUVENPHAR',  'SECURITY_ID': '17945', 'QTY': 9},
-                            {'MKT_SYMBOL': 'WABAG',      'SECURITY_ID': '20188', 'QTY': 11}
+                            {'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 3},
+                            {'MKT_SYMBOL': 'POLYMED',    'SECURITY_ID': '25718', 'QTY': 7},
+                            {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 9},
+                            {'MKT_SYMBOL': 'CRISIL',     'SECURITY_ID': '757',   'QTY': 3},
+                            {'MKT_SYMBOL': 'KFINTECH',   'SECURITY_ID': '13359', 'QTY': 12},
+                            {'MKT_SYMBOL': 'CAPLIPOINT', 'SECURITY_ID': '3906',  'QTY': 9},
+                            {'MKT_SYMBOL': 'LLOYDSME',   'SECURITY_ID': '17313', 'QTY': 19},
+                            {'MKT_SYMBOL': 'DEEPAKFERT', 'SECURITY_ID': '827',   'QTY': 15},
+                            {'MKT_SYMBOL': 'NAUKRI',     'SECURITY_ID': '13751', 'QTY': 2},
+                            {'MKT_SYMBOL': 'COFORGE',    'SECURITY_ID': '11543', 'QTY': 2},
+                            {'MKT_SYMBOL': 'CAMS',       'SECURITY_ID': '342',   'QTY': 4},
+                            {'MKT_SYMBOL': 'IGIL',       'SECURITY_ID': '28378', 'QTY': 35}
                             ]
 
             self.squareOff = False

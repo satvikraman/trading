@@ -58,8 +58,8 @@ class app():
             print("----")
 
     def filterInvestOrder(self):
-        start = datetime.date(2024, 11, 1)
-        end = datetime.date(2024, 12, 7)
+        start = datetime.date(2025, 1, 1)
+        end = datetime.date(2025, 1, 3)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -83,6 +83,14 @@ class app():
             print(dbDict)
             print("----")  
 
+    def filterOpenOrder(self):
+        dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', 'OPEN']])
+        for dbDict in dbDicts:
+            print(dbDict)
+            newQty = int(5000 / dbDict['HIGH_REC_PRICE'])
+            print(dbDict['QTY'], '-->', newQty)
+            print("----")              
+
     def filterZeroStopLossRecs(self):
         dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
         for dbDict in dbDicts:
@@ -94,7 +102,7 @@ class app():
         dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE'], ['VISIBLE', 'HIDDEN']])
         for dbDict in dbDicts:
             print(dbDict)
-            print("----")   
+ 
 
     def filterDb(self):
         dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE'], ['STRATEGY', 'MARGIN|AR-MARGIN']])
@@ -111,6 +119,7 @@ if __name__ == '__main__':
     #filter.filterMarginStrategyRecs()
     #filter.filterSROrder()
     #filter.filterActiveOrder()
-    filter.filterHiddenRecs()
+    #filter.filterHiddenRecs()
     #filter.filterZeroStopLossRecs()
-    #filter.filterInvestOrder()
+    filter.filterInvestOrder()
+    #filter.filterOpenOrder()
