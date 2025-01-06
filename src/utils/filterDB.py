@@ -83,6 +83,12 @@ class app():
             print(dbDict)
             print("----")  
 
+    def filterActiveBreezeOrder(self):
+        dbDicts = self.__persistence.getDb([['SOURCE', 'BREEZE-iCLICK'], ['POS_HOLD_STATUS', '!CLOSE']])
+        for dbDict in dbDicts:
+            print(dbDict)
+            print("----") 
+
     def filterOpenOrder(self):
         dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', 'OPEN']])
         for dbDict in dbDicts:
@@ -119,7 +125,8 @@ if __name__ == '__main__':
     #filter.filterMarginStrategyRecs()
     #filter.filterSROrder()
     #filter.filterActiveOrder()
+    filter.filterActiveBreezeOrder()
     #filter.filterHiddenRecs()
     #filter.filterZeroStopLossRecs()
-    filter.filterInvestOrder()
+    #filter.filterInvestOrder()
     #filter.filterOpenOrder()

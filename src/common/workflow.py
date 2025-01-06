@@ -1132,12 +1132,12 @@ class Workflow():
                 val = dbDict['MKT_SYMBOL'] + '-' + dbDict['STRATEGY'] + '-' + dbDict['REC_DATE'] + '-' + dbDict['REC_TIME']
                 visibilityDict['VISIBLE'].append(val)
                 dbDict['VISIBLE'] = 'VISIBLE'
-                persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                persistenceInst.updateDb(dbDict, [['SOURCE', source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 self.__logger.info("Changing rec's visibility to visible => %s", dbDict)
             elif dbDict['REC_STATUS'] != 'CLOSE':
                 dbDict['VISIBLE'] = 'HIDDEN'
                 dbDict['REC_STATUS'] = 'CLOSE'
-                persistenceInst.updateDb(dbDict, [[dbDict['SOURCE'], source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+                persistenceInst.updateDb(dbDict, [['SOURCE', source], ['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
                 self.__logger.info("Changing the visibility to hidden and closing the rec => %s", dbDict)
         self.__callRestAPI(visibilityDict, baseURL, 'v1/visibility')
 
