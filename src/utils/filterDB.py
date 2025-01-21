@@ -59,7 +59,7 @@ class app():
 
     def filterInvestOrder(self):
         start = datetime.date(2025, 1, 1)
-        end = datetime.date(2025, 1, 3)
+        end = datetime.date(2025, 1, 12)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -125,8 +125,8 @@ if __name__ == '__main__':
     #filter.filterMarginStrategyRecs()
     #filter.filterSROrder()
     #filter.filterActiveOrder()
-    filter.filterActiveBreezeOrder()
+    #filter.filterActiveBreezeOrder()
     #filter.filterHiddenRecs()
     #filter.filterZeroStopLossRecs()
     #filter.filterInvestOrder()
-    #filter.filterOpenOrder()
+    filter.filterOpenOrder()

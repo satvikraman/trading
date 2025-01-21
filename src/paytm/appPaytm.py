@@ -103,7 +103,6 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'POLYMED',    'SECURITY_ID': '25718', 'QTY': 7},
                             {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 9},
                             {'MKT_SYMBOL': 'CRISIL',     'SECURITY_ID': '757',   'QTY': 3},
-                            {'MKT_SYMBOL': 'KFINTECH',   'SECURITY_ID': '13359', 'QTY': 17},
                             {'MKT_SYMBOL': 'CAPLIPOINT', 'SECURITY_ID': '3906',  'QTY': 9},
                             {'MKT_SYMBOL': 'LLOYDSME',   'SECURITY_ID': '17313', 'QTY': 19},
                             {'MKT_SYMBOL': 'DEEPAKFERT', 'SECURITY_ID': '827',   'QTY': 21},

@@ -225,9 +225,9 @@ class IciciDirectWeb():
                             else:
                                 time.sleep(1)
 
-                        otpIn = self.__getWebElement("//*[@id='frmotp']/div/div[4]/div//input", 'PRESENCE', singular=False)
                         for i in range(len(value[0][0])):
-                            otpIn[i].send_keys(int(value[0][0][i]))
+                            otpIn = self.__getWebElement(f"//*[@id='frmotp']/div[4]/div/div[{i+1}]/input", 'PRESENCE', singular=True)
+                            otpIn.send_keys(int(value[0][0][i]))
                     else:
                         input("Wait for the user to enter OTP")
                 else:
