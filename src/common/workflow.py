@@ -169,6 +169,21 @@ class Workflow():
         assert status, 'Open orders check failed'    
 
 
+    def recalOpenPositions(self, persistenceInsts, amountPerOrder):
+        status = True
+        for persistenceInst in persistenceInsts:
+            if persistenceInst == None:
+                continue
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POSITION', 'OPEN']])
+            for dbDict in dbDicts:
+                qty = max(int(amountPerOrder / dbDict['HIGH_REC_PRICE']), 1)
+                if dbDict['QTY'] != qty:
+                    self.__logger.info("Stock = %s, Strategy = %s REC_DATE = %s : Changing qty from %d -> %d", 
+                                            dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['QTY'], qty)
+                    dbDict['QTY'] = qty
+                    res = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]])
+
+
     def __moveOldPosToHolding(self, persistenceInsts):
         for persistenceInst in persistenceInsts:
             if persistenceInst == None:

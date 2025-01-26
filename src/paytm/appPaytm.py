@@ -91,13 +91,8 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 3},
                             {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
                             {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 2},
-                            #{'MKT_SYMBOL': 'CDSL',       'SECURITY_ID': '21174', 'QTY': 14},
                             {'MKT_SYMBOL': 'BAJAJHLDNG', 'SECURITY_ID': '305',   'QTY': 2},
-                            #{'MKT_SYMBOL': 'KAYNES',     'SECURITY_ID': '12092', 'QTY': 3},
-                            #{'MKT_SYMBOL': 'NEWGEN',     'SECURITY_ID': '1164',  'QTY': 11},
-                            #{'MKT_SYMBOL': 'MCX',        'SECURITY_ID': '31181', 'QTY': 3},
                             {'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 3},
-                            #{'MKT_SYMBOL': 'POLYMED',    'SECURITY_ID': '25718', 'QTY': 7},
                             {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 9},
                             {'MKT_SYMBOL': 'CRISIL',     'SECURITY_ID': '757',   'QTY': 3},
                             {'MKT_SYMBOL': 'CAPLIPOINT', 'SECURITY_ID': '3906',  'QTY': 9},
@@ -226,6 +221,16 @@ class AppPaytmBroker():
 
     def openPayTmMoneySession(self):
         self.__payTmMoney.payTmLogin(self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
+
+
+    def calAmountPerOrder(self):
+        if self.__config['APP']['COMPUTE_FUND_TO_TRADE'].upper() == 'YES':
+            availFund = self.__payTmMoney.get_funds_summary() - int(self.__config['APP']['FUND_NOT_FOR_TRADE'])
+            assert(availFund > 0)
+            numTrades = int(self.__config['APP']['NUM_TRADES_TO_DIV_FUND'])
+            self.amountPerOrder = int(availFund / numTrades)        
+        persistenceInsts = [self.persistenceInv]
+        self.__workflow.recalOpenPositions(persistenceInsts, self.amountPerOrder)
 
 
     def checkOpenOrders(self):
@@ -437,6 +442,7 @@ if __name__ == '__main__':
 
     # Connect w/ PayTm's API gateway
     trade.openPayTmMoneySession()
+    trade.calAmountPerOrder()
 
     portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=8, minute=00)
     portfolioReconcile = True

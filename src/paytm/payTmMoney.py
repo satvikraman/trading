@@ -212,6 +212,11 @@ class payTmMoney:
         return wsclient
 
 
+    def get_funds_summary(self):
+        funds = self.__pm.funds_summary()
+        return funds['data']['funds_summary']['opening_balance']
+
+
     def edisValidateTpin(self, isinList):
         res = self.__pm.validate_tpin('PRE', isinList)
         print(res)
