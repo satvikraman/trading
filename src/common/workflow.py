@@ -71,9 +71,9 @@ class Workflow():
         return modDbDict, dbDict
 
 
-    def __switchFnoToiCLICK(self, recDict, dbDict):
+    def __switchSource(self, recDict, dbDict):
         status = False
-        if dbDict['SOURCE'] == 'BREEZE-FnO' and recDict['SOURCE'] == 'BREEZE-iCLICK':
+        if (dbDict['SOURCE'] == 'BREEZE-FnO' and recDict['SOURCE'] == 'BREEZE-iCLICK') or (dbDict['SOURCE'] == 'BREEZE-iCLICK' and recDict['SOURCE'] == 'iCLICK-2-GAIN'):
             self.__logger.info("Switching dbDict %s-%s-%s-%s dbDict SOURCE: %s to recDict %s-%s-%s-%s recDict SOURCE: %s", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['SOURCE'], recDict['MKT_SYMBOL'], recDict['STRATEGY'], recDict['REC_DATE'], recDict['REC_TIME'], recDict['SOURCE'])
             dbDict['SOURCE'] = recDict['SOURCE']
             dbDict['MKT_SYMBOL'] = recDict['MKT_SYMBOL']
@@ -174,7 +174,7 @@ class Workflow():
         for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
-            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POSITION', 'OPEN']])
+            dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN'], ['POS_HOLD_STATUS', 'OPEN']])
             for dbDict in dbDicts:
                 qty = max(int(amountPerOrder / dbDict['HIGH_REC_PRICE']), 1)
                 if dbDict['QTY'] != qty:
@@ -818,7 +818,7 @@ class Workflow():
         dbDictRecTime = dbDict['REC_TIME']
 
         status1, hasRecPriceChanged, dbDict = self.__hasChanged(recDict, dbDict)
-        status2 = self.__switchFnoToiCLICK(recDict, dbDict)
+        status2 = self.__switchSource(recDict, dbDict)
         if status1 or status2:
             status = persistenceInst.updateDb(dbDict, [['MKT_SYMBOL', mktSymbol], ['STRATEGY', dbDictStrategy], ['REC_DATE', dbDictRecDate], ['REC_TIME', dbDictRecTime]])
             self.__followOrders(persistenceInst, dbDict, hasRecPriceChanged)
