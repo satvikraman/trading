@@ -86,17 +86,13 @@ class AppPaytmBroker():
             self.__core = [ 
                             # MOMENTUM
                             {'MKT_SYMBOL': 'AMBER',      'SECURITY_ID': '1185',  'QTY': 3},
-                            {'MKT_SYMBOL': 'ANANTRAJ',   'SECURITY_ID': '13620', 'QTY': 28},
                             {'MKT_SYMBOL': 'BSE',        'SECURITY_ID': '19585', 'QTY': 4},
                             {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 3},
-                            {'MKT_SYMBOL': 'DIXON',      'SECURITY_ID': '21690', 'QTY': 1},
                             {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 2},
                             {'MKT_SYMBOL': 'BAJAJHLDNG', 'SECURITY_ID': '305',   'QTY': 2},
                             {'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 3},
                             {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 9},
-                            {'MKT_SYMBOL': 'CAPLIPOINT', 'SECURITY_ID': '3906',  'QTY': 9},
                             {'MKT_SYMBOL': 'LLOYDSME',   'SECURITY_ID': '17313', 'QTY': 19},
-                            {'MKT_SYMBOL': 'DEEPAKFERT', 'SECURITY_ID': '827',   'QTY': 21},
                             {'MKT_SYMBOL': 'NAUKRI',     'SECURITY_ID': '13751', 'QTY': 2},
                             {'MKT_SYMBOL': 'COFORGE',    'SECURITY_ID': '11543', 'QTY': 2},
                             {'MKT_SYMBOL': 'IGIL',       'SECURITY_ID': '28378', 'QTY': 35},
