@@ -85,7 +85,6 @@ class AppPaytmBroker():
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [ 
                             # MOMENTUM
-                            {'MKT_SYMBOL': 'AMBER',      'SECURITY_ID': '1185',  'QTY': 3},
                             {'MKT_SYMBOL': 'BSE',        'SECURITY_ID': '19585', 'QTY': 4},
                             {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 3},
                             {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 2},
@@ -222,7 +221,8 @@ class AppPaytmBroker():
             availFund = self.__payTmMoney.get_funds_summary() - int(self.__config['APP']['FUND_NOT_FOR_TRADE'])
             assert(availFund > 0)
             numTrades = int(self.__config['APP']['NUM_TRADES_TO_DIV_FUND'])
-            self.amountPerOrder = int(availFund / numTrades)        
+            self.amountPerOrder = int(availFund / numTrades)
+            self.__logger.info('calAmountPerOrder: Max Amount Per Cash Order changed to %d', self.amountPerOrder)
         persistenceInsts = [self.persistenceInv]
         self.__workflow.recalOpenPositions(persistenceInsts, self.amountPerOrder)
 

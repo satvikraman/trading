@@ -156,7 +156,7 @@ class AppIcici():
         self.__workflow.sendNonAckedRecsFromDb(self.persistenceInv, self.__paytmBaseURL)
 
         # Scrape recommendations from iClick2Invest
-        if True:
+        if False:
             self.__iciciDirectWeb.browseResearchToClick_2_Invest()
             self.__iciciDirectWeb.scrapeiClick2Invest()
             for invRecDict in self.__iciciDirectWeb.getNextiCLICK_2_INVESTTblRow():
@@ -190,7 +190,8 @@ class AppIcici():
 
     def runPostMarketCloseChecks(self):
         self.__logger.info("Checking for mismatched visibility")
-        self.__workflow.updateMismatchedVisibility(self.persistenceInv, 'iCLICK-2-INVEST', 'EQUITY', self.__paytmBaseURL)
+        if False:
+            self.__workflow.updateMismatchedVisibility(self.persistenceInv, 'iCLICK-2-INVEST', 'EQUITY', self.__paytmBaseURL)
         if self.__browseIClick2Gain:
             self.__workflow.updateMismatchedVisibility(self.persistenceInv, 'iCLICK-2-GAIN', 'EQUITY', self.__paytmBaseURL)
             self.__workflow.updateMismatchedVisibility(self.persistenceFnO, 'iCLICK-2-GAIN', 'DERIVATIVE', None)
