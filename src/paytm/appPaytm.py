@@ -85,17 +85,17 @@ class AppPaytmBroker():
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [ 
                             # MOMENTUM
-                            {'MKT_SYMBOL': 'BSE',        'SECURITY_ID': '19585', 'QTY': 4},
-                            {'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 3},
-                            {'MKT_SYMBOL': 'GILLETTE',   'SECURITY_ID': '1576',  'QTY': 2},
-                            {'MKT_SYMBOL': 'BAJAJHLDNG', 'SECURITY_ID': '305',   'QTY': 2},
-                            {'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 3},
-                            {'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 9},
-                            {'MKT_SYMBOL': 'LLOYDSME',   'SECURITY_ID': '17313', 'QTY': 19},
-                            {'MKT_SYMBOL': 'NAUKRI',     'SECURITY_ID': '13751', 'QTY': 2},
-                            {'MKT_SYMBOL': 'COFORGE',    'SECURITY_ID': '11543', 'QTY': 2},
-                            {'MKT_SYMBOL': 'IGIL',       'SECURITY_ID': '28378', 'QTY': 35},
-                            {'MKT_SYMBOL': 'ONESOURCE',  'SECURITY_ID': '00000', 'QTY': 10}
+                            #{'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 3},
+                            #{'MKT_SYMBOL': 'BAJAJHLDNG', 'SECURITY_ID': '305',   'QTY': 2},
+                            #{'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 3},
+                            #{'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 9},
+                            #{'MKT_SYMBOL': 'LLOYDSME',   'SECURITY_ID': '17313', 'QTY': 19},
+                            {'MKT_SYMBOL': 'IGIL',        'SECURITY_ID': '28378', 'QTY': 35},
+                            {'MKT_SYMBOL': 'ONESOURCE',   'SECURITY_ID': '00000', 'QTY': 10},
+                            # SATVIK    
+                            {'MKT_SYMBOL': 'GOLDSHARE',   'SECURITY_ID': '14535', 'QTY': 593},
+                            {'MKT_SYMBOL': 'DRREDDY',     'SECURITY_ID': '881',   'QTY': 2},
+                            {'MKT_SYMBOL': 'BAJAJFINSV',  'SECURITY_ID': '16675', 'QTY': 1},
                             ]
 
             self.squareOff = False

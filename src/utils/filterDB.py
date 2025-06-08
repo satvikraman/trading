@@ -58,8 +58,8 @@ class app():
             print("----")
 
     def filterInvestOrder(self):
-        start = datetime.date(2025, 1, 1)
-        end = datetime.date(2025, 1, 12)
+        start = datetime.date(2025, 2, 6)
+        end = datetime.date(2025, 2, 21)
         filterDate = start
         while filterDate <= end:        
             print("Filtering txs on : ", filterDate)
@@ -77,8 +77,11 @@ class app():
             print("----")        
 
 
-    def filterActiveOrder(self):
-        dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+    def filterActiveOrder(self, source=None):
+        if source is None:
+            dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE']])
+        else:
+            dbDicts = self.__persistence.getDb([['POS_HOLD_STATUS', '!CLOSE'], ['SOURCE', source]])
         for dbDict in dbDicts:
             print(dbDict)
             print("----")  
@@ -124,9 +127,9 @@ if __name__ == '__main__':
     filter = app('./src/paytm/db/payTmMoney.json')
     #filter.filterMarginStrategyRecs()
     #filter.filterSROrder()
-    #filter.filterActiveOrder()
+    #filter.filterActiveOrder(source='iCLICK-2-INVEST')
     #filter.filterActiveBreezeOrder()
     #filter.filterHiddenRecs()
     #filter.filterZeroStopLossRecs()
-    #filter.filterInvestOrder()
-    filter.filterOpenOrder()
+    filter.filterInvestOrder()
+    #filter.filterOpenOrder()

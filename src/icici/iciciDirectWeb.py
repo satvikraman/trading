@@ -43,11 +43,12 @@ class IciciDirectWeb():
         self.__google = None
         if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
-            #options = webdriver.ChromeOptions()
+            options = webdriver.ChromeOptions()
+            options.add_argument("--log-level=3")
             #options.add_argument(r'--user-data-dir=C:\\Users\\araman\\AppData\\Local\\Google\\Chrome\\User Data') #e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
             #options.add_argument(r'--profile-directory=Default')
-            #self.__browser = webdriver.Chrome(self.__browserDriver, chrome_options=options)
-            self.__browser = webdriver.Chrome(self.__browserDriver)
+            self.__browser = webdriver.Chrome(self.__browserDriver, chrome_options=options)
+            #self.__browser = webdriver.Chrome(self.__browserDriver)
         elif browser == 'EDGE':
             self.__browserDriver = edgeBrowser
             self.__browser = webdriver.Edge(self.__browserDriver)
