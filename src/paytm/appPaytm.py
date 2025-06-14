@@ -93,7 +93,7 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'IGIL',        'SECURITY_ID': '28378', 'QTY': 35},
                             {'MKT_SYMBOL': 'ONESOURCE',   'SECURITY_ID': '00000', 'QTY': 10},
                             # SATVIK    
-                            {'MKT_SYMBOL': 'GOLDSHARE',   'SECURITY_ID': '14535', 'QTY': 593},
+                            {'MKT_SYMBOL': 'GOLDSHARE',   'SECURITY_ID': '14535', 'QTY': 1187},
                             {'MKT_SYMBOL': 'DRREDDY',     'SECURITY_ID': '881',   'QTY': 2},
                             {'MKT_SYMBOL': 'BAJAJFINSV',  'SECURITY_ID': '16675', 'QTY': 1},
                             ]
