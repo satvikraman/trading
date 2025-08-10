@@ -349,7 +349,6 @@ class IciciDirectBreeze():
         tickDict = None
         
         if 'stock_name' in ticks:
-            self.__logger.info('TICKS: %s', ticks)
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'\(.*$', '', ticks['stock_name'])
@@ -358,6 +357,7 @@ class IciciDirectBreeze():
             tickDict['BUY_SELL'] = ticks['action_type'].upper()
             if not self.__parent.strategiesToInvest(tickDict['SOURCE'], tickDict['STRATEGY']):
                 return None
+            self.__logger.info('TICKS: %s', ticks)
 
             recDateTime = ticks['recommended_date'].split(' ')
             tickDict['REC_DATE'] = datetime.datetime.strptime(recDateTime[0], '%Y-%m-%d').strftime('%d-%b-%Y')
@@ -392,7 +392,7 @@ class IciciDirectBreeze():
             if tickDict['PRODUCT'] == 'MARGIN' and tickDict['BUY_SELL'] == 'BUY' and self.__parent.MarginBuyAsCash:
                 tickDict['PRODUCT'] = 'CASH'
         elif 'strategy_date' in ticks:
-            self.__logger.info('TICKS: %s', ticks)
+            #self.__logger.info('TICKS: %s', ticks)
             tickDict = {}
             # Mandatory keys
             tickDict['STOCK'] = re.sub(r'^\s+|\s+$', '', ticks['underlying'])

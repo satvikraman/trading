@@ -125,6 +125,9 @@ class AppIciciDirectBreezeBroker():
             self.websocketSubscription('ADD', '4.1!1660')
             if self.tradeIntraDay or self.tradeFno:
                 self.__workflow.refreshCMP(self.persistenceInsts)
+            
+            if not self.__workflow.ping_paytm():
+                exit()
 
 
     def downloadDataset(self):

@@ -93,9 +93,10 @@ class AppPaytmBroker():
                             {'MKT_SYMBOL': 'IGIL',        'SECURITY_ID': '28378', 'QTY': 35},
                             {'MKT_SYMBOL': 'ONESOURCE',   'SECURITY_ID': '00000', 'QTY': 10},
                             # SATVIK    
-                            {'MKT_SYMBOL': 'GOLDSHARE',   'SECURITY_ID': '14535', 'QTY': 1187},
-                            {'MKT_SYMBOL': 'DRREDDY',     'SECURITY_ID': '881',   'QTY': 2},
+                            {'MKT_SYMBOL': 'GOLDSHARE',   'SECURITY_ID': '14535', 'QTY': 3258},
+                            {'MKT_SYMBOL': 'SILVER',      'SECURITY_ID': '8003',  'QTY': 2183},
                             {'MKT_SYMBOL': 'BAJAJFINSV',  'SECURITY_ID': '16675', 'QTY': 1},
+                            {'MKT_SYMBOL': 'BAJFINANCE',  'SECURITY_ID': '317',   'QTY': 144},
                             ]
 
             self.squareOff = False
@@ -420,6 +421,12 @@ def rec():
     statusCode = 200 if status else 500
     return "", statusCode
 
+@flask.route('/v1/hello', methods=['POST', 'PUT'])
+def ping_paytm():
+    recDict = request.get_json()
+    status = (recDict.get("msg") == "hello")
+    statusCode = 200 if status else 500
+    return "", statusCode
 
 def flaskThread():
     flask.run(host='127.0.0.1', port=5000)
@@ -438,10 +445,10 @@ if __name__ == '__main__':
     trade.openPayTmMoneySession()
     trade.calAmountPerOrder()
 
-    portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=8, minute=00)
+    portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
     portfolioReconcile = True
     while not portfolioReconcile:
-        portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=8, minute=00)
+        portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
         time.sleep(15)
 
     # Check if the DB and the PayTm portfolio are in synch

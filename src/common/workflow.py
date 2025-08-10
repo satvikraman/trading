@@ -1133,6 +1133,21 @@ class Workflow():
         return status
 
 
+    def ping_paytm(self):
+        url = "http://localhost:5000/v1/hello"  # Replace 'localhost' if server is remote
+        payload = {"msg": "hello"}
+
+        try:
+            response = requests.post(url, json=payload)
+            if response.status_code == 200:
+                print("Connection successful: 200 OK")
+                return True
+            else:
+                print(f"Server responded with status code: {response.status_code}")
+        except Exception as e:
+            print(f"Connection failed: {e}")
+        return False
+
     def updateMismatchedVisibility(self, persistenceInst, source, product, baseURL):
         visibilityDict = {'SOURCE': source, 'PRODUCT': product, 'VISIBLE': []}
 
