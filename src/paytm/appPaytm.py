@@ -84,19 +84,24 @@ class AppPaytmBroker():
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
             self.__core = [ 
-                            # MOMENTUM
-                            #{'MKT_SYMBOL': 'DIVISLAB',   'SECURITY_ID': '10940', 'QTY': 3},
-                            #{'MKT_SYMBOL': 'BAJAJHLDNG', 'SECURITY_ID': '305',   'QTY': 2},
-                            #{'MKT_SYMBOL': 'PERSISTENT', 'SECURITY_ID': '18365', 'QTY': 3},
-                            #{'MKT_SYMBOL': 'RADICO',     'SECURITY_ID': '10990', 'QTY': 9},
-                            #{'MKT_SYMBOL': 'LLOYDSME',   'SECURITY_ID': '17313', 'QTY': 19},
+                            # IPO
                             {'MKT_SYMBOL': 'IGIL',        'SECURITY_ID': '28378', 'QTY': 35},
-                            {'MKT_SYMBOL': 'ONESOURCE',   'SECURITY_ID': '00000', 'QTY': 10},
-                            # SATVIK    
-                            {'MKT_SYMBOL': 'GOLDSHARE',   'SECURITY_ID': '14535', 'QTY': 3258},
-                            {'MKT_SYMBOL': 'SILVER',      'SECURITY_ID': '8003',  'QTY': 2183},
-                            {'MKT_SYMBOL': 'BAJAJFINSV',  'SECURITY_ID': '16675', 'QTY': 1},
-                            {'MKT_SYMBOL': 'BAJFINANCE',  'SECURITY_ID': '317',   'QTY': 144},
+                            # ET PRIME
+                            {'MKT_SYMBOL': 'AADHARHFC',   'SECURITY_ID': '23729', 'QTY': 62},
+                            {'MKT_SYMBOL': 'ADANIPORTS',  'SECURITY_ID': '15083', 'QTY': 93},
+                            {'MKT_SYMBOL': 'ATHERENERG',  'SECURITY_ID': '757645','QTY': 10},
+                            {'MKT_SYMBOL': 'CESC',        'SECURITY_ID': '628',   'QTY': 218},
+                            {'MKT_SYMBOL': 'FINCABLES',   'SECURITY_ID': '1038',  'QTY': 80},
+                            {'MKT_SYMBOL': 'GRAVITA',     'SECURITY_ID': '20534', 'QTY': 38},
+                            {'MKT_SYMBOL': 'THELEELA',    'SECURITY_ID': '757014','QTY': 53},
+                            {'MKT_SYMBOL': 'NUVAMA',      'SECURITY_ID': '18721', 'QTY': 4},
+                            {'MKT_SYMBOL': 'PFC',         'SECURITY_ID': '14299', 'QTY': 64},
+                            {'MKT_SYMBOL': 'SUZLON',      'SECURITY_ID': '12018', 'QTY': 1144},
+                            # ETF    
+                            {'MKT_SYMBOL': 'GOLDBETA',    'SECURITY_ID': '14535', 'QTY': 10663},
+                            {'MKT_SYMBOL': 'SILVER',      'SECURITY_ID': '8003',  'QTY': 7702},
+                            {'MKT_SYMBOL': 'HNGSNGBEES',  'SECURITY_ID': '18284', 'QTY': 180},
+                            {'MKT_SYMBOL': 'MON100',      'SECURITY_ID': '22739', 'QTY': 76},
                             ]
 
             self.squareOff = False
@@ -390,11 +395,13 @@ class AppPaytmBroker():
     def on_paytm_sock_close(self, close_code, close_reason):
         self.useWebsocket = False
         self.__logger.error("on_paytm_sock_close: websocket connection with PayTm closed. code: %s. reason: %s", close_code, close_reason)
+        assert self.useWebsocket, "Paytm websocket connection closed. Exiting"
 
 
     def on_paytm_sock_error(self, err):
         self.useWebsocket = False
         self.__logger.error("on_paytm_sock_error: websocket error %s", err)
+        assert self.useWebsocket, "Paytm websocket connection closed. Exiting"
 
 
 trade = AppPaytmBroker('./src/paytm/payTmMoney.ini', dryRun=False)
