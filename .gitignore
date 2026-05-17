@@ -1,4 +1,6 @@
 .env
+secrets.local.json
+local_redis_mock.json
 *.pyc
 *.log
 credentials.json

@@ -12,6 +12,7 @@ import dotenv
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException, NoSuchWindowException
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
@@ -22,8 +23,8 @@ from selenium.webdriver.support import expected_conditions as EC
 sys.path.append('../pyPMClient')
 from pmClient import PMClient
 from pmClient import WebSocketClient
-sys.path.append('./src/common')
-from googleWorkspace import googleWorkspace
+# sys.path.append('./src/common')
+# from googleWorkspace import googleWorkspace
 
 class payTmMoney:
     def __init__(self, logger, browser, chromeBrowser, edgeBrowser):
@@ -36,7 +37,7 @@ class payTmMoney:
         self.__request_token = os.environ.get('request_token', '')
         self.__state_key = os.environ.get('state_key', '')
         self.__orderBook = None
-        self.__google = None
+        # self.__google = None
         self.__browser = browser
         if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
@@ -87,21 +88,21 @@ class payTmMoney:
 
 
     def __getRequestToken(self, loginURL, spreadsheetID, sheetName):
-        self.__google = googleWorkspace(spreadsheetID, sheetName)
-        self.__google.authorize()
-        self.__google.buildSheets()
-        self.__google.buildDrive()
+        # self.__google = googleWorkspace(spreadsheetID, sheetName)
+        # self.__google.authorize()
+        # self.__google.buildSheets()
+        # self.__google.buildDrive()
         
-        self.__google.writeToCell('A11', 'B14', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
-        self.__google.writeToCell('C12', 'C13', [[' '], [' ']])
-        self.__google.writeToCell('A11', 'A11', [['Ready for PayTm login sequence']])
-        goahead = False
-        while not goahead:
-            status, value = self.__google.readFromCell('B11', 'B11')
-            if status and value[0][0].upper() == 'YES':
-                goahead = True
-            else:
-                time.sleep(1)        
+        # self.__google.writeToCell('A11', 'B14', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
+        # self.__google.writeToCell('C12', 'C13', [[' '], [' ']])
+        # self.__google.writeToCell('A11', 'A11', [['Ready for PayTm login sequence']])
+        # goahead = False
+        # while not goahead:
+        #     status, value = self.__google.readFromCell('B11', 'B11')
+        #     if status and value[0][0].upper() == 'YES':
+        #         goahead = True
+        #     else:
+        #         time.sleep(1)        
 
         self.__browser.get(loginURL)
         time.sleep(5)
@@ -112,41 +113,43 @@ class payTmMoney:
         pwd.send_keys(os.environ.get('paytm_pwd', ''))
         self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/button', 'CLICKABLE')
 
-        self.__google.writeToCell('A12', 'A12', [['Enter the 6 digit OTP1']])
-        OTPnotrecv = True
-        while OTPnotrecv:
-            status, value = self.__google.readFromCell('B12', 'C12')
-            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
-                OTPnotrecv = False
-            else:
-                time.sleep(1)
+        # self.__google.writeToCell('A12', 'A12', [['Enter the 6 digit OTP1']])
+        # OTPnotrecv = True
+        # while OTPnotrecv:
+        #     status, value = self.__google.readFromCell('B12', 'C12')
+        #     if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
+        #         OTPnotrecv = False
+        #     else:
+        #         time.sleep(1)
 
-        otpIn = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div[2]/div[2]/div/input', 'PRESENCE', False)
-        for i in range(len(value[0][0])):
-            otpIn[i].send_keys(int(value[0][0][i]))        
-        time.sleep(1)
-        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[3]/span/button', 'CLICKABLE')
-        time.sleep(5)
-        self.__getWebElement('//*[@id="newroot"]/div/div/div/div[1]/div[2]/div/div[2]/button', 'CLICKABLE')
+        # otpIn = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div[2]/div[2]/div/input', 'PRESENCE', False)
+        # for i in range(len(value[0][0])):
+        #     otpIn[i].send_keys(int(value[0][0][i]))        
+        # time.sleep(1)
+        # self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[3]/span/button', 'CLICKABLE')
+        # time.sleep(5)
+        # self.__getWebElement('//*[@id="newroot"]/div/div/div/div[1]/div[2]/div/div[2]/button', 'CLICKABLE')
 
-        self.__google.writeToCell('A13', 'A13', [['Enter the 6 digit OTP2']])
-        OTPnotrecv = True
-        while OTPnotrecv:
-            status, value = self.__google.readFromCell('B13', 'C13')
-            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
-                OTPnotrecv = False
-            else:
-                time.sleep(1)
-        otpIn = self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[2]/div/div[2]/div/div/input', 'PRESENCE', False)
-        for i in range(len(value[0][0])):
-            otpIn[i].send_keys(int(value[0][0][i]))
-        time.sleep(1)
-        self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[3]/button', 'CLICKABLE')
+        # self.__google.writeToCell('A13', 'A13', [['Enter the 6 digit OTP2']])
+        # OTPnotrecv = True
+        # while OTPnotrecv:
+        #     status, value = self.__google.readFromCell('B13', 'C13')
+        #     if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
+        #         OTPnotrecv = False
+        #     else:
+        #         time.sleep(1)
+        # otpIn = self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[2]/div/div[2]/div/div/input', 'PRESENCE', False)
+        # for i in range(len(value[0][0])):
+        #     otpIn[i].send_keys(int(value[0][0][i]))
+        # time.sleep(1)
+        # self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[3]/button', 'CLICKABLE')
+
+        input('Please press Enter to continue: ')
 
         requestToken = re.search(r'.*&requestToken=(\w+)&.*', self.__browser.current_url, re.IGNORECASE)
-        if requestToken != None:
-            requestToken = requestToken.group(1)
-            self.__google.writeToCell('A14', 'A14', [['Got request Token successfully']])
+        # if requestToken != None:
+        #     requestToken = requestToken.group(1)
+        #     self.__google.writeToCell('A14', 'A14', [['Got request Token successfully']])
         
         self.__browser.close()            
         return requestToken
@@ -161,8 +164,11 @@ class payTmMoney:
             loginURL = self.__pm.login(self.__state_key)
 
             if self.__browser != None:
+                options = Options()
+                service = Service(executable_path=self.__browserDriver)
+
                 if self.__browser == 'CHROME':
-                    self.__browser = webdriver.Chrome(self.__browserDriver)
+                    self.__browser = webdriver.Chrome(service=service, options=options)
                 elif self.__browser == 'EDGE':  
                     self.__browser = webdriver.Edge(self.__browserDriver)
                 elif self.__browser == 'FIREFOX':
