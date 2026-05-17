@@ -200,7 +200,7 @@ class AppIcici():
 
 
     def openIciciSession(self):
-        self.__iciciDirectWeb.browseICICIDirect(self.__config['APP']['USE_PUSHBULLET'], self.__config['APP']['USE_SPREADSHEET'], self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
+        self.__iciciDirectWeb.browseICICIDirect()
 
 
 if __name__ == '__main__':

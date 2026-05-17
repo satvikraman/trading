@@ -97,8 +97,7 @@ class AppIciciDirectBreezeBroker():
                 self.checkOpenOrders()
                 self.__iciciDirectWeb = IciciDirectWeb(self, self.__logger, None, self.__config['BROWSER']['ENGINE'], self.__config['BROWSER']['CHROME'], self.__config['BROWSER']['EDGE'], None)
                 loginURL = self.__iciciDirectBreeze.getBreezeLoginURL()
-                sessionToken = self.__iciciDirectWeb.getBreezeSessionToken(loginURL, self.__config['APP']['USE_PUSHBULLET'], self.__config['APP']['USE_SPREADSHEET'], 
-                                                                            self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
+                sessionToken = self.__iciciDirectWeb.getBreezeSessionToken(loginURL)
                 status = self.__iciciDirectBreeze.setBreezeSessionKeysAndSubscribeFeeds(sessionToken, self.breezeTicks)
                 self.__iciciDirectWeb.closeBrowser()
                 if status:
