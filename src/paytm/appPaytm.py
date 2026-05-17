@@ -103,8 +103,12 @@ class AppPaytmBroker():
             return core_qty
         dbDicts = self.persistenceInv.getDb([['SOURCE', 'MANUAL'], ['STRATEGY', 'CORE']])
         for dbDict in dbDicts:
+            if dbDict.get('REC_STATUS') == 'CLOSE':
+                continue
             sym = dbDict['MKT_SYMBOL']
             qty = int(dbDict.get('POS_HOLD_QTY') or dbDict.get('QTY') or 0)
+            if qty <= 0:
+                continue
             core_qty[sym] = core_qty.get(sym, 0) + qty
         return core_qty
 
