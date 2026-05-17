@@ -1,0 +1,5 @@
+# Minimal pip deps for local venv (Telegram client + tests).
+# Full trading stack on Windows still uses conda (see requirements.txt).
+requests>=2.28.0
+python-dotenv>=1.0.0
+pytest>=7.0.0
