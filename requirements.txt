@@ -12,3 +12,5 @@ breeze-connect>=1.0.43
 google-api-python-client>=2.100,<3
 google-auth-oauthlib>=1.1,<2
 google-auth-httplib2>=0.1,<1
+selenium>=4.0,<5
+webdriver-manager>=4.0,<5

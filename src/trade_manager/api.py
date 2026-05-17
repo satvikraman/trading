@@ -5,9 +5,9 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from trade_manager.models import TradeCreate, TradePatch
-from trade_manager.service import TradeService
-from trade_manager.validation import ValidationError
+from .models import TradeCreate, TradePatch
+from .service import TradeService
+from .validation import ValidationError
 
 logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="Paytm Trade Manager", version="1.0")

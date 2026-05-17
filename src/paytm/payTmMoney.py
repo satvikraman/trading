@@ -13,11 +13,15 @@ from selenium import webdriver
 from selenium.common.exceptions import WebDriverException, NoSuchWindowException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 sys.path.append('../pyPMClient')
 from pmClient import PMClient
@@ -136,9 +140,11 @@ class payTmMoney:
 
             if self.__browser != None:
                 if self.__browser == 'CHROME':
-                    self.__browser = webdriver.Chrome(self.__browserDriver)
+                    service = ChromeService(ChromeDriverManager().install())
+                    self.__browser = webdriver.Chrome(service=service)
                 elif self.__browser == 'EDGE':  
-                    self.__browser = webdriver.Edge(self.__browserDriver)
+                    service = EdgeService(EdgeChromiumDriverManager().install())
+                    self.__browser = webdriver.Edge(service=service)
                 elif self.__browser == 'FIREFOX':
                     self.__browser = webdriver.Firefox()
                 self.__request_token = self.__getRequestToken(loginURL)

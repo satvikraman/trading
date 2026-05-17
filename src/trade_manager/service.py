@@ -11,8 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 from persistence import persistence  # noqa: E402
 from mapIciciToNseStock import MapIciciToNseStock  # noqa: E402
 
-from trade_manager.trade_id import decode_trade_id, encode_trade_id  # noqa: E402
-from trade_manager.validation import ValidationError, validate_trade_payload  # noqa: E402
+from .trade_id import decode_trade_id, encode_trade_id  # noqa: E402
+from .validation import ValidationError, validate_trade_payload  # noqa: E402
 
 
 class TradeService:
