@@ -17,6 +17,9 @@ CORE_REC_TIME = "xx:xx"
 # Sold — close all open non-CORE rows for these symbols
 CLOSE_SYMBOLS = {"LUPIN", "ZYDUSLIFE", "JINDALSTEL", "INDHOTEL", "BAJAJ-AUTO"}
 
+# No longer held — close MANUAL/CORE rows
+CLOSE_CORE_SYMBOLS = {"CESC", "CGCL", "THELEELA", "AADHARHFC", "NUVAMA", "WELCORP"}
+
 # Total Paytm qty (treated as CORE / long-term book)
 BROKER_CORE_QTY = {
     "SUZLON": 245,
@@ -146,6 +149,8 @@ def _consolidated_report(store):
 
     core = {}
     for doc in store.getDb([["SOURCE", "MANUAL"], ["STRATEGY", "CORE"]]):
+        if doc.get("REC_STATUS") == "CLOSE" or int(doc.get("POS_HOLD_QTY") or 0) == 0:
+            continue
         sym = doc["MKT_SYMBOL"]
         core[sym] = core.get(sym, 0) + int(doc.get("POS_HOLD_QTY") or doc.get("QTY") or 0)
 
@@ -196,6 +201,16 @@ def main():
     today = datetime.datetime.today().strftime("%d-%b-%Y")
     time_str = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
 
+    core_closed = 0
+    for doc in store.getDb([["SOURCE", "MANUAL"], ["STRATEGY", "CORE"]]):
+        if doc["MKT_SYMBOL"] not in CLOSE_CORE_SYMBOLS:
+            continue
+        if doc.get("POS_HOLD_QTY", 0) == 0 and doc.get("REC_STATUS") == "CLOSE":
+            continue
+        _close_row(store, doc)
+        core_closed += 1
+        print(f"Closed CORE {doc['MKT_SYMBOL']}")
+
     closed = 0
     for doc in store.getDb([["PRODUCT", "!MARGIN"]]):
         if doc.get("STRATEGY") == "CORE":
@@ -211,7 +226,7 @@ def main():
     for sym, qty in sorted(BROKER_CORE_QTY.items()):
         _upsert_core(store, mapper, sym, qty, today, time_str)
 
-    print(f"\nClosed {closed} stale trading row(s).")
+    print(f"\nClosed {core_closed} CORE row(s), {closed} stale trading row(s).")
     _consolidated_report(store)
     return 0
 
