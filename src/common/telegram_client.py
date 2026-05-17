@@ -130,10 +130,11 @@ class TelegramClient:
         return body
 
     def notify(self, text: str) -> dict:
-        return self._post('sendMessage', {
+        result = self._post('sendMessage', {
             'chat_id': self._chat_id,
             'text': text,
         })
+        return result
 
     def send_photo(self, photo_path: str, caption: str = '') -> dict:
         with open(photo_path, 'rb') as photo:
@@ -142,12 +143,12 @@ class TelegramClient:
                 'caption': caption,
             }, files={'photo': photo})
 
-    def _fetch_updates(self) -> List[dict]:
+    def _fetch_updates(self, timeout_sec: int = POLL_TIMEOUT_SEC) -> List[dict]:
         with self._file_lock():
             self._read_state_unlocked()
             offset = self._last_update_id + 1
-        params = {'offset': offset, 'timeout': POLL_TIMEOUT_SEC}
-        resp = requests.get(f'{self._api}/getUpdates', params=params, timeout=POLL_TIMEOUT_SEC + 10)
+        params = {'offset': offset, 'timeout': timeout_sec}
+        resp = requests.get(f'{self._api}/getUpdates', params=params, timeout=timeout_sec + 10)
         resp.raise_for_status()
         body = resp.json()
         if not body.get('ok'):
@@ -167,7 +168,7 @@ class TelegramClient:
     def drain_updates(self):
         """Acknowledge all pending updates without acting on them."""
         while True:
-            updates = self._fetch_updates()
+            updates = self._fetch_updates(timeout_sec=0)
             if not updates:
                 break
             self._ack_updates(updates)
@@ -200,7 +201,9 @@ class TelegramClient:
     def wait_for_yes(self, prompt: str, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC):
         self.drain_updates()
         self.notify(prompt)
+        return self.poll_for_yes(timeout)
 
+    def poll_for_yes(self, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC):
         def pred(text: str):
             if text.upper() in YES_ALIASES:
                 return True
@@ -212,7 +215,9 @@ class TelegramClient:
     def wait_for_otp(self, prompt: str, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC) -> str:
         self.drain_updates()
         self.notify(prompt)
+        return self.poll_for_otp(timeout)
 
+    def poll_for_otp(self, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC) -> str:
         def pred(text: str):
             otp = extract_otp(text)
             return otp
