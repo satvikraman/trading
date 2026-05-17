@@ -7,15 +7,14 @@ Local web UI and FastAPI service for managing equity trades in `src/paytm/db/pay
 - Python 3.11+ with `.venv` at repo root: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 - Node.js for UI dev: `cd ui && npm install`
 
-## One-time migration (TinyDB JSON → SQLite)
+## Database on GitHub
+
+`src/paytm/db/payTmMoney.db` is tracked in git (~1.4MB) so you can pull the same DB on another laptop. After `git pull`, use it directly (no migrate needed unless you only updated the JSON).
+
+Rebuild from JSON when `payTmMoney.json` changes:
 
 ```bash
 .venv/bin/python scripts/migrate_json_to_sqlite.py
-```
-
-Optional: seed former `__core` holdings as MANUAL `INIT_TRADE` rows:
-
-```bash
 .venv/bin/python scripts/migrate_core_to_db.py
 ```
 
