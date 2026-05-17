@@ -23,7 +23,7 @@ sys.path.append('../pyPMClient')
 from pmClient import PMClient
 from pmClient import WebSocketClient
 sys.path.append('./src/common')
-from googleWorkspace import googleWorkspace
+from telegram_client import TelegramClient
 
 class payTmMoney:
     def __init__(self, logger, browser, chromeBrowser, edgeBrowser):
@@ -36,7 +36,7 @@ class payTmMoney:
         self.__request_token = os.environ.get('request_token', '')
         self.__state_key = os.environ.get('state_key', '')
         self.__orderBook = None
-        self.__google = None
+        self.__telegram = TelegramClient(logger=self.__logger)
         self.__browser = browser
         if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
@@ -86,22 +86,13 @@ class payTmMoney:
         return element if singular else elements
 
 
-    def __getRequestToken(self, loginURL, spreadsheetID, sheetName):
-        self.__google = googleWorkspace(spreadsheetID, sheetName)
-        self.__google.authorize()
-        self.__google.buildSheets()
-        self.__google.buildDrive()
-        
-        self.__google.writeToCell('A11', 'B14', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
-        self.__google.writeToCell('C12', 'C13', [[' '], [' ']])
-        self.__google.writeToCell('A11', 'A11', [['Ready for PayTm login sequence']])
-        goahead = False
-        while not goahead:
-            status, value = self.__google.readFromCell('B11', 'B11')
-            if status and value[0][0].upper() == 'YES':
-                goahead = True
-            else:
-                time.sleep(1)        
+    def __enter_otp_digits(self, otp, xpath):
+        otpIn = self.__getWebElement(xpath, 'PRESENCE', False)
+        for i in range(len(otp)):
+            otpIn[i].send_keys(int(otp[i]))
+
+    def __getRequestToken(self, loginURL):
+        self.__telegram.wait_for_yes('Paytm login: reply GO when ready to open the browser.')
 
         self.__browser.get(loginURL)
         time.sleep(5)
@@ -112,46 +103,29 @@ class payTmMoney:
         pwd.send_keys(os.environ.get('paytm_pwd', ''))
         self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/button', 'CLICKABLE')
 
-        self.__google.writeToCell('A12', 'A12', [['Enter the 6 digit OTP1']])
-        OTPnotrecv = True
-        while OTPnotrecv:
-            status, value = self.__google.readFromCell('B12', 'C12')
-            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
-                OTPnotrecv = False
-            else:
-                time.sleep(1)
-
-        otpIn = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div[2]/div[2]/div/input', 'PRESENCE', False)
-        for i in range(len(value[0][0])):
-            otpIn[i].send_keys(int(value[0][0][i]))        
+        otp1 = self.__telegram.wait_for_otp('Enter Paytm OTP1 (6 digits).')
+        self.__enter_otp_digits(otp1, '//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div[2]/div[2]/div/input')
         time.sleep(1)
         self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[3]/span/button', 'CLICKABLE')
         time.sleep(5)
         self.__getWebElement('//*[@id="newroot"]/div/div/div/div[1]/div[2]/div/div[2]/button', 'CLICKABLE')
 
-        self.__google.writeToCell('A13', 'A13', [['Enter the 6 digit OTP2']])
-        OTPnotrecv = True
-        while OTPnotrecv:
-            status, value = self.__google.readFromCell('B13', 'C13')
-            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
-                OTPnotrecv = False
-            else:
-                time.sleep(1)
-        otpIn = self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[2]/div/div[2]/div/div/input', 'PRESENCE', False)
-        for i in range(len(value[0][0])):
-            otpIn[i].send_keys(int(value[0][0][i]))
+        otp2 = self.__telegram.wait_for_otp('Enter Paytm OTP2 (6 digits).')
+        self.__enter_otp_digits(otp2, '//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[2]/div/div[2]/div/div/input')
         time.sleep(1)
         self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[3]/button', 'CLICKABLE')
 
         requestToken = re.search(r'.*&requestToken=(\w+)&.*', self.__browser.current_url, re.IGNORECASE)
-        if requestToken != None:
+        if requestToken is not None:
             requestToken = requestToken.group(1)
-            self.__google.writeToCell('A14', 'A14', [['Got request Token successfully']])
-        
-        self.__browser.close()            
+            self.__telegram.notify('Paytm login: request token captured.')
+        else:
+            requestToken = None
+
+        self.__browser.close()
         return requestToken
-        
-    def payTmLogin(self, spreadsheetID, sheetName):
+
+    def payTmLogin(self):
         self.__pm = PMClient(api_key=self.__api_key, api_secret=self.__api_secret)
         valid_until_date = os.environ.get('valid_until_date', '')
         valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
@@ -167,7 +141,7 @@ class payTmMoney:
                     self.__browser = webdriver.Edge(self.__browserDriver)
                 elif self.__browser == 'FIREFOX':
                     self.__browser = webdriver.Firefox()
-                self.__request_token = self.__getRequestToken(loginURL, spreadsheetID, sheetName)
+                self.__request_token = self.__getRequestToken(loginURL)
             else:
                 self.__request_token = input("Enter the request token after logging into {} : ".format(loginURL))
 

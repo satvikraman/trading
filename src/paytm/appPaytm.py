@@ -222,7 +222,7 @@ class AppPaytmBroker():
 
 
     def openPayTmMoneySession(self):
-        self.__payTmMoney.payTmLogin(self.__config['APP']['SPREADSHEET_ID'], self.__config['APP']['SHEET_NAME'])
+        self.__payTmMoney.payTmLogin()
 
 
     def calAmountPerOrder(self):
