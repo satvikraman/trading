@@ -769,8 +769,7 @@ class Workflow():
                 cancelDict = dbDict
             
             # Disable partial close of order. All orders will be fully closed
-            #partial = True if cancelDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
-            partial = False
+            partial = True if cancelDict['REC_STATUS'] == 'PARTIAL_CLOSE' else False
             _, closeDbDict, orderNum = self.__closePosition(persistenceInst, cancelDict, partial)
             closeDbDictOrderNumArr.append({'DB_DICT': closeDbDict, 'ORDER_NO': orderNum})
         
