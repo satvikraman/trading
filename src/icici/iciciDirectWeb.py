@@ -10,15 +10,8 @@ from dateutil.relativedelta import relativedelta
 import configparser
 import urllib
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
 sys.path.append('./src/common')
-from pushbullet import PushBullet
-from googleWorkspace import googleWorkspace
+from telegram_client import TelegramClient
 
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException, NoSuchWindowException
@@ -39,8 +32,7 @@ class IciciDirectWeb():
 
         self.__iclick2GainDict = {}
         self.__iclick2InvestDict = {}
-        self.__pushbullet = None
-        self.__google = None
+        self.__telegram = TelegramClient(logger=self.__logger)
         if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
             options = webdriver.ChromeOptions()
@@ -56,10 +48,6 @@ class IciciDirectWeb():
             self.__browser = webdriver.Firefox()
 
 
-    def __uploadPNGToDriv(self):
-        self.__service = build('sheets', 'v4', credentials=self.__creds)
-
-    
     def __handleException(self, e):
         pattern = r".*(disconnected: not connected to DevTools|no such window)"
         if re.match(pattern,  str(e), re.IGNORECASE):
@@ -144,242 +132,121 @@ class IciciDirectWeb():
 
     def loginICICIDirect(self, relogin=True):
         loginNotSuccessful = True
+        tg = self.__telegram
         if not relogin:
-            if self.__google != None:
-                self.__google.writeToCell('A1', 'B4', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
-            if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login into ICICI Direct on startup")              
+            tg.notify("ICICI Direct login starting")
 
         while loginNotSuccessful:
             self.__browser.refresh()
             time.sleep(1)
 
-            if not relogin and self.__google != None:
-                self.__google.writeToCell('A1', 'B3', [[' ', ' '], [' ', ' '], [' ', ' ']])
-                self.__google.writeToCell('C3', 'C3', [[' ']])
-
-                self.__google.writeToCell('A1', 'A1', [['Ready for login sequence']])
-                goahead = False
-                while not goahead:
-                    status, value = self.__google.readFromCell('B1', 'B1')
-                    if status and value[0][0].upper() == 'YES':
-                        goahead = True
-                    else:
-                        time.sleep(1)
-
-                self.__google.writeToCell('A2', 'A2', [['QRCODE or 2FA']])
-                loginOption = False
-                while not loginOption:
-                    status, value = self.__google.readFromCell('B2', 'B2')
-                    if status and value[0][0].upper() in ['QRCODE', '2FA']:
-                        loginOption = value[0][0].upper()
-                    else:
-                        time.sleep(1)
+            if not relogin:
+                tg.wait_for_yes('ICICI Direct: reply GO when ready.')
+                loginOption = tg.wait_for_choice('Reply QRCODE or 2FA', ['QRCODE', '2FA'])
             else:
                 loginOption = '2FA'
-                if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Attempting relogin into ICICI Direct via 2FA")
+                tg.notify("ICICI Direct: attempting relogin via 2FA")
 
-
-            if loginOption == 'QRCODE' and self.__google != None:
-                self.__getWebElement("//a[@href='javascript://']", 'CLICKABLE')
-                self.__getWebElement("//*[@id='dvQRCode']", 'CLICKABLE')
-
-                self._iciciDirect__browser.save_screenshot('qrcode.png')
-                _, fileId = self.__google.uploadMediaFile('qrcode.png', 'image/png')
-
-                self.__google.writeToCell('A3', 'A3', [['Scanned the QR code?']])
-                scannedQR = False
-                while not scannedQR:
-                    status, value = self.__google.readFromCell('B3', 'B3')
-                    if status and value[0][0].upper() == 'YES':
-                        scannedQR = True
-                        self.__google.deleteMediaFile(fileId)
-                    else:
-                        time.sleep(1)
+            if loginOption == 'QRCODE':
+                self.__getWebElement("//a[@href=\'javascript://\']", 'CLICKABLE')
+                self.__getWebElement("//*[@id=\'dvQRCode\']", 'CLICKABLE')
+                self.__browser.save_screenshot('qrcode.png')
+                tg.send_photo('qrcode.png', 'Scan QR in ICICI app, then reply YES')
+                tg.wait_for_yes('Scanned the QR code?')
             else:
                 dotenv.load_dotenv('./.env', override=True)
                 uid = os.environ.get('icici_direct_uid', '')
-                pwd = os.environ.get('icici_direct_pwd', '')            
+                pwd = os.environ.get('icici_direct_pwd', '')
 
-                rememberUserName=False
-                userName = self.__getWebElement("//*[@id='dvudtxt']", 'PRESENCE')
+                rememberUserName = False
+                userName = self.__getWebElement("//*[@id=\'dvudtxt\']", 'PRESENCE')
                 if len(userName.text) > 0:
                     rememberUserName = True
 
                 if not rememberUserName:
-                    userName = self.__getWebElement("//*[@id='txtu']", 'PRESENCE')
+                    userName = self.__getWebElement("//*[@id=\'txtu\']", 'PRESENCE')
                     userName.send_keys(uid)
 
-                userPwd = self.__getWebElement("//*[@id='txtp']", 'PRESENCE')
+                userPwd = self.__getWebElement("//*[@id=\'txtp\']", 'PRESENCE')
                 userPwd.send_keys(pwd)
-                self.__getWebElement("//*[@id='btnlogin']", 'CLICKABLE')
+                self.__getWebElement("//*[@id=\'btnlogin\']", 'CLICKABLE')
 
-                if (not rememberUserName or not relogin):
-                    if self.__google != None:
-                        self.__google.writeToCell('A3', 'A3', [['Enter the 6 digit OTP']])
-                        OTPnotrecv = True
-                        while OTPnotrecv:
-                            status, value = self.__google.readFromCell('B3', 'C3')
-                            if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
-                                OTPnotrecv = False
-                            else:
-                                time.sleep(1)
-
-                        for i in range(len(value[0][0])):
-                            otpIn = self.__getWebElement(f"//*[@id='frmotp']/div[4]/div/div[{i+1}]/input", 'PRESENCE', singular=True)
-                            otpIn.send_keys(int(value[0][0][i]))
-                    else:
-                        input("Wait for the user to enter OTP")
+                if not rememberUserName or not relogin:
+                    otp = tg.wait_for_otp('Enter ICICI Direct 6-digit OTP.')
+                    for i in range(len(otp)):
+                        otpIn = self.__getWebElement(f"//*[@id='frmotp']/div[4]/div/div[{i+1}]/input", 'PRESENCE', singular=True)
+                        otpIn.send_keys(int(otp[i]))
                 else:
-                    self.__google.writeToCell('A3', 'A3', [['Relogin attempt. User name remembered. No need for OTP']])
+                    tg.notify("ICICI Direct: relogin with remembered username, no OTP")
                     self.__logger.info("Relogin attempt. User name remembered. No need for OTP")
-            
-            # Check if we have progressed
+
             time.sleep(5)
             if self.__browser.current_url != self.__iciciURL:
-                if self.__google != None:
-                    self.__google.writeToCell('A4', 'A4', [['Login successful']])
-                if relogin and self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Direct successful")                
+                tg.notify("ICICI Direct login successful")
                 loginNotSuccessful = False
-                
-                # Check if we have successfully logged in
-                self.__getWebElement("//a[@onclick='clickgotit();']", 'CLICKABLE')
+                self.__getWebElement("//a[@onclick=\'clickgotit();\']", 'CLICKABLE')
             else:
-                self.__google.writeToCell('A4', 'A4', [['Unable to login']])
-                if relogin and self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login into ICICI Direct")                
+                tg.notify("ICICI Direct login failed, retrying")
 
 
-    def browseICICIDirect(self, usePushBullet, useSpreadSheet, spreadsheetID, sheetName):
+    def browseICICIDirect(self):
         self.__browser.get(self.__iciciURL)
-
-        # Initialize PushBullet to enable mobile notifications
-        if usePushBullet == 'YES':
-            if self.__pushbullet == None:
-                dotenv.load_dotenv('./.env', override=True)
-                pb_api_key = os.environ.get('pb_api_key', '')
-
-                self.__pushbullet = PushBullet(pb_api_key)
-                self.__pushbulletDev = self.__pushbullet.getDevices()
-
-            # Connect to Google sheets
-        if useSpreadSheet == 'YES':
-            if self.__google == None:
-                self.__google = googleWorkspace(spreadsheetID, sheetName)
-                self.__google.authorize()
-                self.__google.buildSheets()
-                self.__google.buildDrive()
-
-            self.loginICICIDirect(relogin=False)
-        else:
-            self.loginICICIDirect(relogin=False)
+        self.loginICICIDirect(relogin=False)
 
 
     def loginICICIBreeze(self, relogin=True):
         sessionToken = None
         loginNotSuccessful = True
+        tg = self.__telegram
         if not relogin:
-            if self.__google != None:
-                self.__google.writeToCell('A6', 'B9', [[' ', ' '], [' ', ' '], [' ', ' '], [' ', ' ']])
-            if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login into ICICI Breeze on startup")
-
-            self.__google.writeToCell('A6', 'B8', [[' ', ' '], [' ', ' '], [' ', ' ']])
-            self.__google.writeToCell('C7', 'C7', [[' ']])
-
-            self.__google.writeToCell('A6', 'A6', [['Ready for login sequence']])
-            goahead = False
-            while not goahead:
-                status, value = self.__google.readFromCell('B6', 'B6')
-                if status and value[0][0].upper() == 'YES':
-                    goahead = True
-                else:
-                    time.sleep(1)
-
+            tg.notify("ICICI Breeze login starting")
+            tg.wait_for_yes('Reply GO to start Breeze login')
             dotenv.load_dotenv('./.env', override=True)
             uid = os.environ.get('icici_direct_uid', '')
-            pwd = os.environ.get('icici_direct_pwd', '')            
+            pwd = os.environ.get('icici_direct_pwd', '')
 
-            userName = self.__getWebElement("//*[@id='txtuid']", 'PRESENCE')
+            userName = self.__getWebElement("//*[@id=\'txtuid\']", 'PRESENCE')
             userName.send_keys(uid)
 
-            userPwd = self.__getWebElement("//*[@id='txtPass']", 'PRESENCE')
+            userPwd = self.__getWebElement("//*[@id=\'txtPass\']", 'PRESENCE')
             userPwd.send_keys(pwd)
 
-            self.__getWebElement("//*[@id='chkssTnc']", 'CLICKABLE')
-            self.__getWebElement("//*[@id='btnSubmit']", 'CLICKABLE')
+            self.__getWebElement("//*[@id=\'chkssTnc\']", 'CLICKABLE')
+            self.__getWebElement("//*[@id=\'btnSubmit\']", 'CLICKABLE')
+        else:
+            tg.notify("ICICI Breeze: enter OTP to relogin")
 
         while loginNotSuccessful:
-            self.__google.writeToCell('A7', 'B8', [[' ', ' '], [' ', ' ']])
-            self.__google.writeToCell('C7', 'C7', [[' ']])            
-            self.__google.writeToCell('A7', 'A7', [['Enter the 6 digit OTP']])
-            self.__google.writeToCell('A8', 'A8', [['Resend OTP']])
-            OTPnotrecv = True
-            while OTPnotrecv:
-                status, value = self.__google.readFromCell('B7', 'C7')
-                if status and len(value[0]) == 2 and len(value[0][0]) == 6 and value[0][1].upper() == 'YES': 
-                    OTPnotrecv = False
-                else:
-                    # Resend OTP
-                    status, value = self.__google.readFromCell('B8', 'B8')
-                    if status and value[0][0].upper() == 'YES':
-                        self._paytmTradingIdeas__getWebElement("//*[@id='dvreotp']/a", 'CLICKABLE')
-                        self.__google.writeToCell('B8', 'B8', [[' ']])
-                    time.sleep(1)
+            while True:
+                reply = tg.wait_for_resend_or_otp('Enter 6-digit ICICI OTP (reply RESEND to resend).')
+                if reply == 'RESEND':
+                    self.__getWebElement("//*[@id=\'dvreotp\']/a", 'CLICKABLE')
+                    continue
+                otp = reply
+                break
 
-            otpIn = self.__getWebElement("//*[@id='pnlOTP']/div[2]/div[2]/div[3]/div/div", 'PRESENCE', singular=False)
-            for i in range(len(value[0][0])):
-                input = otpIn[i].find_element(By.TAG_NAME, 'input')
-                input.send_keys(int(value[0][0][i]))
-            self.__getWebElement("//*[@id='Button1']", 'CLICKABLE')
-        
-            # Check if we have progressed
+            otpIn = self.__getWebElement("//*[@id=\'pnlOTP\']/div[2]/div[2]/div[3]/div/div", 'PRESENCE', singular=False)
+            for i in range(len(otp)):
+                input_el = otpIn[i].find_element(By.TAG_NAME, 'input')
+                input_el.send_keys(int(otp[i]))
+            self.__getWebElement("//*[@id=\'Button1\']", 'CLICKABLE')
+
             time.sleep(5)
             if 'apisession' in self.__browser.current_url:
                 sessionToken = re.search(r'\d+.*$', self.__browser.current_url).group(0)
-                self.__google.writeToCell('A9', 'A9', [['Login successful']])
-                if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Login to ICICI Breeze successful")                
+                tg.notify("ICICI Breeze login successful")
                 loginNotSuccessful = False
             else:
                 actions = ActionChains(self.__browser)
                 actions.send_keys(Keys.SPACE).perform()
-                self.__google.writeToCell('A9', 'A9', [['Unable to login']])
-                if self.__pushbullet != None:
-                    self.__pushbullet.pushNote(self.__pushbulletDev[0]['iden'], "TRADING", "Unable to login into ICICI Breeze")
-        
+                tg.notify("ICICI Breeze login failed, retrying")
+
         return sessionToken
 
 
-    def getBreezeSessionToken(self, loginURL, usePushBullet, useSpreadSheet, spreadSheetID, spreadSheetName):
+    def getBreezeSessionToken(self, loginURL):
         self.__browser.get(loginURL)
-
-        # Connect to Google sheets
-        if useSpreadSheet.upper() == 'YES':
-            # Initialize PushBullet to enable mobile notifications
-            if usePushBullet.upper() == 'YES':
-                if self.__pushbullet == None:
-                    dotenv.load_dotenv('./.env', override=True)
-                    pb_api_key = os.environ.get('pb_api_key', '')
-
-                    self.__pushbullet = PushBullet(pb_api_key)
-                    self.__pushbulletDev = self.__pushbullet.getDevices()            
-
-            if self.__google == None:
-                spreadsheetID = spreadSheetID
-                sheetName = spreadSheetName
-                self.__google = googleWorkspace(spreadsheetID, sheetName)
-                self.__google.authorize()
-                self.__google.buildSheets()
-                self.__google.buildDrive()
-
-            sessionToken = self.loginICICIBreeze(relogin=False)
-        else:
-            sessionToken = input("Enter the session token after logging into {}".format(loginURL))
-        
-        return sessionToken
+        return self.loginICICIBreeze(relogin=False)
 
 
     def closeBrowser(self):  
