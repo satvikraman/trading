@@ -83,27 +83,6 @@ class AppPaytmBroker():
             self.__logger.info('Max Amount Per Cash Order %d', self.amountPerOrder)
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
-            self.__core = [ 
-                            # IPO
-                            {'MKT_SYMBOL': 'IGIL',        'SECURITY_ID': '28378', 'QTY': 35},
-                            # ET PRIME
-                            {'MKT_SYMBOL': 'AADHARHFC',   'SECURITY_ID': '23729', 'QTY': 62},
-                            {'MKT_SYMBOL': 'ADANIPORTS',  'SECURITY_ID': '15083', 'QTY': 93},
-                            {'MKT_SYMBOL': 'ATHERENERG',  'SECURITY_ID': '757645','QTY': 10},
-                            {'MKT_SYMBOL': 'CESC',        'SECURITY_ID': '628',   'QTY': 218},
-                            {'MKT_SYMBOL': 'FINCABLES',   'SECURITY_ID': '1038',  'QTY': 80},
-                            {'MKT_SYMBOL': 'GRAVITA',     'SECURITY_ID': '20534', 'QTY': 38},
-                            {'MKT_SYMBOL': 'THELEELA',    'SECURITY_ID': '757014','QTY': 53},
-                            {'MKT_SYMBOL': 'NUVAMA',      'SECURITY_ID': '18721', 'QTY': 4},
-                            {'MKT_SYMBOL': 'PFC',         'SECURITY_ID': '14299', 'QTY': 64},
-                            {'MKT_SYMBOL': 'SUZLON',      'SECURITY_ID': '12018', 'QTY': 1144},
-                            # ETF    
-                            {'MKT_SYMBOL': 'GOLDBETA',    'SECURITY_ID': '14535', 'QTY': 10663},
-                            {'MKT_SYMBOL': 'SILVER',      'SECURITY_ID': '8003',  'QTY': 7702},
-                            {'MKT_SYMBOL': 'HNGSNGBEES',  'SECURITY_ID': '18284', 'QTY': 180},
-                            {'MKT_SYMBOL': 'MON100',      'SECURITY_ID': '22739', 'QTY': 76},
-                            ]
-
             self.squareOff = False
             self.marketOpen = False
             self.useWebsocket = False
@@ -119,23 +98,6 @@ class AppPaytmBroker():
 
     def getHoldingsData(self):
         status, self.__holdings = self.__payTmMoney.user_holdings_data()
-
-        for core in self.__core:
-            found = False
-            for holding in self.__holdings:
-                if core['MKT_SYMBOL'] == holding['MKT_SYMBOL']:
-                    found = True
-                    break
-            if not found:
-                self.__logger.error("Core stock %s not in holding", core['MKT_SYMBOL'])
-                exit()
-
-        # Remove quantities we consider to be a part of the core portfolio so that 
-        # we don't need to repeatedly do this calculation. Hold - Core = Trade
-        for holding in self.__holdings:
-            for core in self.__core:
-                if holding['MKT_SYMBOL'] == core['MKT_SYMBOL']:
-                    holding['HOLD_QTY'] = holding['HOLD_QTY'] - core['QTY']
 
         if not status:
             self.__logger.error("getHoldingsData function returned error")

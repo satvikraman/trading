@@ -1,5 +1,10 @@
 .env
 .venv/
+ui/node_modules/
+ui/dist/
+src/paytm/db/payTmMoney.db
+src/paytm/db/payTmMoney.db-*
+src/paytm/db/*.db-journal
 data/telegram_state.json
 data/telegram_state.lock
 *.pyc

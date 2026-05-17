@@ -1023,6 +1023,10 @@ class Workflow():
             self.__lock.acquire()
             dbDicts = persistenceInst.getDb([['POS_HOLD_STATUS', '!CLOSE']])
             for dbDict in dbDicts:
+                if self.__parent.useWebsocket:
+                    sec_id = dbDict['SECURITY_ID']
+                    if sec_id not in self.__parent.cmp:
+                        self.__modifyCmpSubscription(persistenceInst, dbDict, 'ADD')
                 self.__updateRecStatus(persistenceInst, dbDict)
             self.__lock.release()
 

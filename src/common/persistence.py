@@ -3,7 +3,10 @@ import threading
 from tinydb import TinyDB, Query, where
 from tinydb.operations import delete
 
-class persistence:
+from sqlite_persistence import SqlitePersistence
+
+
+class _TinyDbPersistence:
     def __init__(self, logger, db):
         self.__logger = logger
         self.__db = TinyDB(db)
@@ -122,3 +125,9 @@ class persistence:
         self.__acquireLock()
         self.__db.truncate()
         self.__releaseLock()
+
+
+def persistence(logger, db):
+    if str(db).endswith(".db"):
+        return SqlitePersistence(logger, db)
+    return _TinyDbPersistence(logger, db)
