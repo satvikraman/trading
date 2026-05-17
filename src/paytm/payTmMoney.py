@@ -101,18 +101,18 @@ class payTmMoney:
         self.__browser.get(loginURL)
         time.sleep(5)
 
-        mobile = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/fieldset/input', 'PRESENCE')
+        mobile = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div/div[2]/fieldset/input', 'PRESENCE')
         mobile.send_keys(os.environ.get('mobile', ''))
-        pwd = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/div[1]/fieldset/input', 'PRESENCE')
+        pwd = self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div/div[2]/div[1]/fieldset/input', 'PRESENCE')
         pwd.send_keys(os.environ.get('paytm_pwd', ''))
-        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div/div[2]/button', 'CLICKABLE')
+        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div/div[2]/button', 'CLICKABLE')
 
         otp1 = self.__telegram.wait_for_otp('Enter Paytm OTP1 (6 digits).')
-        self.__enter_otp_digits(otp1, '//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div[2]/div[2]/div/input')
+        self.__enter_otp_digits(otp1, '//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div[2]/div[2]/div[2]/fieldset/div/input')
         time.sleep(1)
-        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[3]/span/button', 'CLICKABLE')
+        self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div[3]/span/button', 'CLICKABLE')
         time.sleep(5)
-        self.__getWebElement('//*[@id="newroot"]/div/div/div/div[1]/div[2]/div/div[2]/button', 'CLICKABLE')
+        self.__getWebElement('//*[@id="newroot"]/div/div/div/div[1]/div[2]/div/button', 'CLICKABLE')
 
         otp2 = self.__telegram.wait_for_otp('Enter Paytm OTP2 (6 digits).')
         self.__enter_otp_digits(otp2, '//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[2]/div/div[2]/div/div/input')
@@ -140,8 +140,33 @@ class payTmMoney:
 
             if self.__browser != None:
                 if self.__browser == 'CHROME':
-                    service = ChromeService(ChromeDriverManager().install())
-                    self.__browser = webdriver.Chrome(service=service)
+                    chrome_options = Options()
+                    chrome_options.add_argument('--disable-gpu')
+                    chrome_options.add_argument('--disable-dev-shm-usage')
+                    chrome_options.add_argument('--no-sandbox')
+                    chrome_options.add_argument('--disable-extensions')
+                    chrome_options.add_argument('--disable-popup-blocking')
+                    chrome_options.add_argument('--window-size=1920,1080')
+                    chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+                    chrome_options.add_experimental_option('useAutomationExtension', False)
+                    service = None
+                    if self.__browserDriver:
+                        browser_driver_path = os.path.abspath(self.__browserDriver)
+                        if os.path.exists(browser_driver_path):
+                            basename = os.path.basename(browser_driver_path).lower()
+                            if 'chromedriver' in basename:
+                                service = ChromeService(browser_driver_path)
+                                self.__logger.info('Using chromedriver from utils at %s', browser_driver_path)
+                            else:
+                                chrome_options.binary_location = browser_driver_path
+                                self.__logger.info('Using Chrome binary at %s', browser_driver_path)
+                        else:
+                            self.__logger.warning('Configured browser path does not exist: %s', browser_driver_path)
+                    if service is None:
+                        driver_path = ChromeDriverManager().install()
+                        service = ChromeService(driver_path)
+                        self.__logger.info('Using webdriver-manager chromedriver at %s', driver_path)
+                    self.__browser = webdriver.Chrome(service=service, options=chrome_options)
                 elif self.__browser == 'EDGE':  
                     service = EdgeService(EdgeChromiumDriverManager().install())
                     self.__browser = webdriver.Edge(service=service)

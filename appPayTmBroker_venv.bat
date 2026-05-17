@@ -1,5 +1,8 @@
 @echo off
 
+REM Run from the batch file folder so relative .venv paths resolve reliably
+pushd %~dp0
+
 REM Activate .venv instead of conda
 call .\.venv\Scripts\activate.bat
 
@@ -19,3 +22,5 @@ IF %HOUR% LEQ 15 (
         goto START
     )
 )
+
+popd

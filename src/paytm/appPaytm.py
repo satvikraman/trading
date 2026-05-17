@@ -414,11 +414,8 @@ if __name__ == '__main__':
     trade.openPayTmMoneySession()
     trade.calAmountPerOrder()
 
-    portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
+    # Temporarily bypass the 7:00 AM wait so Telegram login can be tested immediately.
     portfolioReconcile = True
-    while not portfolioReconcile:
-        portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
-        time.sleep(15)
 
     # Check if the DB and the PayTm portfolio are in synch
     trade.startupCheck()
@@ -435,10 +432,8 @@ if __name__ == '__main__':
     trade.printMilestones()
     
     squareOffTime = False
-    marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
-    while not marketOpen:
-        marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
-        time.sleep(15)
+    # Temporarily bypass the 9:15 AM market-open wait so Telegram login can be tested immediately.
+    marketOpen = True
     
     while marketOpen:
         # Start closing all intraday positions as soon as it is 3:00PM
