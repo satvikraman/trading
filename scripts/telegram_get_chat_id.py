@@ -17,6 +17,15 @@ if not token:
 
 url = f'https://api.telegram.org/bot{token}/getUpdates'
 resp = requests.get(url, timeout=30)
+if resp.status_code == 409:
+    print('Detected webhook conflict. Removing existing webhook and retrying...')
+    delete_url = f'https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=true'
+    delete_resp = requests.get(delete_url, timeout=30)
+    if not delete_resp.ok or not delete_resp.json().get('ok'):
+        print('Failed to delete webhook:', delete_resp.text)
+        resp.raise_for_status()
+    resp = requests.get(url, timeout=30)
+
 resp.raise_for_status()
 data = resp.json()
 if not data.get('ok'):
