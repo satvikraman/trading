@@ -96,12 +96,38 @@ class AppPaytmBroker():
             self.cmp = {}
 
 
+    def __coreQtyBySymbol(self):
+        """Qty held in the core book (MANUAL/CORE rows in DB; replaces hardcoded __core)."""
+        core_qty = {}
+        if self.persistenceInv is None:
+            return core_qty
+        dbDicts = self.persistenceInv.getDb([['SOURCE', 'MANUAL'], ['STRATEGY', 'CORE']])
+        for dbDict in dbDicts:
+            sym = dbDict['MKT_SYMBOL']
+            qty = int(dbDict.get('POS_HOLD_QTY') or dbDict.get('QTY') or 0)
+            core_qty[sym] = core_qty.get(sym, 0) + qty
+        return core_qty
+
     def getHoldingsData(self):
         status, self.__holdings = self.__payTmMoney.user_holdings_data()
 
         if not status:
             self.__logger.error("getHoldingsData function returned error")
-    
+            return
+
+        # Trade book only: subtract core portfolio qty (same as former __core list).
+        core_qty = self.__coreQtyBySymbol()
+        for holding in self.__holdings:
+            sym = holding['MKT_SYMBOL']
+            if sym in core_qty:
+                holding['HOLD_QTY'] -= core_qty[sym]
+                if holding['HOLD_QTY'] < 0:
+                    self.__logger.warning(
+                        "Core qty %d exceeds broker holding for %s; using 0 for sync",
+                        core_qty[sym],
+                        sym,
+                    )
+                    holding['HOLD_QTY'] = 0
 
     def checkDbHoldingSynch(self, persistenceInsts):
         status = True
@@ -114,6 +140,9 @@ class AppPaytmBroker():
             # Goal is to compare that total quantity of a stock matches actuals
             dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
             for dbDict in dbDicts:
+                # Core book is subtracted from broker holdings in getHoldingsData().
+                if dbDict.get('STRATEGY') == 'CORE':
+                    continue
                 if dbDict['POS_QTY'] != 0 or dbDict['POS_HOLD_QTY'] != 0:
                     found = False
                     for dbHolding in dbHoldings:
