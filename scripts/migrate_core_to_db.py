@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Insert __core holdings as MANUAL INIT_TRADE rows (run once after SQLite migration)."""
+"""Insert or update MANUAL/CORE INIT_TRADE rows (run after migrate_json_to_sqlite.py)."""
 import datetime
 import sys
 from pathlib import Path
@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from persistence import persistence  # noqa: E402
 from mapIciciToNseStock import MapIciciToNseStock  # noqa: E402
 
-# Holdings formerly in appPaytm.__core (17-May-2026 quantities)
+# From master appPaytm.__core as of 17-May-2026
 CORE = [
     {"MKT_SYMBOL": "IGIL", "SECURITY_ID": "28378", "QTY": 35},
     {"MKT_SYMBOL": "AADHARHFC", "SECURITY_ID": "23729", "QTY": 77},
@@ -32,6 +32,24 @@ CORE = [
     {"MKT_SYMBOL": "HNGSNGBEES", "SECURITY_ID": "18284", "QTY": 180},
     {"MKT_SYMBOL": "MON100", "SECURITY_ID": "22739", "QTY": 76},
 ]
+
+CORE_REC_DATE = "17-May-2026"
+CORE_REC_TIME = "xx:xx"
+
+
+def _find_core_row(store, mkt_symbol):
+    rows = store.getDb(
+        [
+            ["SOURCE", "MANUAL"],
+            ["MKT_SYMBOL", mkt_symbol],
+            ["STRATEGY", "CORE"],
+        ]
+    )
+    if len(rows) == 1:
+        return rows[0]
+    if len(rows) > 1:
+        return rows[0]
+    return None
 
 
 def main():
@@ -55,10 +73,10 @@ def main():
             "STRATEGY": "CORE",
             "PRODUCT": "CASH",
             "BUY_SELL": "BUY",
-            "REC_DATE": today,
-            "REC_TIME": "xx:xx",
+            "REC_DATE": CORE_REC_DATE,
+            "REC_TIME": CORE_REC_TIME,
             "REC_STATUS": "OPEN",
-            "EXP_DATE": today,
+            "EXP_DATE": CORE_REC_DATE,
             "LOW_REC_PRICE": 1.0,
             "HIGH_REC_PRICE": 1.0,
             "TARGET": 999999.0,
@@ -93,20 +111,26 @@ def main():
         if ok:
             doc["SECURITY_ID"] = sec_id
             doc["MKT_SYMBOL"] = mkt_sym
-        query = [
-            ["SOURCE", "MANUAL"],
-            ["MKT_SYMBOL", doc["MKT_SYMBOL"]],
-            ["STRATEGY", "CORE"],
-            ["REC_DATE", today],
-            ["REC_TIME", "xx:xx"],
-        ]
-        found, _ = store.isInDb(query)
-        if found:
-            print(f"Skip existing {doc['MKT_SYMBOL']}")
+
+        existing = _find_core_row(store, doc["MKT_SYMBOL"])
+        if existing:
+            merged = {**existing, **doc}
+            query = [
+                ["SOURCE", "MANUAL"],
+                ["MKT_SYMBOL", doc["MKT_SYMBOL"]],
+                ["STRATEGY", "CORE"],
+                ["REC_DATE", existing["REC_DATE"]],
+                ["REC_TIME", existing["REC_TIME"]],
+            ]
+            store.updateDb(merged, query)
+            print(f"Updated CORE {doc['MKT_SYMBOL']} qty={core['QTY']}")
             continue
-        store.insertDb(doc, None)
+
+        if not store.insertDb(doc, None):
+            print(f"Skip duplicate CORE {doc['MKT_SYMBOL']}")
+            continue
         print(f"Inserted CORE {doc['MKT_SYMBOL']} qty={core['QTY']}")
-    print("Done. Edit prices in Trade Manager UI as needed.")
+    print("Done.")
 
 
 if __name__ == "__main__":

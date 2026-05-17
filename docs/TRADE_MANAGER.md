@@ -11,12 +11,14 @@ Local web UI and FastAPI service for managing equity trades in `src/paytm/db/pay
 
 `src/paytm/db/payTmMoney.db` is tracked in git (~1.4MB) so you can pull the same DB on another laptop. After `git pull`, use it directly (no migrate needed unless you only updated the JSON).
 
-Rebuild from JSON when `payTmMoney.json` changes:
+Rebuild from JSON when `payTmMoney.json` changes (always run both, in order):
 
 ```bash
 .venv/bin/python scripts/migrate_json_to_sqlite.py
 .venv/bin/python scripts/migrate_core_to_db.py
 ```
+
+`appPaytm` subtracts MANUAL/CORE rows from broker holdings before startup sync (same as the old `__core` list).
 
 ## Run API (port 5002)
 
