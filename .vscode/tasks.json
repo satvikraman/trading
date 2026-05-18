@@ -1,0 +1,61 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Launch appPaytmBroker (venv)",
+      "type": "shell",
+      "command": ".\\appPayTmBroker_venv.bat",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "Launch trade-manager backend",
+      "type": "shell",
+      "command": "$env:PYTHONPATH = 'src'; .\\.venv\\Scripts\\uvicorn.exe trade_manager.api:app --host 127.0.0.1 --port 5002 --reload",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "Launch frontend",
+      "type": "shell",
+      "command": "cd ui; npm run dev",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    },
+    {
+      "label": "Launch trade-manager full suite",
+      "dependsOn": [
+        "Launch appPaytmBroker (venv)",
+        "Launch trade-manager backend",
+        "Launch frontend"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      }
+    }
+  ]
+}
