@@ -35,3 +35,10 @@ class TradePatch(BaseModel):
 class TradeResponse(BaseModel):
     id: str
     trade: dict[str, Any]
+
+
+class SymbolRenameRequest(BaseModel):
+    from_mkt_symbol: str
+    to_mkt_symbol: str
+    update_security_id: bool = True
+    active_only: bool = False

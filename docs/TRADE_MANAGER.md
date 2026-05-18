@@ -6,6 +6,7 @@ Local web UI and FastAPI service for managing equity trades in `src/paytm/db/pay
 
 - Python 3.11+ with `.venv` at repo root: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 - Node.js for UI dev: `cd ui && npm install`
+- Network on first run of the day (or when `dataset/NSEScripMaster.txt` is missing): Trade Manager downloads the public ICICI [SecurityMaster.zip](https://directlink.icicidirect.com/NewSecurityMaster/SecurityMaster.zip) into `dataset/`, same as `appIciciBreeze.py`. Symbol lookup uses `ExchangeCode` from `NSEScripMaster.txt` (no hardcoded symbol list).
 
 ## Database on GitHub
 
@@ -35,7 +36,7 @@ export PYTHONPATH=src
 cd ui && npm run dev
 ```
 
-Open http://127.0.0.1:5173 — Vite proxies `/api` to port 5002.
+Open http://127.0.0.1:5173 — Vite proxies `/api` to port 5004.
 
 ## Production-style (API serves built UI)
 

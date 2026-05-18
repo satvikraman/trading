@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .models import TradeCreate, TradePatch
+from .models import SymbolRenameRequest, TradeCreate, TradePatch
 from .service import TradeService
 from .validation import ValidationError
 
@@ -52,6 +52,47 @@ def list_sources():
 @app.get("/api/symbols/lookup")
 def lookup_symbols(q: str = Query("", min_length=1)):
     return service.lookup_symbol(q)
+
+
+@app.get("/api/symbols/rename/preview")
+def preview_symbol_rename(
+    from_mkt_symbol: str = Query(..., min_length=1),
+    to_mkt_symbol: str = Query(..., min_length=1),
+    update_security_id: bool = True,
+    active_only: bool = False,
+):
+    try:
+        return service.preview_symbol_rename(
+            from_mkt_symbol,
+            to_mkt_symbol,
+            update_security_id=update_security_id,
+            active_only=active_only,
+        )
+    except ValidationError as e:
+        _validation_http(e)
+
+
+@app.post("/api/symbols/rename")
+def rename_symbol(payload: SymbolRenameRequest):
+    try:
+        return service.rename_symbol(
+            payload.from_mkt_symbol,
+            payload.to_mkt_symbol,
+            update_security_id=payload.update_security_id,
+            active_only=payload.active_only,
+        )
+    except ValidationError as e:
+        _validation_http(e)
+
+
+@app.post("/api/dataset/refresh")
+def refresh_dataset(force: bool = False):
+    """Re-download ICICI SecurityMaster zip (once per day unless force=true)."""
+    try:
+        paths = service.refresh_security_master(force=force)
+        return {"status": "ok", "paths": paths}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/api/trades")
