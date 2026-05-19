@@ -42,3 +42,7 @@ class SymbolRenameRequest(BaseModel):
     to_mkt_symbol: str
     update_security_id: bool = True
     active_only: bool = False
+
+
+class HeldQtyAdjustRequest(BaseModel):
+    pos_hold_qty: int = Field(ge=0, description="Held quantity; drives POS_HOLD_STATUS transitions")

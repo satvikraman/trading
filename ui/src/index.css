@@ -211,6 +211,30 @@ td input {
 .actions button {
   margin-right: 0.35rem;
 }
+td.cell-actionable {
+  padding: 0;
+}
+button.cell-action {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+button.cell-action:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+button.cell-action:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
 .error {
   color: #b00020;
   font-size: 0.8rem;
@@ -221,6 +245,29 @@ td input {
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   margin-bottom: 0.75rem;
+}
+.banner-stale-orders {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+.banner-stale-orders code {
+  font-size: 0.85em;
+}
+tr.row-stale-open-orders {
+  background: #fef2f2;
+}
+tr.row-stale-open-orders td {
+  background: #fef2f2;
+  border-bottom-color: #fecaca;
+}
+tr.row-stale-open-orders td.readonly {
+  background: #fee2e2;
+  color: #7f1d1d;
 }
 .modal-backdrop {
   position: fixed;

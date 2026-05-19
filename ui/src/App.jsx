@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ConfirmCommitModal from './ConfirmCommitModal.jsx'
+import {
+  bucketHasStaleOpenOrders,
+  shouldWarnStaleOpenOrders,
+  STALE_ORDER_ROW_TITLE,
+} from './staleOrderWarning.js'
 
 const TRADE_COLS = [
   'MKT_SYMBOL',
@@ -19,6 +24,25 @@ const TRADE_COLS = [
 
 const EDITABLE = new Set(['QTY', 'LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'STOP_LOSS'])
 
+/**
+ * Read-only columns that open a dedicated editor (modal) then typed YES confirm.
+ * Inline grid edits use EDITABLE above; add keys here to extend click-to-edit to other cells.
+ */
+const CELL_FIELD_ACTIONS = {
+  POS_HOLD_QTY: {
+    title: 'Adjust held quantity',
+    hint: 'Sets POS_HOLD_QTY and derives position state. 0→0 clears stale orders (keeps OPEN unless position was CLOSE). >0→0 closes position and recommendation. Full QTY → POSITION with dummy buy. Cannot exceed trade QTY or set >0 while POS_HOLD_STATUS is CLOSE.',
+    inputLabel: 'Held quantity (POS_HOLD_QTY)',
+    canActivate: (trade) => trade.REC_STATUS !== 'CLOSE',
+    toEditState: (id, trade) => ({
+      field: 'POS_HOLD_QTY',
+      id,
+      trade,
+      value: String(trade.POS_HOLD_QTY ?? 0),
+    }),
+  },
+}
+
 function summaryLine(label, value) {
   return { label, value: String(value ?? '') }
 }
@@ -34,6 +58,32 @@ function patchSummaryLines(trade, draft) {
     if (k in draft) {
       lines.push(summaryLine(k, `${trade[k]} → ${draft[k]}`))
     }
+  }
+  return lines
+}
+
+function heldQtySummaryLines(trade, preview) {
+  const lines = [
+    summaryLine('Operation', 'ADJUST HELD QTY — position state derived from held quantity'),
+    summaryLine('Symbol', trade.MKT_SYMBOL),
+    summaryLine('Source / Strategy', `${trade.SOURCE} / ${trade.STRATEGY}`),
+    summaryLine('Recommendation', `${trade.REC_DATE} ${trade.REC_TIME}`),
+    summaryLine('Trade QTY', preview.trade_qty),
+    summaryLine('Held qty', `${preview.before.POS_HOLD_QTY} → ${preview.after.POS_HOLD_QTY}`),
+    summaryLine('POS_HOLD_STATUS', `${preview.before.POS_HOLD_STATUS} → ${preview.after.POS_HOLD_STATUS}`),
+    summaryLine('REC_STATUS', `${preview.before.REC_STATUS} → ${preview.after.REC_STATUS}`),
+    summaryLine('HOLD_QTY', `${preview.before.HOLD_QTY} → ${preview.after.HOLD_QTY}`),
+    summaryLine('POS_QTY', `${preview.before.POS_QTY} → ${preview.after.POS_QTY}`),
+  ]
+  if (preview.adds_dummy_open_order) {
+    lines.push(summaryLine('OPEN_ORDERS', 'Add dummy filled buy order (offline / CORE)'))
+  } else if (preview.clears_all_orders) {
+    lines.push(summaryLine('Orders', 'Clear OPEN_ORDERS and CLOSE_ORDERS'))
+  } else if (preview.after.POS_HOLD_STATUS === 'OPEN') {
+    lines.push(summaryLine('OPEN_ORDERS', 'Clear open buy orders (room to buy more)'))
+  }
+  if (preview.closes_recommendation) {
+    lines.push(summaryLine('Exit', 'Fully sold offline — recommendation and position closed'))
   }
   return lines
 }
@@ -211,6 +261,7 @@ export default function App() {
   const [rowErrors, setRowErrors] = useState({})
   const [showCreate, setShowCreate] = useState(false)
   const [showRename, setShowRename] = useState(false)
+  const [cellEdit, setCellEdit] = useState(null)
   const [confirmPending, setConfirmPending] = useState(null)
   const [symbolHits, setSymbolHits] = useState([])
   const [renameToHits, setRenameToHits] = useState([])
@@ -220,6 +271,7 @@ export default function App() {
     update_security_id: true,
     active_only: false,
   })
+  const [clockTick, setClockTick] = useState(0)
   const [createForm, setCreateForm] = useState({
     mode: 'buy_fresh',
     MKT_SYMBOL: '',
@@ -264,6 +316,11 @@ export default function App() {
     load().catch((e) => setBanner(e.message))
   }, [load])
 
+  useEffect(() => {
+    const id = setInterval(() => setClockTick((t) => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   const portfolioBuckets = useMemo(
     () => buildPortfolioBuckets(rows, accumulateAcrossSource, accumulateAcrossStrategy),
     [rows, accumulateAcrossSource, accumulateAcrossStrategy],
@@ -274,6 +331,13 @@ export default function App() {
     return portfolioColumns(accumulateAcrossSource, accumulateAcrossStrategy)
   }, [portfolioView, accumulateAcrossSource, accumulateAcrossStrategy])
 
+  const staleOpenOrderWarningCount = useMemo(() => {
+    if (portfolioView) {
+      return portfolioBuckets.filter((b) => bucketHasStaleOpenOrders(b)).length
+    }
+    return rows.filter(({ trade }) => shouldWarnStaleOpenOrders(trade)).length
+  }, [portfolioView, portfolioBuckets, rows, clockTick])
+
   const closeCreate = useCallback(() => {
     setShowCreate(false)
     setSymbolHits([])
@@ -282,6 +346,16 @@ export default function App() {
   const closeRename = useCallback(() => {
     setShowRename(false)
     setRenameToHits([])
+  }, [])
+
+  const closeCellEdit = useCallback(() => {
+    setCellEdit(null)
+  }, [])
+
+  const openCellFieldEdit = useCallback((field, id, trade) => {
+    const cfg = CELL_FIELD_ACTIONS[field]
+    if (!cfg?.canActivate(trade)) return
+    setCellEdit(cfg.toEditState(id, trade))
   }, [])
 
   useEffect(() => {
@@ -295,6 +369,17 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [showCreate, closeCreate])
+
+  useEffect(() => {
+    if (!cellEdit) return
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape' || confirmPending) return
+      e.preventDefault()
+      closeCellEdit()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [cellEdit, confirmPending, closeCellEdit])
 
   const onFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value }))
 
@@ -336,6 +421,79 @@ export default function App() {
         await load()
       },
     })
+  }
+
+  const requestCellFieldEdit = async (ev) => {
+    ev.preventDefault()
+    if (!cellEdit || cellEdit.field !== 'POS_HOLD_QTY') return
+    const { id, trade, value } = cellEdit
+    const tradeQty = Number(trade.QTY) || 0
+    const posHoldQty = Number(value)
+    if (Number.isNaN(posHoldQty) || posHoldQty < 0) {
+      setBanner('Held quantity must be a number >= 0')
+      return
+    }
+    if (posHoldQty > tradeQty) {
+      setBanner(`Held quantity cannot exceed trade QTY (${tradeQty})`)
+      return
+    }
+    setBanner('')
+    let preview
+    try {
+      preview = await api(
+        `/api/trades/${encodeURIComponent(id)}/held-qty/preview?pos_hold_qty=${posHoldQty}`,
+      )
+    } catch (e) {
+      setBanner(e.message)
+      return
+    }
+    setConfirmPending({
+      title: 'Confirm adjust held quantity',
+      actionLabel: 'Apply held qty',
+      lines: heldQtySummaryLines(trade, preview),
+      onConfirm: async () => {
+        setBanner('')
+        await api(`/api/trades/${encodeURIComponent(id)}/held-qty`, {
+          method: 'POST',
+          body: JSON.stringify({ pos_hold_qty: posHoldQty }),
+        })
+        closeCellEdit()
+        await load()
+      },
+    })
+  }
+
+  const renderTradeCell = (col, id, trade, row) => {
+    if (EDITABLE.has(col)) {
+      return (
+        <td key={col}>
+          <input
+            value={row[col] ?? ''}
+            onChange={(e) => setDraftField(id, trade, col, e.target.value)}
+          />
+        </td>
+      )
+    }
+    const cellAction = CELL_FIELD_ACTIONS[col]
+    if (cellAction?.canActivate(trade)) {
+      return (
+        <td key={col} className="readonly cell-actionable">
+          <button
+            type="button"
+            className="cell-action"
+            title={`Click to edit ${col}`}
+            onClick={() => openCellFieldEdit(col, id, trade)}
+          >
+            {row[col] ?? ''}
+          </button>
+        </td>
+      )
+    }
+    return (
+      <td key={col} className="readonly">
+        {row[col]}
+      </td>
+    )
   }
 
   const requestCloseRow = (id, trade) => {
@@ -511,7 +669,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>Paytm Trade Manager</h1>
+        <h1>Trade Manager</h1>
         <div className="header-actions">
           <button type="button" className="btn btn-secondary" onClick={() => setShowRename(true)}>
             Rename symbol
@@ -523,6 +681,15 @@ export default function App() {
       </header>
 
       {banner && <div className="banner-error">{banner}</div>}
+
+      {staleOpenOrderWarningCount > 0 && (
+        <div className="banner-stale-orders" role="status">
+          {staleOpenOrderWarningCount}{' '}
+          {portfolioView ? 'portfolio group(s)' : 'active trade(s)'} still have OPEN order status in
+          the database (outside market hours). Clear or reconcile before the next session —{' '}
+          <code>checkOpenOrders</code> may fail on startup.
+        </div>
+      )}
 
       <section className="filters">
         <label>
@@ -655,8 +822,14 @@ export default function App() {
           </thead>
           <tbody>
             {portfolioView
-              ? portfolioBuckets.map((bucket) => (
-                  <tr key={bucket.key}>
+              ? portfolioBuckets.map((bucket) => {
+                  const staleWarn = bucketHasStaleOpenOrders(bucket)
+                  return (
+                  <tr
+                    key={bucket.key}
+                    className={staleWarn ? 'row-stale-open-orders' : undefined}
+                    title={staleWarn ? STALE_ORDER_ROW_TITLE : undefined}
+                  >
                     {tableColumns.map((col) => (
                       <td key={col} className="readonly">
                         {bucket[col] ?? ''}
@@ -675,23 +848,18 @@ export default function App() {
                       )}
                     </td>
                   </tr>
-                ))
+                  )
+                })
               : rows.map(({ id, trade }) => {
                   const row = getDraft(id, trade)
+                  const staleWarn = shouldWarnStaleOpenOrders(trade)
                   return (
-                    <tr key={id}>
-                      {TRADE_COLS.map((col) => (
-                        <td key={col} className={EDITABLE.has(col) ? '' : 'readonly'}>
-                          {EDITABLE.has(col) ? (
-                            <input
-                              value={row[col] ?? ''}
-                              onChange={(e) => setDraftField(id, trade, col, e.target.value)}
-                            />
-                          ) : (
-                            row[col]
-                          )}
-                        </td>
-                      ))}
+                    <tr
+                      key={id}
+                      className={staleWarn ? 'row-stale-open-orders' : undefined}
+                      title={staleWarn ? STALE_ORDER_ROW_TITLE : undefined}
+                    >
+                      {TRADE_COLS.map((col) => renderTradeCell(col, id, trade, row))}
                       <td className="actions">
                         <button
                           type="button"
@@ -918,6 +1086,47 @@ export default function App() {
               </label>
               <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={closeRename}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Preview &amp; confirm
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {cellEdit?.field === 'POS_HOLD_QTY' && (
+        <div className="modal-backdrop" onClick={closeCellEdit}>
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Adjust held quantity"
+          >
+            <form className="modal-form" onSubmit={requestCellFieldEdit}>
+              <h2 className="modal-title">{CELL_FIELD_ACTIONS.POS_HOLD_QTY.title}</h2>
+              <p className="modal-hint">{CELL_FIELD_ACTIONS.POS_HOLD_QTY.hint}</p>
+              <p className="modal-hint">
+                <strong>{cellEdit.trade.MKT_SYMBOL}</strong> — {cellEdit.trade.SOURCE} /{' '}
+                {cellEdit.trade.STRATEGY} (trade QTY {cellEdit.trade.QTY})
+              </p>
+              <label>
+                {CELL_FIELD_ACTIONS.POS_HOLD_QTY.inputLabel}
+                <input
+                  type="number"
+                  min="0"
+                  max={Number(cellEdit.trade.QTY) || 0}
+                  required
+                  value={cellEdit.value}
+                  onChange={(e) =>
+                    setCellEdit((c) => (c ? { ...c, value: e.target.value } : c))
+                  }
+                />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={closeCellEdit}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">

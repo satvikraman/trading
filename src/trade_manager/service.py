@@ -42,6 +42,131 @@ def _symbol_matches_lookup_query(sym: str, q: str) -> bool:
     return q in s
 
 
+def _dummy_filled_open_order(doc: dict, traded_qty: int) -> dict:
+    time_str = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
+    return {
+        "BUY_SELL": doc.get("BUY_SELL", "BUY"),
+        "ORDER_TYPE": "LMT",
+        "LIMIT": doc.get("HIGH_REC_PRICE", 0),
+        "QTY": traded_qty,
+        "TRADED_QTY": traded_qty,
+        "ORDER_NO": "Dummy",
+        "ORDER_STATUS": "CLOSE",
+        "ORDER_MESSAGE": "Dummy",
+        "CREATE_TIME": time_str,
+    }
+
+
+def _demote_pos_hold_status_on_zero_clear(status: str) -> str:
+    """OPEN→OPEN, POSITION→OPEN, CLOSE→CLOSE when clearing at zero held."""
+    if status == "POSITION":
+        return "OPEN"
+    return status or "OPEN"
+
+
+def apply_held_qty_to_trade(doc: dict, pos_hold_qty: int) -> dict:
+    """
+    Set position fields from held quantity (POS_HOLD_QTY).
+
+    held == 0, was 0  -> clear orders; POS_HOLD_STATUS demotes POSITION→OPEN only
+    held == 0, was >0 -> POS_HOLD_STATUS and REC_STATUS CLOSE; clear all orders
+    held == QTY        -> POSITION, dummy filled OPEN_ORDERS, ACTION=INIT_TRADE
+    0 < held < QTY     -> OPEN, partial HOLD_QTY, clear OPEN_ORDERS
+    held > 0 while POS_HOLD_STATUS CLOSE -> validation error
+    """
+    merged = {**doc}
+    qty = int(merged.get("QTY") or 0)
+    held = int(pos_hold_qty)
+    prev_held = int(doc.get("POS_HOLD_QTY") or 0)
+    if held < 0:
+        raise ValidationError([{"field": "pos_hold_qty", "message": "Held quantity must be >= 0"}])
+    if held > 0 and doc.get("POS_HOLD_STATUS") == "CLOSE":
+        raise ValidationError(
+            [
+                {
+                    "field": "pos_hold_qty",
+                    "message": "Cannot set held quantity > 0 while POS_HOLD_STATUS is CLOSE",
+                }
+            ]
+        )
+    if qty <= 0 and held > 0:
+        raise ValidationError(
+            [
+                {
+                    "field": "pos_hold_qty",
+                    "message": "Cannot set held quantity > 0 when trade QTY is 0",
+                }
+            ]
+        )
+    if qty > 0 and held > qty:
+        raise ValidationError(
+            [
+                {
+                    "field": "pos_hold_qty",
+                    "message": f"Held quantity cannot exceed trade QTY ({qty})",
+                }
+            ]
+        )
+
+    merged["POS_HOLD_QTY"] = held
+    merged["POS_QTY"] = 0
+    if not merged.get("POS_DATE"):
+        merged["POS_DATE"] = datetime.datetime.today().strftime("%d-%b-%Y")
+
+    if held == 0:
+        merged["HOLD_QTY"] = 0
+        merged["OPEN_ORDERS"] = []
+        merged["CLOSE_ORDERS"] = []
+        if prev_held > 0:
+            merged["POS_HOLD_STATUS"] = "CLOSE"
+            merged["REC_STATUS"] = "CLOSE"
+        else:
+            merged["POS_HOLD_STATUS"] = _demote_pos_hold_status_on_zero_clear(
+                doc.get("POS_HOLD_STATUS") or "OPEN",
+            )
+            merged.pop("ACTION", None)
+    elif qty > 0 and held == qty:
+        merged["POS_HOLD_STATUS"] = "POSITION"
+        merged["HOLD_QTY"] = held
+        merged["ACTION"] = "INIT_TRADE"
+        merged["OPEN_ORDERS"] = [_dummy_filled_open_order(merged, held)]
+    else:
+        merged["POS_HOLD_STATUS"] = "OPEN"
+        merged["HOLD_QTY"] = held
+        merged["OPEN_ORDERS"] = []
+
+    return merged
+
+
+def preview_held_qty_adjustment(doc: dict, pos_hold_qty: int) -> dict:
+    """Return before/after summary for UI confirm (does not mutate DB)."""
+    after = apply_held_qty_to_trade(doc, pos_hold_qty)
+    return {
+        "pos_hold_qty": int(pos_hold_qty),
+        "trade_qty": int(doc.get("QTY") or 0),
+        "before": {
+            "POS_HOLD_STATUS": doc.get("POS_HOLD_STATUS"),
+            "POS_HOLD_QTY": doc.get("POS_HOLD_QTY"),
+            "HOLD_QTY": doc.get("HOLD_QTY"),
+            "POS_QTY": doc.get("POS_QTY"),
+            "REC_STATUS": doc.get("REC_STATUS"),
+        },
+        "after": {
+            "POS_HOLD_STATUS": after.get("POS_HOLD_STATUS"),
+            "POS_HOLD_QTY": after.get("POS_HOLD_QTY"),
+            "HOLD_QTY": after.get("HOLD_QTY"),
+            "POS_QTY": after.get("POS_QTY"),
+            "REC_STATUS": after.get("REC_STATUS"),
+            "OPEN_ORDERS": len(after.get("OPEN_ORDERS") or []),
+            "CLOSE_ORDERS": len(after.get("CLOSE_ORDERS") or []),
+        },
+        "adds_dummy_open_order": bool(after.get("OPEN_ORDERS")),
+        "clears_all_orders": int(pos_hold_qty) == 0,
+        "closes_recommendation": after.get("REC_STATUS") == "CLOSE"
+        and doc.get("REC_STATUS") != "CLOSE",
+    }
+
+
 def _load_dataset_config(config, root: Path) -> dict[str, str]:
     if config.has_section("DATASET"):
         return {
@@ -454,24 +579,7 @@ class TradeService:
         doc["LATE_ADD"] = False
 
         if payload.mode == "already_held":
-            doc["ACTION"] = "INIT_TRADE"
-            doc["POS_HOLD_STATUS"] = "POSITION"
-            doc["POS_HOLD_QTY"] = doc["QTY"]
-            doc["HOLD_QTY"] = doc["QTY"]
-            time_str = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
-            doc["OPEN_ORDERS"] = [
-                {
-                    "BUY_SELL": doc["BUY_SELL"],
-                    "ORDER_TYPE": "LMT",
-                    "LIMIT": doc["HIGH_REC_PRICE"],
-                    "QTY": doc["QTY"],
-                    "TRADED_QTY": doc["QTY"],
-                    "ORDER_NO": "Dummy",
-                    "ORDER_STATUS": "CLOSE",
-                    "ORDER_MESSAGE": "Dummy",
-                    "CREATE_TIME": time_str,
-                }
-            ]
+            doc = apply_held_qty_to_trade(doc, doc["QTY"])
         else:
             doc["POS_HOLD_STATUS"] = "OPEN"
             doc["POS_HOLD_QTY"] = 0
@@ -513,5 +621,28 @@ class TradeService:
         existing["REC_STATUS"] = "CLOSE"
         query = decode_trade_id(trade_id)
         self.__store.updateDb(existing, query)
+        self._invalidate()
+        return self.get_trade(trade_id)
+
+    def preview_adjust_held_qty(self, trade_id: str, pos_hold_qty: int):
+        current = self.get_trade(trade_id)
+        if not current:
+            return None
+        return preview_held_qty_adjustment(current["trade"], pos_hold_qty)
+
+    def adjust_held_qty(self, trade_id: str, pos_hold_qty: int):
+        self._backup()
+        current = self.get_trade(trade_id)
+        if not current:
+            return None
+        existing = current["trade"]
+        if existing.get("REC_STATUS") == "CLOSE":
+            raise ValidationError(
+                [{"field": "REC_STATUS", "message": "Cannot adjust held qty on a closed recommendation"}]
+            )
+        merged = apply_held_qty_to_trade(existing, pos_hold_qty)
+        query = decode_trade_id(trade_id)
+        if not self.__store.updateDb(merged, query):
+            return None
         self._invalidate()
         return self.get_trade(trade_id)

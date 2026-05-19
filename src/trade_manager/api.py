@@ -5,12 +5,12 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .models import SymbolRenameRequest, TradeCreate, TradePatch
+from .models import HeldQtyAdjustRequest, SymbolRenameRequest, TradeCreate, TradePatch
 from .service import TradeService
 from .validation import ValidationError
 
 logging.basicConfig(level=logging.INFO)
-app = FastAPI(title="Paytm Trade Manager", version="1.0")
+app = FastAPI(title="Trade Manager", version="1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -118,6 +118,28 @@ def patch_trade(trade_id: str, payload: TradePatch):
 def close_trade(trade_id: str):
     try:
         row = service.close_trade(trade_id)
+    except ValidationError as e:
+        _validation_http(e)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    return row
+
+
+@app.get("/api/trades/{trade_id}/held-qty/preview")
+def preview_adjust_held_qty(trade_id: str, pos_hold_qty: int = Query(..., ge=0)):
+    try:
+        preview = service.preview_adjust_held_qty(trade_id, pos_hold_qty)
+    except ValidationError as e:
+        _validation_http(e)
+    if not preview:
+        raise HTTPException(status_code=404, detail="Not found")
+    return preview
+
+
+@app.post("/api/trades/{trade_id}/held-qty")
+def adjust_held_qty(trade_id: str, payload: HeldQtyAdjustRequest):
+    try:
+        row = service.adjust_held_qty(trade_id, payload.pos_hold_qty)
     except ValidationError as e:
         _validation_http(e)
     if not row:

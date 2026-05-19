@@ -21,13 +21,29 @@ Rebuild from JSON when `payTmMoney.json` changes (always run both, in order):
 
 `appPaytm` subtracts MANUAL/CORE rows from broker holdings before startup sync (same as the old `__core` list).
 
-## Run API (port 5002)
+## Adjust held quantity (offline / missed appPaytm)
+
+In **Trade view**, **click the `POS_HOLD_QTY` cell** on a row (hover shows it is clickable). You set held quantity; the service derives position fields. Changes require preview + typed **YES** confirm. Held qty cannot exceed trade `QTY`.
+
+| Held qty change | POS_HOLD_STATUS | REC_STATUS | Orders |
+|-----------------|-----------------|------------|--------|
+| `0` → `0` (was 0) | `OPEN`→`OPEN`, `POSITION`→`OPEN`, `CLOSE`→`CLOSE` | unchanged | clear OPEN + CLOSE |
+| `>0` → `0` | `CLOSE` | `CLOSE` | clear OPEN + CLOSE |
+| `=` trade `QTY` | `POSITION` | unchanged | dummy filled buy |
+| `1` … `QTY-1` | `OPEN` | unchanged | clear OPEN |
+| `>0` while `POS_HOLD_STATUS` is `CLOSE` | — | — | rejected |
+
+Example: SILVER CORE stuck at `OPEN`/`OPEN` → click `POS_HOLD_QTY`, set to trade `QTY`, confirm (same as **Already held** on create).
+
+Other read-only columns can use the same click-to-edit pattern later (`CELL_FIELD_ACTIONS` in `App.jsx`).
+
+## Run API (port 5004)
 
 From repo root:
 
 ```bash
 export PYTHONPATH=src
-.venv/bin/uvicorn trade_manager.api:app --host 127.0.0.1 --port 5002 --reload
+.venv/bin/uvicorn trade_manager.api:app --host 127.0.0.1 --port 5004 --reload
 ```
 
 ## Run UI (dev, port 5173)
@@ -43,7 +59,7 @@ Open http://127.0.0.1:5173 — Vite proxies `/api` to port 5004.
 ```bash
 cd ui && npm run build
 export PYTHONPATH=src
-.venv/bin/uvicorn trade_manager.api:app --host 127.0.0.1 --port 5002
+.venv/bin/uvicorn trade_manager.api:app --host 127.0.0.1 --port 5004
 ```
 
 Open http://127.0.0.1:5002
@@ -61,5 +77,5 @@ Ensure `src/paytm/payTmMoney.ini` has `DB_EQUITY = ./src/paytm/db/payTmMoney.db`
 
 ```bash
 export PYTHONPATH=src
-.venv/bin/pytest src/common/test/test_sqlite_persistence.py src/trade_manager/test/test_validation.py -q
+.venv/bin/pytest src/common/test/test_sqlite_persistence.py src/trade_manager/test/test_validation.py src/trade_manager/test/test_held_qty.py -q
 ```
