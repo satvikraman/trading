@@ -17,7 +17,7 @@
     {
       "label": "Launch trade-manager backend",
       "type": "shell",
-      "command": "$env:PYTHONPATH = 'src'; .\\.venv\\Scripts\\uvicorn.exe trade_manager.api:app --host 127.0.0.1 --port 5002 --reload",
+      "command": "$env:PYTHONPATH = 'src'; .\\.venv\\Scripts\\uvicorn.exe trade_manager.api:app --host 127.0.0.1 --port 5004 --reload",
       "problemMatcher": [],
       "presentation": {
         "echo": true,
