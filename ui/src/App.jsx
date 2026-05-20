@@ -541,7 +541,8 @@ export default function App() {
   }
 
   const lookupSymbol = async (q) => {
-    setCreateForm((f) => ({ ...f, MKT_SYMBOL: q }))
+    // Clear any previously selected STOCK/SECURITY_ID when the user edits the symbol
+    setCreateForm((f) => ({ ...f, MKT_SYMBOL: q, STOCK: '', SECURITY_ID: '', ICICI_SYMBOL: '' }))
     if (q.length < 2) {
       setSymbolHits([])
       return

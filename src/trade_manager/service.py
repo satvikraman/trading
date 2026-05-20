@@ -542,7 +542,8 @@ class TradeService:
         self._backup()
         validate_trade_payload(payload.model_dump(), is_create=True)
         doc = payload.model_dump()
-        if not doc.get("SECURITY_ID"):
+        provided_sec = str(doc.get("SECURITY_ID") or "").strip()
+        if not provided_sec:
             ok, sec_id, icici, mkt_sym, mkt = self._resolve_symbol(
                 doc["MKT_SYMBOL"],
                 product=doc.get("PRODUCT", "CASH"),
@@ -566,7 +567,34 @@ class TradeService:
             doc["MKT_SYMBOL"] = mkt_sym
             doc["MKT"] = mkt
         else:
-            doc["SECURITY_ID"] = str(doc["SECURITY_ID"]).strip()
+            # SECURITY_ID was provided by the client - ensure it matches the requested MKT_SYMBOL
+            ok, sec_id, icici, mkt_sym, mkt = self._resolve_symbol(
+                doc["MKT_SYMBOL"],
+                product=doc.get("PRODUCT", "CASH"),
+                mkt=doc.get("MKT", "NSE"),
+            )
+            if not ok:
+                raise ValidationError(
+                    [
+                        {"field": "MKT_SYMBOL", "message": f"Unknown symbol '{doc['MKT_SYMBOL']}'."}
+                    ]
+                )
+            if str(sec_id) != provided_sec:
+                raise ValidationError(
+                    [
+                        {
+                            "field": "SECURITY_ID",
+                            "message": (
+                                "SECURITY_ID does not match MKT_SYMBOL. "
+                                "Clear SECURITY_ID or select the symbol from lookup to populate the correct id."
+                            ),
+                        }
+                    ]
+                )
+            doc["SECURITY_ID"] = provided_sec
+            doc["ICICI_SYMBOL"] = icici
+            doc["MKT_SYMBOL"] = mkt_sym
+            doc["MKT"] = mkt
         if not doc.get("EXP_DATE"):
             doc["EXP_DATE"] = doc["REC_DATE"]
         doc["REC_STATUS"] = "OPEN"
