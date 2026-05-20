@@ -4,7 +4,10 @@ export const MARKET_OPEN_MINUTES = 9 * 60 + 15
 export const MARKET_CLOSE_MINUTES = 15 * 60 + 30
 
 export const STALE_ORDER_ROW_TITLE =
-  'Stale OPEN order status in DB — fix before next session or appPaytm checkOpenOrders may fail.'
+  'Stale OPEN order status in DB (outside market hours) — fix before next session or appPaytm checkOpenOrders may fail.'
+
+export const PENDING_OPEN_ORDER_ROW_TITLE =
+  'DB has OPEN order(s) on this row — appPaytm will not place a new open order until they clear. Use Adjust held qty 0→0 to clear rejected/stale orders without closing the trade.'
 
 const IST = 'Asia/Kolkata'
 
@@ -36,11 +39,25 @@ export function isActiveTrade(trade) {
   return trade.POS_HOLD_STATUS !== 'CLOSE'
 }
 
-/** Aligns with workflow.hasPendingOrders(..., filter='ALL') + active_only rows. */
+/** Active row with ORDER_STATUS OPEN in OPEN_ORDERS or CLOSE_ORDERS (workflow.hasPendingOrders ALL). */
+export function hasPendingOpenOrdersInDb(trade) {
+  return isActiveTrade(trade) && hasOpenOrderStatus(trade)
+}
+
+/** Outside market hours + pending OPEN in DB (red). */
 export function shouldWarnStaleOpenOrders(trade, now = new Date()) {
-  return isOutsideTradingHours(now) && isActiveTrade(trade) && hasOpenOrderStatus(trade)
+  return isOutsideTradingHours(now) && hasPendingOpenOrdersInDb(trade)
+}
+
+/** During market hours + pending OPEN in DB (blue) — visible while session is live. */
+export function shouldHighlightLivePendingOpenOrders(trade, now = new Date()) {
+  return !isOutsideTradingHours(now) && hasPendingOpenOrdersInDb(trade)
 }
 
 export function bucketHasStaleOpenOrders(bucket, now = new Date()) {
   return bucket.members.some((m) => shouldWarnStaleOpenOrders(m.trade, now))
+}
+
+export function bucketHasLivePendingOpenOrders(bucket, now = new Date()) {
+  return bucket.members.some((m) => shouldHighlightLivePendingOpenOrders(m.trade, now))
 }

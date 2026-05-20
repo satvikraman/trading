@@ -7,6 +7,13 @@ import re
 import requests
 import shutil
 
+from circuit_limit_cache import CircuitLimitCache
+from security_master_sync import (
+    DEFAULT_PAYTM_BSE_URL,
+    DEFAULT_PAYTM_NSE_URL,
+    ensure_paytm_security_master,
+)
+
 
 class Workflow():
     def __init__(self, parent, logger):
@@ -14,6 +21,7 @@ class Workflow():
         self.__logger = logger
         self.__today = datetime.datetime.today()
         self.__lock = threading.Lock()
+        self.__circuit_cache: CircuitLimitCache | None = None
 
 
     def backup(self, db, backupPath, suffix=''):
@@ -240,7 +248,58 @@ class Workflow():
         # Check if all the holding stocks - core are in DB
         # Check if all the DB stocks are in holding and in the same quantity
         status = self.__parent.checkDbHoldingSynch(persistenceInsts)
+        self.__prepare_circuit_limits(persistenceInsts)
         return status
+
+
+    def __read_dataset_option(self, option: str, default: str) -> str:
+        for attr in ("_AppPaytmBroker__config", "_AppIciciDirectBreezeBroker__config"):
+            config = getattr(self.__parent, attr, None)
+            if config is not None and config.has_section("DATASET"):
+                if config.has_option("DATASET", option):
+                    return config["DATASET"][option]
+        return default
+
+
+    def __prepare_circuit_limits(self, persistenceInsts) -> None:
+        """Download Paytm security masters once per day and preload active rec limits."""
+        try:
+            paths, downloaded = ensure_paytm_security_master(
+                ".",
+                nse_url=self.__read_dataset_option("PAYTM_NSE_URL", DEFAULT_PAYTM_NSE_URL),
+                bse_url=self.__read_dataset_option("PAYTM_BSE_URL", DEFAULT_PAYTM_BSE_URL),
+                nse_dataset=self.__read_dataset_option(
+                    "NSE_PAYTM_DATASET", "./dataset/nse_security_master.csv"
+                ),
+                bse_dataset=self.__read_dataset_option(
+                    "BSE_PAYTM_DATASET", "./dataset/bse_security_master.csv"
+                ),
+                env_path="./.env",
+                logger=self.__logger,
+            )
+            if downloaded:
+                self.__logger.info("Paytm security master CSVs refreshed for circuit limits")
+        except Exception as exc:
+            self.__logger.warning(
+                "Paytm security master download failed: %s; circuit checks use existing files if any",
+                exc,
+            )
+            paths = {
+                "NSE": os.path.abspath("./dataset/nse_security_master.csv"),
+                "BSE": os.path.abspath("./dataset/bse_security_master.csv"),
+            }
+
+        self.__circuit_cache = CircuitLimitCache(
+            nse_csv=paths["NSE"],
+            bse_csv=paths["BSE"],
+            logger=self.__logger,
+        )
+        active_recs = []
+        for persistence_inst in persistenceInsts:
+            if persistence_inst is None:
+                continue
+            active_recs.extend(persistence_inst.getDb([["POS_HOLD_STATUS", "!CLOSE"]]))
+        self.__circuit_cache.preload_active_recs(active_recs)
 
 
 
@@ -625,6 +684,10 @@ class Workflow():
                 return False, dbDict
 
         canOrder, qty, limitPrice, orderType = self.__getQtyLimitPrice(dbDict)
+        if orderType == "LMT" and limitPrice > 0 and self.__circuit_cache is not None:
+            limitPrice = self.__circuit_cache.clamp_for_open_order(
+                dbDict, limitPrice, dbDict["BUY_SELL"]
+            )
         if not canOrder:
             if limitPrice != 0:
                 self.__logger.debug("Price not in recommendation range. Stock = %s-%s-%s-%s BUY_SELL = %s LTP = %.2f Limit = %.2f", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], dbDict['BUY_SELL'], ltp, limitPrice)

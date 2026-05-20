@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ConfirmCommitModal from './ConfirmCommitModal.jsx'
 import {
+  bucketHasCircuitLimitBreach,
+  shouldWarnCircuitLimitBreach,
+  tradeRowClassName,
+  tradeRowTitle,
+} from './circuitLimitWarning.js'
+import {
+  bucketHasLivePendingOpenOrders,
   bucketHasStaleOpenOrders,
+  shouldHighlightLivePendingOpenOrders,
   shouldWarnStaleOpenOrders,
-  STALE_ORDER_ROW_TITLE,
 } from './staleOrderWarning.js'
 
 const TRADE_COLS = [
@@ -31,7 +38,7 @@ const EDITABLE = new Set(['QTY', 'LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'S
 const CELL_FIELD_ACTIONS = {
   POS_HOLD_QTY: {
     title: 'Adjust held quantity',
-    hint: 'Sets POS_HOLD_QTY and derives position state. 0→0 clears stale orders (keeps OPEN unless position was CLOSE). >0→0 closes position and recommendation. Full QTY → POSITION with dummy buy. Cannot exceed trade QTY or set >0 while POS_HOLD_STATUS is CLOSE.',
+    hint: 'Sets POS_HOLD_QTY and derives position state. 0→0 clears OPEN/CLOSE orders in the DB (use when broker rejected but DB still shows OPEN — works during market hours). >0→0 closes position and recommendation. Full QTY → POSITION with dummy buy. Cannot exceed trade QTY or set >0 while POS_HOLD_STATUS is CLOSE.',
     inputLabel: 'Held quantity (POS_HOLD_QTY)',
     canActivate: (trade) => trade.REC_STATUS !== 'CLOSE',
     toEditState: (id, trade) => ({
@@ -207,6 +214,46 @@ function portfolioColumns(acrossSource, acrossStrategy) {
   return cols
 }
 
+const REC_MONTH = {
+  Jan: 0,
+  Feb: 1,
+  Mar: 2,
+  Apr: 3,
+  May: 4,
+  Jun: 5,
+  Jul: 6,
+  Aug: 7,
+  Sep: 8,
+  Oct: 9,
+  Nov: 10,
+  Dec: 11,
+}
+
+/** Sort key: REC_DATE then REC_TIME, latest first (matches dd-MMM-yyyy / HH:MM). */
+function recDateTimeSortKey(trade) {
+  const dateStr = String(trade.REC_DATE || '')
+  const m = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/)
+  let dayMs = 0
+  if (m) {
+    const month = REC_MONTH[m[2]]
+    if (month !== undefined) {
+      dayMs = Date.UTC(Number(m[3]), month, Number(m[1]))
+    }
+  }
+  const timeStr = String(trade.REC_TIME || '00:00')
+  const tm = timeStr.match(/^(\d{1,2}):(\d{2})$/)
+  const timeMs = tm ? (Number(tm[1]) * 60 + Number(tm[2])) * 60_000 : 0
+  return dayMs + timeMs
+}
+
+function compareTradesNewestFirst(a, b) {
+  return recDateTimeSortKey(b.trade) - recDateTimeSortKey(a.trade)
+}
+
+function sortRowsByRecDateDesc(rows) {
+  return [...rows].sort(compareTradesNewestFirst)
+}
+
 function buildPortfolioBuckets(rows, acrossSource, acrossStrategy) {
   const map = new Map()
   for (const row of rows) {
@@ -228,9 +275,11 @@ function buildPortfolioBuckets(rows, acrossSource, acrossStrategy) {
     bucket.POS_HOLD_QTY += Number(trade.POS_HOLD_QTY) || 0
     bucket.members.push({ id, trade })
   }
-  return [...map.values()].sort((a, b) =>
-    String(a.MKT_SYMBOL).localeCompare(String(b.MKT_SYMBOL)),
-  )
+  return [...map.values()].sort((a, b) => {
+    const aMax = Math.max(...a.members.map((m) => recDateTimeSortKey(m.trade)))
+    const bMax = Math.max(...b.members.map((m) => recDateTimeSortKey(m.trade)))
+    return bMax - aMax
+  })
 }
 
 async function api(path, options = {}) {
@@ -321,9 +370,12 @@ export default function App() {
     return () => clearInterval(id)
   }, [])
 
+  const sortedRows = useMemo(() => sortRowsByRecDateDesc(rows), [rows])
+
   const portfolioBuckets = useMemo(
-    () => buildPortfolioBuckets(rows, accumulateAcrossSource, accumulateAcrossStrategy),
-    [rows, accumulateAcrossSource, accumulateAcrossStrategy],
+    () =>
+      buildPortfolioBuckets(sortedRows, accumulateAcrossSource, accumulateAcrossStrategy),
+    [sortedRows, accumulateAcrossSource, accumulateAcrossStrategy],
   )
 
   const tableColumns = useMemo(() => {
@@ -335,8 +387,26 @@ export default function App() {
     if (portfolioView) {
       return portfolioBuckets.filter((b) => bucketHasStaleOpenOrders(b)).length
     }
-    return rows.filter(({ trade }) => shouldWarnStaleOpenOrders(trade)).length
-  }, [portfolioView, portfolioBuckets, rows, clockTick])
+    return sortedRows.filter(({ trade }) => shouldWarnStaleOpenOrders(trade)).length
+  }, [portfolioView, portfolioBuckets, sortedRows, clockTick])
+
+  const livePendingOpenOrderCount = useMemo(() => {
+    if (portfolioView) {
+      return portfolioBuckets.filter((b) => bucketHasLivePendingOpenOrders(b)).length
+    }
+    return sortedRows.filter(({ trade }) => shouldHighlightLivePendingOpenOrders(trade)).length
+  }, [portfolioView, portfolioBuckets, sortedRows, clockTick])
+
+  const circuitLimitWarningCount = useMemo(() => {
+    if (portfolioView) {
+      return portfolioBuckets.filter((b) =>
+        bucketHasCircuitLimitBreach(b, (id) => drafts[id]),
+      ).length
+    }
+    return sortedRows.filter(({ id, trade }) =>
+      shouldWarnCircuitLimitBreach(trade, drafts[id]),
+    ).length
+  }, [portfolioView, portfolioBuckets, sortedRows, drafts, clockTick])
 
   const closeCreate = useCallback(() => {
     setShowCreate(false)
@@ -669,6 +739,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="app-chrome">
       <header>
         <h1>Trade Manager</h1>
         <div className="header-actions">
@@ -681,7 +752,46 @@ export default function App() {
         </div>
       </header>
 
+      <div className="row-color-legend" role="note" aria-label="Row highlight legend">
+        <span className="row-color-legend-label">Highlights</span>
+        <span
+          className="legend-chip legend-chip-pending"
+          title="Open order(s) still in the DB during market hours. appPaytm will not place another open until cleared. Use Adjust held qty 0→0 if the broker rejected the order."
+        >
+          Pending Open
+        </span>
+        <span
+          className="legend-chip legend-chip-stale"
+          title="Open order(s) in the DB outside market hours. Clear before the next session or checkOpenOrders may fail on startup."
+        >
+          Stale Open
+        </span>
+        <span
+          className="legend-chip legend-chip-circuit"
+          title="Entry row (POS_HOLD_STATUS and REC_STATUS Open) where HIGH_REC_PRICE (BUY) or LOW_REC_PRICE (SELL) is outside today's circuit band from Paytm security master."
+        >
+          Circuit breach
+        </span>
+      </div>
+
       {banner && <div className="banner-error">{banner}</div>}
+
+      {livePendingOpenOrderCount > 0 && (
+        <div className="banner-pending-open-orders" role="status">
+          {livePendingOpenOrderCount}{' '}
+          {livePendingOpenOrderCount === 1 ? 'row has' : 'rows have'} OPEN orders in the DB
+          (blue highlight). appPaytm will skip new open orders until cleared — Adjust held qty
+          0→0 on the row if the broker already rejected/cancelled.
+        </div>
+      )}
+
+      {circuitLimitWarningCount > 0 && (
+        <div className="banner-circuit-limit" role="status">
+          {circuitLimitWarningCount}{' '}
+          {circuitLimitWarningCount === 1 ? 'row has' : 'rows have'} an order limit outside
+          today&apos;s circuit band (amber highlight). appPaytm will clamp limits when placing.
+        </div>
+      )}
 
       {staleOpenOrderWarningCount > 0 && (
         <div className="banner-stale-orders" role="status">
@@ -810,6 +920,7 @@ export default function App() {
           )}
         </p>
       )}
+      </div>
 
       <div className="table-wrap">
         <table>
@@ -825,11 +936,16 @@ export default function App() {
             {portfolioView
               ? portfolioBuckets.map((bucket) => {
                   const staleWarn = bucketHasStaleOpenOrders(bucket)
+                  const pendingOpenWarn = bucketHasLivePendingOpenOrders(bucket)
+                  const circuitWarn = bucketHasCircuitLimitBreach(
+                    bucket,
+                    (id) => drafts[id],
+                  )
                   return (
                   <tr
                     key={bucket.key}
-                    className={staleWarn ? 'row-stale-open-orders' : undefined}
-                    title={staleWarn ? STALE_ORDER_ROW_TITLE : undefined}
+                    className={tradeRowClassName({ staleWarn, pendingOpenWarn, circuitWarn })}
+                    title={tradeRowTitle({ staleWarn, pendingOpenWarn, circuitWarn })}
                   >
                     {tableColumns.map((col) => (
                       <td key={col} className="readonly">
@@ -851,14 +967,16 @@ export default function App() {
                   </tr>
                   )
                 })
-              : rows.map(({ id, trade }) => {
+              : sortedRows.map(({ id, trade }) => {
                   const row = getDraft(id, trade)
                   const staleWarn = shouldWarnStaleOpenOrders(trade)
+                  const pendingOpenWarn = shouldHighlightLivePendingOpenOrders(trade)
+                  const circuitWarn = shouldWarnCircuitLimitBreach(trade, drafts[id])
                   return (
                     <tr
                       key={id}
-                      className={staleWarn ? 'row-stale-open-orders' : undefined}
-                      title={staleWarn ? STALE_ORDER_ROW_TITLE : undefined}
+                      className={tradeRowClassName({ staleWarn, pendingOpenWarn, circuitWarn })}
+                      title={tradeRowTitle({ staleWarn, pendingOpenWarn, circuitWarn })}
                     >
                       {TRADE_COLS.map((col) => renderTradeCell(col, id, trade, row))}
                       <td className="actions">

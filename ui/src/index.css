@@ -1,15 +1,29 @@
 * {
   box-sizing: border-box;
 }
+html,
+body,
+#root {
+  height: 100%;
+}
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   background: #f4f5f7;
   color: #1a1a1a;
+  overflow: hidden;
 }
 .app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   max-width: 100%;
-  padding: 1rem 1.25rem 2rem;
+  padding: 1rem 1.25rem 1rem;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.app-chrome {
+  flex-shrink: 0;
 }
 header {
   display: flex;
@@ -180,6 +194,8 @@ input, select, button {
   padding: 0.35rem 0.5rem;
 }
 .table-wrap {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   background: #fff;
   border-radius: 8px;
@@ -200,6 +216,8 @@ th {
   text-align: left;
   position: sticky;
   top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 #e8e8e8;
 }
 td input {
   width: 5.5rem;
@@ -239,6 +257,65 @@ button.cell-action:focus-visible {
   color: #b00020;
   font-size: 0.8rem;
 }
+.row-color-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  margin-bottom: 0.65rem;
+  padding: 0;
+}
+.row-color-legend-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-right: 0.15rem;
+}
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  cursor: help;
+}
+.legend-chip::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-chip-pending {
+  color: #1e40af;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.legend-chip-pending::before {
+  background: #3b82f6;
+}
+.legend-chip-stale {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.legend-chip-stale::before {
+  background: #ef4444;
+}
+.legend-chip-circuit {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.legend-chip-circuit::before {
+  background: #f59e0b;
+}
 .banner-error {
   background: #fdecea;
   border: 1px solid #f5c6cb;
@@ -266,6 +343,55 @@ tr.row-stale-open-orders td {
   border-bottom-color: #fecaca;
 }
 tr.row-stale-open-orders td.readonly {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+.banner-pending-open-orders {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+tr.row-pending-open-orders {
+  background: #eff6ff;
+}
+tr.row-pending-open-orders td {
+  background: #eff6ff;
+  border-bottom-color: #bfdbfe;
+}
+tr.row-pending-open-orders td.readonly {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+tr.row-stale-open-orders.row-pending-open-orders td.readonly {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+.banner-circuit-limit {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+tr.row-circuit-limit-breach {
+  background: #fffbeb;
+}
+tr.row-circuit-limit-breach td {
+  background: #fffbeb;
+  border-bottom-color: #fde68a;
+}
+tr.row-circuit-limit-breach td.readonly {
+  background: #fef3c7;
+  color: #78350f;
+}
+/* Both warnings: circuit (amber) shows on non-stale cells; stale (red) takes stale cells */
+tr.row-stale-open-orders.row-circuit-limit-breach td.readonly {
   background: #fee2e2;
   color: #7f1d1d;
 }

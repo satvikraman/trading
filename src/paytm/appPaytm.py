@@ -238,6 +238,8 @@ class AppPaytmBroker():
 
     def startupCheck(self):
         persistenceInsts = [self.persistenceInv]
+        if self.persistenceIntraDay is not None:
+            persistenceInsts.append(self.persistenceIntraDay)
         status = self.__workflow.startupCheck(persistenceInsts)
         assert status, 'Startup check failed. Exiting'
         print('Startup check Passed!!!')

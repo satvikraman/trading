@@ -7,6 +7,7 @@ Local web UI and FastAPI service for managing equity trades in `src/paytm/db/pay
 - Python 3.11+ with `.venv` at repo root: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 - Node.js for UI dev: `cd ui && npm install`
 - Network on first run of the day (or when `dataset/NSEScripMaster.txt` is missing): Trade Manager downloads the public ICICI [SecurityMaster.zip](https://directlink.icicidirect.com/NewSecurityMaster/SecurityMaster.zip) into `dataset/`, same as `appIciciBreeze.py`. Symbol lookup uses `ExchangeCode` from `NSEScripMaster.txt` (no hardcoded symbol list).
+- The same startup / `POST /api/dataset/refresh` also downloads Paytm `nse_security_master.csv` and `bse_security_master.csv` (daily circuit `upper_limit` / `lower_limit`). Row highlights: **blue** = OPEN order(s) still in DB during market hours (appPaytm will not place another open until cleared); **red** = same, outside market hours; **amber** = order limit outside circuit band on an entry row (`POS_HOLD_STATUS=OPEN`, `REC_STATUS=OPEN`). To clear rejected/stale OPEN orders without closing the trade: **Adjust held qty** with `POS_HOLD_QTY` **0→0** (allowed any time `REC_STATUS` is not `CLOSE`).
 
 ## Database on GitHub
 

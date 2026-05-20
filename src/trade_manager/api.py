@@ -87,7 +87,7 @@ def rename_symbol(payload: SymbolRenameRequest):
 
 @app.post("/api/dataset/refresh")
 def refresh_dataset(force: bool = False):
-    """Re-download ICICI SecurityMaster zip (once per day unless force=true)."""
+    """Re-download ICICI SecurityMaster zip and Paytm NSE/BSE circuit CSVs (once per day unless force=true)."""
     try:
         paths = service.refresh_security_master(force=force)
         return {"status": "ok", "paths": paths}
