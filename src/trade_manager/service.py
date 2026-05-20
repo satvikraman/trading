@@ -273,6 +273,8 @@ class TradeService:
             }
 
         self.__nse_master = paths["NSE"]
+        self.__symbol_master = self._load_symbol_master()
+        self.__symbol_lookup_cache: dict[str, list[dict]] = {}
         self.__mapper = MapIciciToNseStock(
             str(paths["NSE"]),
             str(paths["BSE"]),
@@ -293,6 +295,34 @@ class TradeService:
             except Exception as exc:
                 self.__logger.warning("Paytm security master on startup: %s", exc)
         self._init_circuit_cache(preload=True)
+
+    def _load_symbol_master(self) -> dict[str, dict]:
+        master: dict[str, dict] = {}
+        if not self.__nse_master.is_file():
+            return master
+
+        with open(self.__nse_master, encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                values = [v.strip().strip('"') for v in row.values()]
+                if len(values) < 4:
+                    continue
+                token, short, series = values[0], values[1], values[2]
+                exchange_code = values[-1].upper()
+                if not exchange_code:
+                    continue
+                hit = {
+                    "MKT_SYMBOL": exchange_code,
+                    "SECURITY_ID": token,
+                    "ICICI_SYMBOL": short or exchange_code,
+                    "MKT": "NSE",
+                    "STOCK": exchange_code,
+                    "_series": series.upper(),
+                }
+                existing = master.get(exchange_code)
+                if existing is None or (existing.get("_series") != "EQ" and hit["_series"] == "EQ"):
+                    master[exchange_code] = hit
+        return master
 
     def _init_circuit_cache(self, *, preload: bool = False) -> None:
         cfg = self.__dataset_cfg
@@ -362,6 +392,8 @@ class TradeService:
             force=force,
         )
         self.__nse_master = paths["NSE"]
+        self.__symbol_master = self._load_symbol_master()
+        self.__symbol_lookup_cache.clear()
         self.__mapper = MapIciciToNseStock(
             str(paths["NSE"]),
             str(paths["BSE"]),
@@ -400,6 +432,7 @@ class TradeService:
 
     def _invalidate(self):
         self.__cache["data"] = None
+        self.__symbol_lookup_cache.clear()
 
     def _trade_rows_for_symbol(self, mkt_symbol: str, active_only: bool = False):
         sym = mkt_symbol.strip().upper()
@@ -610,46 +643,33 @@ class TradeService:
         q = (q or "").strip().upper()
         if len(q) < 1:
             return []
-        matches: set[str] = set()
+        cached = self.__symbol_lookup_cache.get(q)
+        if cached is not None:
+            return [dict(hit) for hit in cached]
 
-        if self.__nse_master.is_file():
-            with open(self.__nse_master, encoding="utf-8", errors="ignore") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    values = [v.strip().strip('"') for v in row.values()]
-                    if len(values) < 4:
-                        continue
-                    exchange_code = values[-1].upper()
-                    if _symbol_matches_lookup_query(exchange_code, q):
-                        matches.add(exchange_code)
+        matches: dict[str, dict] = {}
+
+        for sym, hit in self.__symbol_master.items():
+            if _symbol_matches_lookup_query(sym, q):
+                matches[sym] = {k: v for k, v in hit.items() if k != "_series"}
 
         for row in self.__store.getDb([]):
             sym = (row.get("MKT_SYMBOL") or "").upper()
-            if sym and _symbol_matches_lookup_query(sym, q):
-                matches.add(sym)
-
-        ranked = sorted(matches, key=lambda s: _symbol_lookup_rank(s, q))
-
-        out = []
-        seen: set[str] = set()
-        for sym in ranked:
-            if sym in seen:
+            if not sym or not _symbol_matches_lookup_query(sym, q):
                 continue
-            ok, sec_id, icici, mkt_sym, mkt = self._resolve_symbol(sym)
-            if not ok:
+            if sym in matches:
                 continue
-            seen.add(sym)
-            out.append(
-                {
-                    "MKT_SYMBOL": mkt_sym,
-                    "SECURITY_ID": sec_id,
-                    "ICICI_SYMBOL": icici,
-                    "MKT": mkt,
-                    "STOCK": sym,
-                }
-            )
-            if len(out) >= limit:
-                break
+            matches[sym] = {
+                "MKT_SYMBOL": row.get("MKT_SYMBOL") or sym,
+                "SECURITY_ID": str(row.get("SECURITY_ID") or ""),
+                "ICICI_SYMBOL": row.get("ICICI_SYMBOL") or sym,
+                "MKT": row.get("MKT") or "NSE",
+                "STOCK": row.get("STOCK") or sym,
+            }
+
+        ranked = sorted(matches.values(), key=lambda item: _symbol_lookup_rank(item["MKT_SYMBOL"], q))
+        out = ranked[:limit]
+        self.__symbol_lookup_cache[q] = [dict(hit) for hit in out]
         return out
 
     def create_trade(self, payload):
