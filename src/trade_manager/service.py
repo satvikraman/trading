@@ -11,17 +11,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 from persistence import persistence  # noqa: E402
 from mapIciciToNseStock import MapIciciToNseStock  # noqa: E402
-from circuit_limit_cache import (  # noqa: E402
-    CircuitLimitCache,
-    limit_price_out_of_circuit,
-    order_limit_price_for_check,
-)
 from security_master_sync import (  # noqa: E402
     DEFAULT_ICICI_ZIP_URL,
-    DEFAULT_PAYTM_BSE_URL,
-    DEFAULT_PAYTM_NSE_URL,
     ensure_icici_security_master,
-    ensure_paytm_security_master,
     resolve_repo_path,
 )
 
@@ -175,31 +167,13 @@ def preview_held_qty_adjustment(doc: dict, pos_hold_qty: int) -> dict:
     }
 
 
-def _dataset_option(config, option: str, default: str) -> str:
-    if config.has_section("DATASET") and config.has_option("DATASET", option):
-        return config["DATASET"][option]
-    return default
-
-
 def _load_dataset_config(config, root: Path) -> dict[str, str]:
     if config.has_section("DATASET"):
         return {
-            "zip_url": _dataset_option(config, "ICICI_DATASET", DEFAULT_ICICI_ZIP_URL),
-            "nse": _dataset_option(config, "NSE_DATASET", "./dataset/NSEScripMaster.txt"),
-            "bse": _dataset_option(config, "BSE_DATASET", "./dataset/BSEScripMaster.txt"),
-            "fno": _dataset_option(config, "FNO_DATASET", "./dataset/FONSEScripMaster.txt"),
-            "paytm_nse_url": _dataset_option(
-                config, "PAYTM_NSE_URL", DEFAULT_PAYTM_NSE_URL
-            ),
-            "paytm_bse_url": _dataset_option(
-                config, "PAYTM_BSE_URL", DEFAULT_PAYTM_BSE_URL
-            ),
-            "paytm_nse": _dataset_option(
-                config, "NSE_PAYTM_DATASET", "./dataset/nse_security_master.csv"
-            ),
-            "paytm_bse": _dataset_option(
-                config, "BSE_PAYTM_DATASET", "./dataset/bse_security_master.csv"
-            ),
+            "zip_url": config.get("DATASET", "ICICI_DATASET", fallback=DEFAULT_ICICI_ZIP_URL),
+            "nse": config.get("DATASET", "NSE_DATASET", fallback="./dataset/NSEScripMaster.txt"),
+            "bse": config.get("DATASET", "BSE_DATASET", fallback="./dataset/BSEScripMaster.txt"),
+            "fno": config.get("DATASET", "FNO_DATASET", fallback="./dataset/FONSEScripMaster.txt"),
         }
     # Fallback to ICICI config used by appIciciBreeze
     icici_ini = root / "src/icici/iciciDirect.ini"
@@ -208,32 +182,16 @@ def _load_dataset_config(config, root: Path) -> dict[str, str]:
         icici.read(icici_ini)
         if icici.has_section("DATASET"):
             return {
-                "zip_url": _dataset_option(icici, "ICICI_DATASET", DEFAULT_ICICI_ZIP_URL),
-                "nse": _dataset_option(icici, "NSE_DATASET", "./dataset/NSEScripMaster.txt"),
-                "bse": _dataset_option(icici, "BSE_DATASET", "./dataset/BSEScripMaster.txt"),
-                "fno": _dataset_option(icici, "FNO_DATASET", "./dataset/FONSEScripMaster.txt"),
-                "paytm_nse_url": _dataset_option(
-                    icici, "PAYTM_NSE_URL", DEFAULT_PAYTM_NSE_URL
-                ),
-                "paytm_bse_url": _dataset_option(
-                    icici, "PAYTM_BSE_URL", DEFAULT_PAYTM_BSE_URL
-                ),
-                "paytm_nse": _dataset_option(
-                    icici, "NSE_PAYTM_DATASET", "./dataset/nse_security_master.csv"
-                ),
-                "paytm_bse": _dataset_option(
-                    icici, "BSE_PAYTM_DATASET", "./dataset/bse_security_master.csv"
-                ),
+                "zip_url": icici.get("DATASET", "ICICI_DATASET", fallback=DEFAULT_ICICI_ZIP_URL),
+                "nse": icici.get("DATASET", "NSE_DATASET", fallback="./dataset/NSEScripMaster.txt"),
+                "bse": icici.get("DATASET", "BSE_DATASET", fallback="./dataset/BSEScripMaster.txt"),
+                "fno": icici.get("DATASET", "FNO_DATASET", fallback="./dataset/FONSEScripMaster.txt"),
             }
     return {
         "zip_url": DEFAULT_ICICI_ZIP_URL,
         "nse": "./dataset/NSEScripMaster.txt",
         "bse": "./dataset/BSEScripMaster.txt",
         "fno": "./dataset/FONSEScripMaster.txt",
-        "paytm_nse_url": DEFAULT_PAYTM_NSE_URL,
-        "paytm_bse_url": DEFAULT_PAYTM_BSE_URL,
-        "paytm_nse": "./dataset/nse_security_master.csv",
-        "paytm_bse": "./dataset/bse_security_master.csv",
     }
 
 
@@ -273,8 +231,6 @@ class TradeService:
             }
 
         self.__nse_master = paths["NSE"]
-        self.__symbol_master = self._load_symbol_master()
-        self.__symbol_lookup_cache: dict[str, list[dict]] = {}
         self.__mapper = MapIciciToNseStock(
             str(paths["NSE"]),
             str(paths["BSE"]),
@@ -287,100 +243,9 @@ class TradeService:
         self.__store = persistence(self.__logger, db)
         self.__cache = {"data": None, "ts": 0.0}
         self.__ttl = 10.0
-        self.__circuit_cache: CircuitLimitCache | None = None
-        self.__dataset_cfg = dataset_cfg
-        if refresh_dataset:
-            try:
-                self._download_paytm_security_master()
-            except Exception as exc:
-                self.__logger.warning("Paytm security master on startup: %s", exc)
-        self._init_circuit_cache(preload=True)
-
-    def _load_symbol_master(self) -> dict[str, dict]:
-        master: dict[str, dict] = {}
-        if not self.__nse_master.is_file():
-            return master
-
-        with open(self.__nse_master, encoding="utf-8", errors="ignore") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                values = [v.strip().strip('"') for v in row.values()]
-                if len(values) < 4:
-                    continue
-                token, short, series = values[0], values[1], values[2]
-                exchange_code = values[-1].upper()
-                if not exchange_code:
-                    continue
-                hit = {
-                    "MKT_SYMBOL": exchange_code,
-                    "SECURITY_ID": token,
-                    "ICICI_SYMBOL": short or exchange_code,
-                    "MKT": "NSE",
-                    "STOCK": exchange_code,
-                    "_series": series.upper(),
-                }
-                existing = master.get(exchange_code)
-                if existing is None or (existing.get("_series") != "EQ" and hit["_series"] == "EQ"):
-                    master[exchange_code] = hit
-        return master
-
-    def _init_circuit_cache(self, *, preload: bool = False) -> None:
-        cfg = self.__dataset_cfg
-        self.__circuit_cache = CircuitLimitCache(
-            nse_csv=resolve_repo_path(self.__root, cfg["paytm_nse"]),
-            bse_csv=resolve_repo_path(self.__root, cfg["paytm_bse"]),
-            logger=self.__logger,
-        )
-        if preload:
-            rows = self.__store.getDb([])
-            active = [r for r in rows if r.get("POS_HOLD_STATUS") != "CLOSE"]
-            self.__circuit_cache.preload_active_recs(active)
-
-    def _download_paytm_security_master(self, force: bool = False) -> dict[str, Path]:
-        cfg = self.__dataset_cfg
-        paths, downloaded = ensure_paytm_security_master(
-            self.__root,
-            nse_url=cfg["paytm_nse_url"],
-            bse_url=cfg["paytm_bse_url"],
-            nse_dataset=cfg["paytm_nse"],
-            bse_dataset=cfg["paytm_bse"],
-            env_path=self.__root / ".env",
-            logger=self.__logger,
-            force=force,
-        )
-        return paths
-
-    def _enrich_circuit_fields(self, trade: dict) -> dict:
-        enriched = {**trade}
-        security_id = str(trade.get("SECURITY_ID") or "").strip()
-        exchange = str(trade.get("MKT") or "NSE").strip().upper()
-        limits = None
-        if security_id and self.__circuit_cache is not None:
-            limits = self.__circuit_cache.get_limits(security_id, exchange)
-        if limits:
-            enriched["CIRCUIT_UPPER"] = limits["upper"]
-            enriched["CIRCUIT_LOWER"] = limits["lower"]
-        else:
-            enriched["CIRCUIT_UPPER"] = None
-            enriched["CIRCUIT_LOWER"] = None
-        enriched["CIRCUIT_LIMIT_OUT_OF_BAND"] = False
-        if (
-            limits
-            and trade.get("POS_HOLD_STATUS") == "OPEN"
-            and trade.get("REC_STATUS") == "OPEN"
-        ):
-            limit_price = order_limit_price_for_check(trade)
-            if limit_price is not None:
-                enriched["CIRCUIT_LIMIT_OUT_OF_BAND"] = limit_price_out_of_circuit(
-                    limit_price,
-                    str(trade.get("BUY_SELL") or "BUY"),
-                    limits["upper"],
-                    limits["lower"],
-                )
-        return enriched
 
     def refresh_security_master(self, force: bool = False) -> dict[str, str]:
-        dataset_cfg = self.__dataset_cfg
+        dataset_cfg = _load_dataset_config(self.__config, self.__root)
         paths, _downloaded = ensure_icici_security_master(
             self.__root,
             zip_url=dataset_cfg["zip_url"],
@@ -392,20 +257,12 @@ class TradeService:
             force=force,
         )
         self.__nse_master = paths["NSE"]
-        self.__symbol_master = self._load_symbol_master()
-        self.__symbol_lookup_cache.clear()
         self.__mapper = MapIciciToNseStock(
             str(paths["NSE"]),
             str(paths["BSE"]),
             str(paths["FNO"]),
         )
-        paytm_paths = self._download_paytm_security_master(force=force)
-        self._init_circuit_cache(preload=True)
-        self._invalidate()
-        out = {k: str(v) for k, v in paths.items()}
-        out["paytm_nse"] = str(paytm_paths["NSE"])
-        out["paytm_bse"] = str(paytm_paths["BSE"])
-        return out
+        return {k: str(v) for k, v in paths.items()}
 
     def _resolve_symbol(self, mkt_symbol, product="CASH", mkt="NSE", security_id=None):
         return resolve_symbol(
@@ -432,7 +289,6 @@ class TradeService:
 
     def _invalidate(self):
         self.__cache["data"] = None
-        self.__symbol_lookup_cache.clear()
 
     def _trade_rows_for_symbol(self, mkt_symbol: str, active_only: bool = False):
         sym = mkt_symbol.strip().upper()
@@ -623,17 +479,14 @@ class TradeService:
             return True
 
         filtered = [r for r in rows if match(r)]
-        return [
-            {"id": encode_trade_id(r), "trade": self._enrich_circuit_fields(r)}
-            for r in filtered
-        ]
+        return [{"id": encode_trade_id(r), "trade": r} for r in filtered]
 
     def get_trade(self, trade_id):
         query = decode_trade_id(trade_id)
         found, doc = self.__store.isInDb(query)
         if not found:
             return None
-        return {"id": trade_id, "trade": self._enrich_circuit_fields(doc)}
+        return {"id": trade_id, "trade": doc}
 
     def list_sources(self):
         rows = self.__store.getDb([])
@@ -643,33 +496,46 @@ class TradeService:
         q = (q or "").strip().upper()
         if len(q) < 1:
             return []
-        cached = self.__symbol_lookup_cache.get(q)
-        if cached is not None:
-            return [dict(hit) for hit in cached]
+        matches: set[str] = set()
 
-        matches: dict[str, dict] = {}
-
-        for sym, hit in self.__symbol_master.items():
-            if _symbol_matches_lookup_query(sym, q):
-                matches[sym] = {k: v for k, v in hit.items() if k != "_series"}
+        if self.__nse_master.is_file():
+            with open(self.__nse_master, encoding="utf-8", errors="ignore") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    values = [v.strip().strip('"') for v in row.values()]
+                    if len(values) < 4:
+                        continue
+                    exchange_code = values[-1].upper()
+                    if _symbol_matches_lookup_query(exchange_code, q):
+                        matches.add(exchange_code)
 
         for row in self.__store.getDb([]):
             sym = (row.get("MKT_SYMBOL") or "").upper()
-            if not sym or not _symbol_matches_lookup_query(sym, q):
-                continue
-            if sym in matches:
-                continue
-            matches[sym] = {
-                "MKT_SYMBOL": row.get("MKT_SYMBOL") or sym,
-                "SECURITY_ID": str(row.get("SECURITY_ID") or ""),
-                "ICICI_SYMBOL": row.get("ICICI_SYMBOL") or sym,
-                "MKT": row.get("MKT") or "NSE",
-                "STOCK": row.get("STOCK") or sym,
-            }
+            if sym and _symbol_matches_lookup_query(sym, q):
+                matches.add(sym)
 
-        ranked = sorted(matches.values(), key=lambda item: _symbol_lookup_rank(item["MKT_SYMBOL"], q))
-        out = ranked[:limit]
-        self.__symbol_lookup_cache[q] = [dict(hit) for hit in out]
+        ranked = sorted(matches, key=lambda s: _symbol_lookup_rank(s, q))
+
+        out = []
+        seen: set[str] = set()
+        for sym in ranked:
+            if sym in seen:
+                continue
+            ok, sec_id, icici, mkt_sym, mkt = self._resolve_symbol(sym)
+            if not ok:
+                continue
+            seen.add(sym)
+            out.append(
+                {
+                    "MKT_SYMBOL": mkt_sym,
+                    "SECURITY_ID": sec_id,
+                    "ICICI_SYMBOL": icici,
+                    "MKT": mkt,
+                    "STOCK": sym,
+                }
+            )
+            if len(out) >= limit:
+                break
         return out
 
     def create_trade(self, payload):

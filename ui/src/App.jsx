@@ -1,16 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ConfirmCommitModal from './ConfirmCommitModal.jsx'
 import {
-  bucketHasCircuitLimitBreach,
-  shouldWarnCircuitLimitBreach,
-  tradeRowClassName,
-  tradeRowTitle,
-} from './circuitLimitWarning.js'
-import {
-  bucketHasLivePendingOpenOrders,
   bucketHasStaleOpenOrders,
-  shouldHighlightLivePendingOpenOrders,
   shouldWarnStaleOpenOrders,
+  STALE_ORDER_ROW_TITLE,
 } from './staleOrderWarning.js'
 
 const TRADE_COLS = [
@@ -38,7 +31,7 @@ const EDITABLE = new Set(['QTY', 'LOW_REC_PRICE', 'HIGH_REC_PRICE', 'TARGET', 'S
 const CELL_FIELD_ACTIONS = {
   POS_HOLD_QTY: {
     title: 'Adjust held quantity',
-    hint: 'Sets POS_HOLD_QTY and derives position state. 0→0 clears OPEN/CLOSE orders in the DB (use when broker rejected but DB still shows OPEN — works during market hours). >0→0 closes position and recommendation. Full QTY → POSITION with dummy buy. Cannot exceed trade QTY or set >0 while POS_HOLD_STATUS is CLOSE.',
+    hint: 'Sets POS_HOLD_QTY and derives position state. 0→0 clears stale orders (keeps OPEN unless position was CLOSE). >0→0 closes position and recommendation. Full QTY → POSITION with dummy buy. Cannot exceed trade QTY or set >0 while POS_HOLD_STATUS is CLOSE.',
     inputLabel: 'Held quantity (POS_HOLD_QTY)',
     canActivate: (trade) => trade.REC_STATUS !== 'CLOSE',
     toEditState: (id, trade) => ({
@@ -182,12 +175,6 @@ function createTradeSummaryLines(form, body) {
   ]
 }
 
-function hasExactSuggestionMatch(hits, q) {
-  const exact = (q || '').trim().toUpperCase()
-  if (!exact) return false
-  return hits.some((hit) => String(hit.MKT_SYMBOL || '').trim().toUpperCase() === exact)
-}
-
 function todayStr() {
   return new Date().toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -220,46 +207,6 @@ function portfolioColumns(acrossSource, acrossStrategy) {
   return cols
 }
 
-const REC_MONTH = {
-  Jan: 0,
-  Feb: 1,
-  Mar: 2,
-  Apr: 3,
-  May: 4,
-  Jun: 5,
-  Jul: 6,
-  Aug: 7,
-  Sep: 8,
-  Oct: 9,
-  Nov: 10,
-  Dec: 11,
-}
-
-/** Sort key: REC_DATE then REC_TIME, latest first (matches dd-MMM-yyyy / HH:MM). */
-function recDateTimeSortKey(trade) {
-  const dateStr = String(trade.REC_DATE || '')
-  const m = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/)
-  let dayMs = 0
-  if (m) {
-    const month = REC_MONTH[m[2]]
-    if (month !== undefined) {
-      dayMs = Date.UTC(Number(m[3]), month, Number(m[1]))
-    }
-  }
-  const timeStr = String(trade.REC_TIME || '00:00')
-  const tm = timeStr.match(/^(\d{1,2}):(\d{2})$/)
-  const timeMs = tm ? (Number(tm[1]) * 60 + Number(tm[2])) * 60_000 : 0
-  return dayMs + timeMs
-}
-
-function compareTradesNewestFirst(a, b) {
-  return recDateTimeSortKey(b.trade) - recDateTimeSortKey(a.trade)
-}
-
-function sortRowsByRecDateDesc(rows) {
-  return [...rows].sort(compareTradesNewestFirst)
-}
-
 function buildPortfolioBuckets(rows, acrossSource, acrossStrategy) {
   const map = new Map()
   for (const row of rows) {
@@ -281,11 +228,9 @@ function buildPortfolioBuckets(rows, acrossSource, acrossStrategy) {
     bucket.POS_HOLD_QTY += Number(trade.POS_HOLD_QTY) || 0
     bucket.members.push({ id, trade })
   }
-  return [...map.values()].sort((a, b) => {
-    const aMax = Math.max(...a.members.map((m) => recDateTimeSortKey(m.trade)))
-    const bMax = Math.max(...b.members.map((m) => recDateTimeSortKey(m.trade)))
-    return bMax - aMax
-  })
+  return [...map.values()].sort((a, b) =>
+    String(a.MKT_SYMBOL).localeCompare(String(b.MKT_SYMBOL)),
+  )
 }
 
 async function api(path, options = {}) {
@@ -320,8 +265,6 @@ export default function App() {
   const [confirmPending, setConfirmPending] = useState(null)
   const [symbolHits, setSymbolHits] = useState([])
   const [renameToHits, setRenameToHits] = useState([])
-  const suppressCreateLookupRef = useRef(false)
-  const suppressRenameLookupRef = useRef(false)
   const [renameForm, setRenameForm] = useState({
     from_mkt_symbol: '',
     to_mkt_symbol: '',
@@ -378,96 +321,9 @@ export default function App() {
     return () => clearInterval(id)
   }, [])
 
-  useEffect(() => {
-    if (!showCreate) {
-      setSymbolHits([])
-      return undefined
-    }
-    if (suppressCreateLookupRef.current) {
-      suppressCreateLookupRef.current = false
-      setSymbolHits([])
-      return undefined
-    }
-    const q = createForm.MKT_SYMBOL.trim().toUpperCase()
-    if (q.length < 2) {
-      setSymbolHits([])
-      return undefined
-    }
-    if (hasExactSuggestionMatch(symbolHits, q)) {
-      setSymbolHits([])
-      return undefined
-    }
-
-    let active = true
-    const timer = setTimeout(() => {
-      api(`/api/symbols/lookup?q=${encodeURIComponent(q)}`)
-        .then((hits) => {
-          if (!active) return
-          if (hasExactSuggestionMatch(hits, q)) {
-            setSymbolHits([])
-            return
-          }
-          setSymbolHits(hits)
-        })
-        .catch(() => {
-          if (active) setSymbolHits([])
-        })
-    }, 200)
-
-    return () => {
-      active = false
-      clearTimeout(timer)
-    }
-  }, [createForm.MKT_SYMBOL, showCreate])
-
-  useEffect(() => {
-    if (!showRename) {
-      setRenameToHits([])
-      return undefined
-    }
-    if (suppressRenameLookupRef.current) {
-      suppressRenameLookupRef.current = false
-      setRenameToHits([])
-      return undefined
-    }
-    const q = renameForm.to_mkt_symbol.trim().toUpperCase()
-    if (q.length < 2) {
-      setRenameToHits([])
-      return undefined
-    }
-    if (hasExactSuggestionMatch(renameToHits, q)) {
-      setRenameToHits([])
-      return undefined
-    }
-
-    let active = true
-    const timer = setTimeout(() => {
-      api(`/api/symbols/lookup?q=${encodeURIComponent(q)}`)
-        .then((hits) => {
-          if (!active) return
-          if (hasExactSuggestionMatch(hits, q)) {
-            setRenameToHits([])
-            return
-          }
-          setRenameToHits(hits)
-        })
-        .catch(() => {
-          if (active) setRenameToHits([])
-        })
-    }, 200)
-
-    return () => {
-      active = false
-      clearTimeout(timer)
-    }
-  }, [renameForm.to_mkt_symbol, showRename])
-
-  const sortedRows = useMemo(() => sortRowsByRecDateDesc(rows), [rows])
-
   const portfolioBuckets = useMemo(
-    () =>
-      buildPortfolioBuckets(sortedRows, accumulateAcrossSource, accumulateAcrossStrategy),
-    [sortedRows, accumulateAcrossSource, accumulateAcrossStrategy],
+    () => buildPortfolioBuckets(rows, accumulateAcrossSource, accumulateAcrossStrategy),
+    [rows, accumulateAcrossSource, accumulateAcrossStrategy],
   )
 
   const tableColumns = useMemo(() => {
@@ -479,26 +335,8 @@ export default function App() {
     if (portfolioView) {
       return portfolioBuckets.filter((b) => bucketHasStaleOpenOrders(b)).length
     }
-    return sortedRows.filter(({ trade }) => shouldWarnStaleOpenOrders(trade)).length
-  }, [portfolioView, portfolioBuckets, sortedRows, clockTick])
-
-  const livePendingOpenOrderCount = useMemo(() => {
-    if (portfolioView) {
-      return portfolioBuckets.filter((b) => bucketHasLivePendingOpenOrders(b)).length
-    }
-    return sortedRows.filter(({ trade }) => shouldHighlightLivePendingOpenOrders(trade)).length
-  }, [portfolioView, portfolioBuckets, sortedRows, clockTick])
-
-  const circuitLimitWarningCount = useMemo(() => {
-    if (portfolioView) {
-      return portfolioBuckets.filter((b) =>
-        bucketHasCircuitLimitBreach(b, (id) => drafts[id]),
-      ).length
-    }
-    return sortedRows.filter(({ id, trade }) =>
-      shouldWarnCircuitLimitBreach(trade, drafts[id]),
-    ).length
-  }, [portfolioView, portfolioBuckets, sortedRows, drafts, clockTick])
+    return rows.filter(({ trade }) => shouldWarnStaleOpenOrders(trade)).length
+  }, [portfolioView, portfolioBuckets, rows, clockTick])
 
   const closeCreate = useCallback(() => {
     setShowCreate(false)
@@ -702,13 +540,22 @@ export default function App() {
     })
   }
 
-  const lookupSymbol = (q) => {
+  const lookupSymbol = async (q) => {
     // Clear any previously selected STOCK/SECURITY_ID when the user edits the symbol
     setCreateForm((f) => ({ ...f, MKT_SYMBOL: q, STOCK: '', SECURITY_ID: '', ICICI_SYMBOL: '' }))
+    if (q.length < 2) {
+      setSymbolHits([])
+      return
+    }
+    try {
+      const hits = await api(`/api/symbols/lookup?q=${encodeURIComponent(q)}`)
+      setSymbolHits(hits)
+    } catch {
+      setSymbolHits([])
+    }
   }
 
   const pickSymbol = (hit) => {
-    suppressCreateLookupRef.current = true
     setCreateForm((f) => ({
       ...f,
       MKT_SYMBOL: hit.MKT_SYMBOL,
@@ -720,12 +567,21 @@ export default function App() {
     setSymbolHits([])
   }
 
-  const lookupRenameTo = (q) => {
+  const lookupRenameTo = async (q) => {
     setRenameForm((f) => ({ ...f, to_mkt_symbol: q }))
+    if (q.length < 2) {
+      setRenameToHits([])
+      return
+    }
+    try {
+      const hits = await api(`/api/symbols/lookup?q=${encodeURIComponent(q)}`)
+      setRenameToHits(hits)
+    } catch {
+      setRenameToHits([])
+    }
   }
 
   const pickRenameTo = (hit) => {
-    suppressRenameLookupRef.current = true
     setRenameForm((f) => ({ ...f, to_mkt_symbol: hit.MKT_SYMBOL }))
     setRenameToHits([])
   }
@@ -813,7 +669,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="app-chrome">
       <header>
         <h1>Trade Manager</h1>
         <div className="header-actions">
@@ -826,46 +681,7 @@ export default function App() {
         </div>
       </header>
 
-      <div className="row-color-legend" role="note" aria-label="Row highlight legend">
-        <span className="row-color-legend-label">Highlights</span>
-        <span
-          className="legend-chip legend-chip-pending"
-          title="Open order(s) still in the DB during market hours. appPaytm will not place another open until cleared. Use Adjust held qty 0→0 if the broker rejected the order."
-        >
-          Pending Open
-        </span>
-        <span
-          className="legend-chip legend-chip-stale"
-          title="Open order(s) in the DB outside market hours. Clear before the next session or checkOpenOrders may fail on startup."
-        >
-          Stale Open
-        </span>
-        <span
-          className="legend-chip legend-chip-circuit"
-          title="Entry row (POS_HOLD_STATUS and REC_STATUS Open) where HIGH_REC_PRICE (BUY) or LOW_REC_PRICE (SELL) is outside today's circuit band from Paytm security master."
-        >
-          Circuit breach
-        </span>
-      </div>
-
       {banner && <div className="banner-error">{banner}</div>}
-
-      {livePendingOpenOrderCount > 0 && (
-        <div className="banner-pending-open-orders" role="status">
-          {livePendingOpenOrderCount}{' '}
-          {livePendingOpenOrderCount === 1 ? 'row has' : 'rows have'} OPEN orders in the DB
-          (blue highlight). appPaytm will skip new open orders until cleared — Adjust held qty
-          0→0 on the row if the broker already rejected/cancelled.
-        </div>
-      )}
-
-      {circuitLimitWarningCount > 0 && (
-        <div className="banner-circuit-limit" role="status">
-          {circuitLimitWarningCount}{' '}
-          {circuitLimitWarningCount === 1 ? 'row has' : 'rows have'} an order limit outside
-          today&apos;s circuit band (amber highlight). appPaytm will clamp limits when placing.
-        </div>
-      )}
 
       {staleOpenOrderWarningCount > 0 && (
         <div className="banner-stale-orders" role="status">
@@ -994,7 +810,6 @@ export default function App() {
           )}
         </p>
       )}
-      </div>
 
       <div className="table-wrap">
         <table>
@@ -1010,16 +825,11 @@ export default function App() {
             {portfolioView
               ? portfolioBuckets.map((bucket) => {
                   const staleWarn = bucketHasStaleOpenOrders(bucket)
-                  const pendingOpenWarn = bucketHasLivePendingOpenOrders(bucket)
-                  const circuitWarn = bucketHasCircuitLimitBreach(
-                    bucket,
-                    (id) => drafts[id],
-                  )
                   return (
                   <tr
                     key={bucket.key}
-                    className={tradeRowClassName({ staleWarn, pendingOpenWarn, circuitWarn })}
-                    title={tradeRowTitle({ staleWarn, pendingOpenWarn, circuitWarn })}
+                    className={staleWarn ? 'row-stale-open-orders' : undefined}
+                    title={staleWarn ? STALE_ORDER_ROW_TITLE : undefined}
                   >
                     {tableColumns.map((col) => (
                       <td key={col} className="readonly">
@@ -1041,16 +851,14 @@ export default function App() {
                   </tr>
                   )
                 })
-              : sortedRows.map(({ id, trade }) => {
+              : rows.map(({ id, trade }) => {
                   const row = getDraft(id, trade)
                   const staleWarn = shouldWarnStaleOpenOrders(trade)
-                  const pendingOpenWarn = shouldHighlightLivePendingOpenOrders(trade)
-                  const circuitWarn = shouldWarnCircuitLimitBreach(trade, drafts[id])
                   return (
                     <tr
                       key={id}
-                      className={tradeRowClassName({ staleWarn, pendingOpenWarn, circuitWarn })}
-                      title={tradeRowTitle({ staleWarn, pendingOpenWarn, circuitWarn })}
+                      className={staleWarn ? 'row-stale-open-orders' : undefined}
+                      title={staleWarn ? STALE_ORDER_ROW_TITLE : undefined}
                     >
                       {TRADE_COLS.map((col) => renderTradeCell(col, id, trade, row))}
                       <td className="actions">
