@@ -445,17 +445,31 @@ if __name__ == '__main__':
     flaskThr.daemon = True
     flaskThr.start()    
 
-    # Connect w/ PayTm's API gateway
+    # Allow configuring separate times for web-login and websocket creation via environment.
+    # Defaults: login at 07:00, websocket at 08:30
+    login_hour = int(os.environ.get('PAYTM_LOGIN_HOUR', '7'))
+    login_minute = int(os.environ.get('PAYTM_LOGIN_MINUTE', '0'))
+    websocket_hour = int(os.environ.get('PAYTM_WEBSOCKET_HOUR', '8'))
+    websocket_minute = int(os.environ.get('PAYTM_WEBSOCKET_MINUTE', '30'))
+
+    # Wait until the configured login time, then perform the web login flow.
+    login_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=login_hour, minute=login_minute)
+    while not login_time_reached:
+        login_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=login_hour, minute=login_minute)
+        time.sleep(15)
+
+    # Connect w/ PayTm's API gateway (web login)
     trade.openPayTmMoneySession()
     #trade.calAmountPerOrder()
 
-    portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
-    while not portfolioReconcile:
-        portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
-        time.sleep(15)
-
     # Check if the DB and the PayTm portfolio are in synch
     trade.startupCheck()
+
+    # Wait until the configured websocket time before creating/connecting the websocket.
+    websocket_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=websocket_hour, minute=websocket_minute)
+    while not websocket_time_reached:
+        websocket_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=websocket_hour, minute=websocket_minute)
+        time.sleep(15)
 
     # Open and wait until the websocket w/ PayTm opens.
     trade.openPaytmWebsocket(trade.on_paytm_sock_open, trade.on_paytm_sock_message, trade.on_paytm_sock_close, trade.on_paytm_sock_error)
