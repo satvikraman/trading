@@ -5,7 +5,12 @@ The ICICI Direct stock list containing ICICI Direct specific stock list was down
 The NSE stock list was downloaded from [All Companies based on Market Capitalisation](https://www.nseindia.com/regulations/listing-compliance/nse-market-capitalisation-all-companies). The original file downloaded on 31st Mar 2023 is present here db\MCAP31032023_0.xlsx
 
 # PayTm
-Further more datasets like the nse_security_master.csv file was downloaded from here https://developer.paytmmoney.com/docs/api/security-master/
+Daily circuit limits (`upper_limit` / `lower_limit`) for NSE/BSE are in `dataset/nse_security_master.csv` and `dataset/bse_security_master.csv`, auto-downloaded once per day by `appPaytm` / `appIciciBreeze` via `workflow.startupCheck()`:
+
+- NSE: https://developer.paytmmoney.com/data/v1/scrips/nse_security_master.csv
+- BSE: https://developer.paytmmoney.com/data/v1/scrips/bse_security_master.csv
+
+Docs: https://developer.paytmmoney.com/docs/api/security-master/
 
 # Scripts
 ## mapIciciToNseStock.py

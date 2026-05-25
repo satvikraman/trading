@@ -7,6 +7,10 @@ Setup (.env):
 
 State is persisted under ./data/telegram_state.json (last_update_id).
 Call delete_webhook on startup so getUpdates works if a webhook was set earlier.
+
+Login waits (wait_for_yes / wait_for_otp / etc.) block until you reply (no hard timeout).
+A reminder is sent every LOGIN_REMIND_EVERY_SEC (15 minutes) while waiting.
+Pass timeout=... and remind_every_sec=None for bounded tests (e.g. smoke test).
 """
 
 import json
@@ -27,7 +31,8 @@ DEFAULT_STATE_PATH = './data/telegram_state.json'
 DEFAULT_LOCK_PATH = './data/telegram_state.lock'
 API_BASE = 'https://api.telegram.org/bot'
 POLL_TIMEOUT_SEC = 30
-DEFAULT_WAIT_TIMEOUT_SEC = 120
+# Login flows: wait until reply; remind every 15 minutes (no hard timeout by default).
+LOGIN_REMIND_EVERY_SEC = 900
 
 YES_ALIASES = frozenset({'YES', 'Y', 'GO', 'OK', 'DONE'})
 RESEND_ALIASES = frozenset({'RESEND', 'R'})
@@ -48,7 +53,7 @@ class TelegramClient:
     def __init__(self, logger=None, state_path=DEFAULT_STATE_PATH, lock_path=DEFAULT_LOCK_PATH):
         self._logger = logger or logging.getLogger(__name__)
         if dotenv is not None:
-            dotenv.load_dotenv('./.env', override=True)
+            dotenv.load_dotenv('./.env', override=False)
         self._token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
         self._chat_id = int(os.environ.get('TELEGRAM_CHAT_ID', '0') or '0')
         self._state_path = state_path
@@ -182,9 +187,23 @@ class TelegramClient:
             return None
         return msg
 
-    def _poll_until(self, predicate: Callable[[str], Optional[Union[str, bool]]], timeout: float) -> str:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+    def _poll_until(
+        self,
+        predicate: Callable[[str], Optional[Union[str, bool]]],
+        timeout: Optional[float] = None,
+        remind_every_sec: Optional[float] = None,
+        remind_text: Optional[str] = None,
+    ) -> str:
+        deadline = None if timeout is None else time.time() + timeout
+        last_reminder_at = time.time()
+        while deadline is None or time.time() < deadline:
+            if (
+                remind_every_sec
+                and remind_text
+                and (time.time() - last_reminder_at) >= remind_every_sec
+            ):
+                self.notify(remind_text)
+                last_reminder_at = time.time()
             updates = self._fetch_updates()
             for update in updates:
                 msg = self._message_from_update(update)
@@ -198,36 +217,78 @@ class TelegramClient:
             self._ack_updates(updates)
         raise TelegramTimeoutError(f'Timed out after {timeout}s waiting for Telegram reply')
 
-    def wait_for_yes(self, prompt: str, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC):
+    def wait_for_yes(
+        self,
+        prompt: str,
+        timeout: Optional[float] = None,
+        remind_every_sec: Optional[float] = LOGIN_REMIND_EVERY_SEC,
+    ):
         self.drain_updates()
         self.notify(prompt)
-        return self.poll_for_yes(timeout)
+        remind = f'Still waiting: {prompt}' if remind_every_sec else None
+        return self.poll_for_yes(timeout=timeout, remind_every_sec=remind_every_sec, remind_text=remind)
 
-    def poll_for_yes(self, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC):
+    def poll_for_yes(
+        self,
+        timeout: Optional[float] = None,
+        remind_every_sec: Optional[float] = LOGIN_REMIND_EVERY_SEC,
+        remind_text: Optional[str] = None,
+    ):
         def pred(text: str):
             if text.upper() in YES_ALIASES:
                 return True
             return None
 
-        self._poll_until(pred, timeout)
+        final_remind = (remind_text or 'Still waiting. Reply GO when ready.') if remind_every_sec else None
+        self._poll_until(
+            pred,
+            timeout=timeout,
+            remind_every_sec=remind_every_sec,
+            remind_text=final_remind,
+        )
         return True
 
-    def wait_for_otp(self, prompt: str, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC) -> str:
+    def wait_for_otp(
+        self,
+        prompt: str,
+        timeout: Optional[float] = None,
+        remind_every_sec: Optional[float] = LOGIN_REMIND_EVERY_SEC,
+    ) -> str:
         self.drain_updates()
         self.notify(prompt)
-        return self.poll_for_otp(timeout)
+        remind = f'Still waiting: {prompt}' if remind_every_sec else None
+        return self.poll_for_otp(timeout=timeout, remind_every_sec=remind_every_sec, remind_text=remind)
 
-    def poll_for_otp(self, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC) -> str:
+    def poll_for_otp(
+        self,
+        timeout: Optional[float] = None,
+        remind_every_sec: Optional[float] = LOGIN_REMIND_EVERY_SEC,
+        remind_text: Optional[str] = None,
+    ) -> str:
         def pred(text: str):
             otp = extract_otp(text)
             return otp
 
-        return self._poll_until(pred, timeout)
+        final_remind = (remind_text or 'Still waiting for OTP reply.') if remind_every_sec else None
+        return self._poll_until(
+            pred,
+            timeout=timeout,
+            remind_every_sec=remind_every_sec,
+            remind_text=final_remind,
+        )
 
-    def wait_for_choice(self, prompt: str, choices: List[str], timeout: float = DEFAULT_WAIT_TIMEOUT_SEC) -> str:
+    def wait_for_choice(
+        self,
+        prompt: str,
+        choices: List[str],
+        timeout: Optional[float] = None,
+        remind_every_sec: Optional[float] = LOGIN_REMIND_EVERY_SEC,
+    ) -> str:
         self.drain_updates()
         choices_upper = [c.upper() for c in choices]
-        self.notify(f'{prompt}\nOptions: {", ".join(choices)}')
+        full_prompt = f'{prompt}\nOptions: {", ".join(choices)}'
+        self.notify(full_prompt)
+        remind = f'Still waiting: {full_prompt}' if remind_every_sec else None
 
         def pred(text: str):
             upper = text.strip().upper()
@@ -235,14 +296,25 @@ class TelegramClient:
                 return upper
             return None
 
-        return self._poll_until(pred, timeout)
+        return self._poll_until(
+            pred,
+            timeout=timeout,
+            remind_every_sec=remind_every_sec,
+            remind_text=remind,
+        )
 
-    def wait_for_resend_or_otp(self, prompt: str, timeout: float = DEFAULT_WAIT_TIMEOUT_SEC) -> str:
+    def wait_for_resend_or_otp(
+        self,
+        prompt: str,
+        timeout: Optional[float] = None,
+        remind_every_sec: Optional[float] = LOGIN_REMIND_EVERY_SEC,
+    ) -> str:
         """
         Returns 'RESEND' or a digit OTP string.
         """
         self.drain_updates()
         self.notify(prompt)
+        remind = f'Still waiting: {prompt}' if remind_every_sec else None
 
         def pred(text: str):
             upper = text.strip().upper()
@@ -253,4 +325,9 @@ class TelegramClient:
                 return otp
             return None
 
-        return self._poll_until(pred, timeout)
+        return self._poll_until(
+            pred,
+            timeout=timeout,
+            remind_every_sec=remind_every_sec,
+            remind_text=remind,
+        )

@@ -83,30 +83,6 @@ class AppPaytmBroker():
             self.__logger.info('Max Amount Per Cash Order %d', self.amountPerOrder)
             self.__logger.info('Max Amount Per IntraDay Order %d', self.amountPerIntraDayOrder)
             self.__logger.info('Intraday Order Type %s', self.intraDayOrderType)
-            self.__core = [ 
-                            # IPO
-                            {'MKT_SYMBOL': 'IGIL',        'SECURITY_ID': '28378', 'QTY': 35},
-                            # ET PRIME
-                            {'MKT_SYMBOL': 'AADHARHFC',   'SECURITY_ID': '23729', 'QTY': 77},
-                            {'MKT_SYMBOL': 'ADANIPORTS',  'SECURITY_ID': '15083', 'QTY': 114},
-                            {'MKT_SYMBOL': 'ATHERENERG',  'SECURITY_ID': '757645','QTY': 22},
-                            {'MKT_SYMBOL': 'CESC',        'SECURITY_ID': '628',   'QTY': 265},
-                            {'MKT_SYMBOL': 'CGCL',        'SECURITY_ID': '20329', 'QTY': 40},
-                            {'MKT_SYMBOL': 'FINCABLES',   'SECURITY_ID': '1038',  'QTY': 89},
-                            {'MKT_SYMBOL': 'GRAVITA',     'SECURITY_ID': '20534', 'QTY': 43},
-                            {'MKT_SYMBOL': 'THELEELA',    'SECURITY_ID': '757014','QTY': 69},
-                            {'MKT_SYMBOL': 'NUVAMA',      'SECURITY_ID': '18721', 'QTY': 9},
-                            {'MKT_SYMBOL': 'PFC',         'SECURITY_ID': '14299', 'QTY': 83},
-                            {'MKT_SYMBOL': 'SAGILITY',    'SECURITY_ID': '27052', 'QTY': 136},
-                            {'MKT_SYMBOL': 'SUZLON',      'SECURITY_ID': '12018', 'QTY': 1294},
-                            {'MKT_SYMBOL': 'WELCORP',     'SECURITY_ID': '11821', 'QTY': 10},
-                            # ETF    
-                            {'MKT_SYMBOL': 'GOLDBETA',    'SECURITY_ID': '14535', 'QTY': 10663},
-                            {'MKT_SYMBOL': 'SILVER',      'SECURITY_ID': '8003',  'QTY': 7702},
-                            {'MKT_SYMBOL': 'HNGSNGBEES',  'SECURITY_ID': '18284', 'QTY': 180},
-                            {'MKT_SYMBOL': 'MON100',      'SECURITY_ID': '22739', 'QTY': 76},
-                            ]
-
             self.squareOff = False
             self.marketOpen = False
             self.useWebsocket = False
@@ -120,29 +96,42 @@ class AppPaytmBroker():
             self.cmp = {}
 
 
+    def __coreQtyBySymbol(self):
+        """Qty held in the core book (MANUAL/CORE rows in DB; replaces hardcoded __core)."""
+        core_qty = {}
+        if self.persistenceInv is None:
+            return core_qty
+        dbDicts = self.persistenceInv.getDb([['SOURCE', 'MANUAL'], ['STRATEGY', 'CORE']])
+        for dbDict in dbDicts:
+            if dbDict.get('REC_STATUS') == 'CLOSE':
+                continue
+            sym = dbDict['MKT_SYMBOL']
+            qty = int(dbDict.get('POS_HOLD_QTY') or dbDict.get('QTY') or 0)
+            if qty <= 0:
+                continue
+            core_qty[sym] = core_qty.get(sym, 0) + qty
+        return core_qty
+
     def getHoldingsData(self):
         status, self.__holdings = self.__payTmMoney.user_holdings_data()
 
-        for core in self.__core:
-            found = False
-            for holding in self.__holdings:
-                if core['MKT_SYMBOL'] == holding['MKT_SYMBOL']:
-                    found = True
-                    break
-            if not found:
-                self.__logger.error("Core stock %s not in holding", core['MKT_SYMBOL'])
-                exit()
-
-        # Remove quantities we consider to be a part of the core portfolio so that 
-        # we don't need to repeatedly do this calculation. Hold - Core = Trade
-        for holding in self.__holdings:
-            for core in self.__core:
-                if holding['MKT_SYMBOL'] == core['MKT_SYMBOL']:
-                    holding['HOLD_QTY'] = holding['HOLD_QTY'] - core['QTY']
-
         if not status:
             self.__logger.error("getHoldingsData function returned error")
-    
+            return
+
+        # Trade book only: subtract core portfolio qty (same as former __core list).
+        core_qty = self.__coreQtyBySymbol()
+        for holding in self.__holdings:
+            sym = holding['MKT_SYMBOL']
+            if sym in core_qty:
+                holding['HOLD_QTY'] -= core_qty[sym]
+                if holding['HOLD_QTY'] < 0:
+                    self.__logger.warning(
+                        "Core qty %d exceeds broker holding for %s; using 0 for sync",
+                        core_qty[sym],
+                        sym,
+                    )
+                    holding['HOLD_QTY'] = 0
 
     def checkDbHoldingSynch(self, persistenceInsts):
         status = True
@@ -155,6 +144,9 @@ class AppPaytmBroker():
             # Goal is to compare that total quantity of a stock matches actuals
             dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
             for dbDict in dbDicts:
+                # Core book is subtracted from broker holdings in getHoldingsData().
+                if dbDict.get('STRATEGY') == 'CORE':
+                    continue
                 if dbDict['POS_QTY'] != 0 or dbDict['POS_HOLD_QTY'] != 0:
                     found = False
                     for dbHolding in dbHoldings:
@@ -246,6 +238,8 @@ class AppPaytmBroker():
 
     def startupCheck(self):
         persistenceInsts = [self.persistenceInv]
+        if self.persistenceIntraDay is not None:
+            persistenceInsts.append(self.persistenceIntraDay)
         status = self.__workflow.startupCheck(persistenceInsts)
         assert status, 'Startup check failed. Exiting'
         print('Startup check Passed!!!')
@@ -451,18 +445,31 @@ if __name__ == '__main__':
     flaskThr.daemon = True
     flaskThr.start()    
 
-    # Connect w/ PayTm's API gateway
-    trade.openPayTmMoneySession()
-    trade.calAmountPerOrder()
+    # Allow configuring separate times for web-login and websocket creation via environment.
+    # Defaults: login at 07:00, websocket at 08:30
+    login_hour = int(os.environ.get('PAYTM_LOGIN_HOUR', '7'))
+    login_minute = int(os.environ.get('PAYTM_LOGIN_MINUTE', '0'))
+    websocket_hour = int(os.environ.get('PAYTM_WEBSOCKET_HOUR', '8'))
+    websocket_minute = int(os.environ.get('PAYTM_WEBSOCKET_MINUTE', '30'))
 
-    portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
-    portfolioReconcile = True
-    while not portfolioReconcile:
-        portfolioReconcile = datetime.datetime.now() >= datetime.datetime.now().replace(hour=7, minute=00)
+    # Wait until the configured login time, then perform the web login flow.
+    login_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=login_hour, minute=login_minute)
+    while not login_time_reached:
+        login_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=login_hour, minute=login_minute)
         time.sleep(15)
+
+    # Connect w/ PayTm's API gateway (web login)
+    trade.openPayTmMoneySession()
+    #trade.calAmountPerOrder()
 
     # Check if the DB and the PayTm portfolio are in synch
     trade.startupCheck()
+
+    # Wait until the configured websocket time before creating/connecting the websocket.
+    websocket_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=websocket_hour, minute=websocket_minute)
+    while not websocket_time_reached:
+        websocket_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=websocket_hour, minute=websocket_minute)
+        time.sleep(15)
 
     # Open and wait until the websocket w/ PayTm opens.
     trade.openPaytmWebsocket(trade.on_paytm_sock_open, trade.on_paytm_sock_message, trade.on_paytm_sock_close, trade.on_paytm_sock_error)
@@ -480,7 +487,7 @@ if __name__ == '__main__':
     while not marketOpen:
         marketOpen = datetime.datetime.now() >= datetime.datetime.now().replace(hour=9, minute=15) and datetime.datetime.now() <= datetime.datetime.now().replace(hour=15, minute=25)
         time.sleep(15)
-    
+
     while marketOpen:
         # Start closing all intraday positions as soon as it is 3:00PM
         squareOffTime  = datetime.datetime.now() >= datetime.datetime.now().replace(hour=15, minute=00) 

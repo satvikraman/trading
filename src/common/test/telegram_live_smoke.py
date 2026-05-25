@@ -19,8 +19,16 @@ from telegram_client import TelegramClient
 def run_live_smoke():
     client = TelegramClient()
     client.drain_updates()
-    client.wait_for_yes('Trading bot smoke test. Reply GO within 60s.', timeout=60)
-    otp = client.wait_for_otp('Reply with any 6-digit number (e.g. 123456).', timeout=60)
+    client.wait_for_yes(
+        'Trading bot smoke test. Reply GO within 60s.',
+        timeout=60,
+        remind_every_sec=None,
+    )
+    otp = client.wait_for_otp(
+        'Reply with any 6-digit number (e.g. 123456).',
+        timeout=60,
+        remind_every_sec=None,
+    )
     if not otp.isdigit() or not (4 <= len(otp) <= 8):
         raise AssertionError(f'Expected OTP digits, got: {otp!r}')
     client.notify('Smoke test OK.')

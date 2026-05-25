@@ -1,5 +1,12 @@
 .env
+*.bfe
 .venv/
+ui/node_modules/
+ui/dist/
+# SQLite WAL sidecar files (regenerated locally; do not commit)
+src/paytm/db/payTmMoney.db-*
+src/paytm/db/*.db-journal
+**/db/backup/*
 data/telegram_state.json
 data/telegram_state.lock
 *.pyc
@@ -8,4 +15,3 @@ credentials.json
 token.json
 *.zip
 **/db/backup/*.json
-dataset/*.txt

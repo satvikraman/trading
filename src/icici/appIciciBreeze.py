@@ -21,6 +21,7 @@ sys.path.append('./src/common')
 from persistence import persistence
 from workflow import Workflow
 from mapIciciToNseStock import MapIciciToNseStock
+from security_master_sync import ensure_icici_security_master
 
 class AppIciciDirectBreezeBroker():
     def __init__(self, configFile, dbInv=None, dbIntraDay=None, dbFnO=None):
@@ -130,23 +131,21 @@ class AppIciciDirectBreezeBroker():
 
 
     def downloadDataset(self):
-        # Download the latest ICICI dataset once every day
-        icici_dataset_valid_until_date = os.environ.get('icici_dataset_valid_until_date', '')
-        today = datetime.datetime.today().strftime("%d-%b-%Y").upper()
-        if(icici_dataset_valid_until_date.upper() != today):
-            iciciDatasetPath = "./dataset/"
-            iciciDataset = iciciDatasetPath + "SecurityMaster-" + today + ".zip"
-            try:
-                urllib.request.urlretrieve(self.__config['DATASET']['ICICI_DATASET'], iciciDataset)
-                with zipfile.ZipFile(iciciDataset, 'r') as zip_ref:
-                    zip_ref.extractall(iciciDatasetPath)
-                dotenv.set_key('./.env', "icici_dataset_valid_until_date", today)
-            except Exception as e:
-                self.__logger.critical(e)
-
-            # Clean the intra day dictionary once at the start of the day
-            if self.persistenceIntraDay != None:
+        dotenv.load_dotenv('./.env', override=True)
+        try:
+            _paths, downloaded = ensure_icici_security_master(
+                '.',
+                zip_url=self.__config['DATASET']['ICICI_DATASET'],
+                nse_dataset=self.__config['DATASET']['NSE_DATASET'],
+                bse_dataset=self.__config['DATASET']['BSE_DATASET'],
+                fno_dataset=self.__config['DATASET']['FNO_DATASET'],
+                env_path='./.env',
+                logger=self.__logger,
+            )
+            if downloaded and self.persistenceIntraDay is not None:
                 self.persistenceIntraDay.removeAll()
+        except Exception as e:
+            self.__logger.critical(e)
 
 
     def strategiesToInvest(self, source, strategy):
