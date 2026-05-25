@@ -11,6 +11,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 from persistence import persistence  # noqa: E402
 from mapIciciToNseStock import MapIciciToNseStock  # noqa: E402
+from circuit_limit_cache import (  # noqa: E402
+    CircuitLimitCache,
+    limit_price_out_of_circuit,
+    order_limit_price_for_check,
+)
 from security_master_sync import (  # noqa: E402
     DEFAULT_ICICI_ZIP_URL,
     ensure_icici_security_master,
@@ -243,6 +248,56 @@ class TradeService:
         self.__store = persistence(self.__logger, db)
         self.__cache = {"data": None, "ts": 0.0}
         self.__ttl = 10.0
+        self.__circuit_cache: CircuitLimitCache | None = None
+        self._init_circuit_cache(preload=True)
+
+    def _init_circuit_cache(self, *, preload: bool = False) -> None:
+        dataset_root = self.__root / "dataset"
+        self.__circuit_cache = CircuitLimitCache(
+            nse_csv=dataset_root / "nse_security_master.csv",
+            bse_csv=dataset_root / "bse_security_master.csv",
+            logger=self.__logger,
+        )
+        if preload:
+            rows = self.__store.getDb([])
+            active = [r for r in rows if r.get("POS_HOLD_STATUS") != "CLOSE"]
+            self.__circuit_cache.preload_active_recs(active)
+
+    def _enrich_circuit_fields(self, trade: dict) -> dict:
+        enriched = {**trade}
+        security_id = str(trade.get("SECURITY_ID") or "").strip()
+        exchange = str(trade.get("MKT") or "NSE").strip().upper()
+        limits = None
+        if security_id and self.__circuit_cache is not None:
+            limits = self.__circuit_cache.get_limits(security_id, exchange)
+        if limits:
+            enriched["CIRCUIT_UPPER"] = limits["upper"]
+            enriched["CIRCUIT_LOWER"] = limits["lower"]
+        else:
+            enriched["CIRCUIT_UPPER"] = None
+            enriched["CIRCUIT_LOWER"] = None
+        enriched["CIRCUIT_LIMIT_OUT_OF_BAND"] = False
+        if (
+            limits
+            and trade.get("POS_HOLD_STATUS") == "OPEN"
+            and trade.get("REC_STATUS") == "OPEN"
+        ):
+            limit_price = order_limit_price_for_check(trade)
+            if limit_price is not None:
+                enriched["CIRCUIT_LIMIT_OUT_OF_BAND"] = limit_price_out_of_circuit(
+                    limit_price,
+                    str(trade.get("BUY_SELL") or "BUY"),
+                    limits["upper"],
+                    limits["lower"],
+                )
+        return enriched
+
+    def _download_paytm_security_master(self, force: bool = False) -> dict[str, Path]:
+        dataset_root = self.__root / "dataset"
+        return {
+            "NSE": dataset_root / "nse_security_master.csv",
+            "BSE": dataset_root / "bse_security_master.csv",
+        }
 
     def refresh_security_master(self, force: bool = False) -> dict[str, str]:
         dataset_cfg = _load_dataset_config(self.__config, self.__root)
@@ -262,6 +317,8 @@ class TradeService:
             str(paths["BSE"]),
             str(paths["FNO"]),
         )
+        self._init_circuit_cache(preload=True)
+        self._invalidate()
         return {k: str(v) for k, v in paths.items()}
 
     def _resolve_symbol(self, mkt_symbol, product="CASH", mkt="NSE", security_id=None):
@@ -479,14 +536,14 @@ class TradeService:
             return True
 
         filtered = [r for r in rows if match(r)]
-        return [{"id": encode_trade_id(r), "trade": r} for r in filtered]
+        return [{"id": encode_trade_id(r), "trade": self._enrich_circuit_fields(r)} for r in filtered]
 
     def get_trade(self, trade_id):
         query = decode_trade_id(trade_id)
         found, doc = self.__store.isInDb(query)
         if not found:
             return None
-        return {"id": trade_id, "trade": doc}
+        return {"id": trade_id, "trade": self._enrich_circuit_fields(doc)}
 
     def list_sources(self):
         rows = self.__store.getDb([])

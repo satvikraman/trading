@@ -42,12 +42,8 @@
     },
     {
       "label": "Launch trade-manager full suite",
-      "dependsOn": [
-        "Launch appPaytmBroker (venv)",
-        "Launch trade-manager backend",
-        "Launch frontend"
-      ],
-      "dependsOrder": "parallel",
+      "type": "shell",
+      "command": "Start-Process powershell -ArgumentList @('-NoExit','-Command','Set-Location ''C:\\sraman\\stem\\trading''; $env:PYTHONPATH = ''src''; .\\.venv\\Scripts\\uvicorn.exe trade_manager.api:app --host 127.0.0.1 --port 5004 --reload'); Start-Sleep -Seconds 5; Start-Process powershell -ArgumentList @('-NoExit','-Command','Set-Location ''C:\\sraman\\stem\\trading\\ui''; npm run dev'); Start-Sleep -Seconds 5; Start-Process powershell -ArgumentList @('-NoExit','-Command','Set-Location ''C:\\sraman\\stem\\trading''; .\\appPayTmBroker_venv.bat')",
       "problemMatcher": [],
       "presentation": {
         "echo": true,
