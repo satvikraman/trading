@@ -276,9 +276,15 @@ function buildPortfolioBuckets(rows, acrossSource, acrossStrategy) {
     bucket.members.push({ id, trade })
   }
   return [...map.values()].sort((a, b) => {
-    const aMax = Math.max(...a.members.map((m) => recDateTimeSortKey(m.trade)))
-    const bMax = Math.max(...b.members.map((m) => recDateTimeSortKey(m.trade)))
-    return bMax - aMax
+    const symbolCompare = a.MKT_SYMBOL.localeCompare(b.MKT_SYMBOL, undefined, { sensitivity: 'base' })
+    if (symbolCompare !== 0) return symbolCompare
+    const sourceCompare = String(a.SOURCE ?? '').localeCompare(String(b.SOURCE ?? ''), undefined, {
+      sensitivity: 'base',
+    })
+    if (sourceCompare !== 0) return sourceCompare
+    return String(a.STRATEGY ?? '').localeCompare(String(b.STRATEGY ?? ''), undefined, {
+      sensitivity: 'base',
+    })
   })
 }
 
@@ -290,6 +296,20 @@ async function api(path, options = {}) {
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(formatErr(body.detail ?? body))
   return body
+}
+
+async function lookupSymbolHits(q) {
+  const query = (q || '').trim().toUpperCase()
+  if (query.length < 2) return []
+  try {
+    const hits = await api(`/api/symbols/lookup?q=${encodeURIComponent(query)}`)
+    if (hits.some((hit) => String(hit.MKT_SYMBOL ?? '').toUpperCase() === query)) {
+      return []
+    }
+    return hits
+  } catch {
+    return []
+  }
 }
 
 export default function App() {
@@ -449,6 +469,50 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [cellEdit, confirmPending, closeCellEdit])
+
+  useEffect(() => {
+    if (!showCreate) {
+      setSymbolHits([])
+      return
+    }
+    const query = createForm.MKT_SYMBOL.trim()
+    if (query.length < 2) {
+      setSymbolHits([])
+      return
+    }
+    let active = true
+    const timeoutId = setTimeout(() => {
+      lookupSymbolHits(query).then((hits) => {
+        if (active) setSymbolHits(hits)
+      })
+    }, 150)
+    return () => {
+      active = false
+      clearTimeout(timeoutId)
+    }
+  }, [showCreate, createForm.MKT_SYMBOL])
+
+  useEffect(() => {
+    if (!showRename) {
+      setRenameToHits([])
+      return
+    }
+    const query = renameForm.to_mkt_symbol.trim()
+    if (query.length < 2) {
+      setRenameToHits([])
+      return
+    }
+    let active = true
+    const timeoutId = setTimeout(() => {
+      lookupSymbolHits(query).then((hits) => {
+        if (active) setRenameToHits(hits)
+      })
+    }, 150)
+    return () => {
+      active = false
+      clearTimeout(timeoutId)
+    }
+  }, [showRename, renameForm.to_mkt_symbol])
 
   const onFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value }))
 
@@ -763,11 +827,20 @@ export default function App() {
 
       {(livePendingOpenOrderCount > 0 || circuitLimitWarningCount > 0) && (
         <div className="row-color-legend" role="status">
+          {staleOpenOrderWarningCount > 0 && (
+            <span className="row-color-legend-label row-stale-open-orders">
+              Outside market hours: {staleOpenOrderWarningCount}
+            </span>
+          )}
           {livePendingOpenOrderCount > 0 && (
-            <span className="row-color-legend-label">Pending open: {livePendingOpenOrderCount}</span>
+            <span className="row-color-legend-label row-pending-open-orders">
+              During market hours: {livePendingOpenOrderCount}
+            </span>
           )}
           {circuitLimitWarningCount > 0 && (
-            <span className="row-color-legend-label">Circuit breach: {circuitLimitWarningCount}</span>
+            <span className="row-color-legend-label row-circuit-limit-breach">
+              Circuit breach: {circuitLimitWarningCount}
+            </span>
           )}
         </div>
       )}
@@ -987,7 +1060,15 @@ export default function App() {
                 Market symbol
                 <input
                   value={createForm.MKT_SYMBOL}
-                  onChange={(e) => lookupSymbol(e.target.value)}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      MKT_SYMBOL: e.target.value,
+                      STOCK: '',
+                      SECURITY_ID: '',
+                      ICICI_SYMBOL: '',
+                    }))
+                  }
                   placeholder="e.g. RELIANCE"
                   autoComplete="off"
                   required
@@ -1133,7 +1214,9 @@ export default function App() {
                 To (new NSE symbol)
                 <input
                   value={renameForm.to_mkt_symbol}
-                  onChange={(e) => lookupRenameTo(e.target.value.toUpperCase())}
+                  onChange={(e) =>
+                    setRenameForm((f) => ({ ...f, to_mkt_symbol: e.target.value.toUpperCase() }))
+                  }
                   placeholder="e.g. GOLDBETA"
                   autoComplete="off"
                   required
