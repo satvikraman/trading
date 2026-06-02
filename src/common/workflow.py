@@ -757,6 +757,19 @@ class Workflow():
             openOp = 'SELL'
             closeOp = 'BUY'
 
+        # If there is already an open close order for this record, do not place another one.
+        for closeOrder in dbDict.get('CLOSE_ORDERS', []):
+            if closeOrder.get('ORDER_STATUS') != 'CLOSE' and closeOrder.get('ORDER_NO'):
+                self.__logger.info(
+                    "Existing close order %s still open for %s-%s-%s-%s; skipping duplicate close order placement",
+                    closeOrder.get('ORDER_NO'),
+                    dbDict['MKT_SYMBOL'],
+                    dbDict['STRATEGY'],
+                    dbDict['REC_DATE'],
+                    dbDict['REC_TIME'],
+                )
+                return True, dbDict, closeOrder.get('ORDER_NO')
+
         # Ideally posHoldQty will always be positive, unless we tinkered with the positions externally. If we did tinker and the posHoldQty becomes less than 0
         # then we need to perform he open operation to close the position
         buySell = openOp if posHoldQty < 0 else closeOp
@@ -764,6 +777,28 @@ class Workflow():
         limitPrice = 0
         trigger = 0
         closeQty = (abs(posHoldQty) + 1) // 2 if partial else posHoldQty
+
+        if not str(dbDict.get('SECURITY_ID') or '').strip():
+            resolvedSecurityId = self.__parent.resolveSecurityId(dbDict)
+            if resolvedSecurityId:
+                self.__logger.info(
+                    "Resolved missing security id for %s to %s before closing",
+                    dbDict['MKT_SYMBOL'],
+                    resolvedSecurityId,
+                )
+                persistenceInst.updateDb(
+                    dbDict,
+                    [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]],
+                )
+            else:
+                self.__logger.error(
+                    "Unable to resolve security id for %s-%s-%s-%s before closing",
+                    dbDict['MKT_SYMBOL'],
+                    dbDict['STRATEGY'],
+                    dbDict['REC_DATE'],
+                    dbDict['REC_TIME'],
+                )
+                return False, dbDict, ''
 
         self.__logger.info("Closing position: nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], closeQty, buySell, product, orderType)
         orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, closeQty, buySell, orderType, limitPrice)
@@ -1063,13 +1098,14 @@ class Workflow():
                     fetched[securityID] = False
 
                 if not fetched[securityID]:
-                    status, ltp = self.__parent.getLastTradedPrice(dbDict)
-                    if status:
-                        self.__parent.cmp[securityID]['LTP'] = ltp
-                        fetched[securityID] = True
-
                     if self.__parent.useWebsocket:
                         self.__parent.websocketSubscription('ADD', securityID, 'NSE', self.__parent.cmp[securityID]['SECURITY_TYPE'])
+                        fetched[securityID] = True
+                    else:
+                        status, ltp = self.__parent.getLastTradedPrice(dbDict)
+                        if status:
+                            self.__parent.cmp[securityID]['LTP'] = ltp
+                        fetched[securityID] = True
                     time.sleep(0.01)
         
 
@@ -1135,6 +1171,13 @@ class Workflow():
                 # Exit positions immediately
                 self.__lock.acquire()
                 dbDicts = persistenceInst.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'PARTIAL_CLOSE']])
+                self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
+                self.__lock.release()
+
+                # If recommendation == 'CLOSE' and order == 'POSITION'
+                # Exit positions immediately
+                self.__lock.acquire()
+                dbDicts = persistenceInst.getDb([['REC_STATUS', 'CLOSE'], ['POS_HOLD_STATUS', 'POSITION']])
                 self.__executeClosureSeq(persistenceInst, dbDicts, cancelOrder=False, forceCloseRec=False)
                 self.__lock.release()
 
