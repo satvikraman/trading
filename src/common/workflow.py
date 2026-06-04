@@ -245,8 +245,7 @@ class Workflow():
 
         self.__checkTrdQtyPosHoldSynch(persistenceInsts)
 
-        # Check if all the holding stocks - core are in DB
-        # Check if all the DB stocks are in holding and in the same quantity
+        # Check broker holdings match consolidated DB quantity per symbol (CORE + strategies).
         status = self.__parent.checkDbHoldingSynch(persistenceInsts)
         self.__prepare_circuit_limits(persistenceInsts)
         return status
@@ -779,26 +778,14 @@ class Workflow():
         closeQty = (abs(posHoldQty) + 1) // 2 if partial else posHoldQty
 
         if not str(dbDict.get('SECURITY_ID') or '').strip():
-            resolvedSecurityId = self.__parent.resolveSecurityId(dbDict)
-            if resolvedSecurityId:
-                self.__logger.info(
-                    "Resolved missing security id for %s to %s before closing",
-                    dbDict['MKT_SYMBOL'],
-                    resolvedSecurityId,
-                )
-                persistenceInst.updateDb(
-                    dbDict,
-                    [['MKT_SYMBOL', dbDict['MKT_SYMBOL']], ['STRATEGY', dbDict['STRATEGY']], ['REC_DATE', dbDict['REC_DATE']], ['REC_TIME', dbDict['REC_TIME']]],
-                )
-            else:
-                self.__logger.error(
-                    "Unable to resolve security id for %s-%s-%s-%s before closing",
-                    dbDict['MKT_SYMBOL'],
-                    dbDict['STRATEGY'],
-                    dbDict['REC_DATE'],
-                    dbDict['REC_TIME'],
-                )
-                return False, dbDict, ''
+            self.__logger.error(
+                "Missing SECURITY_ID for %s-%s-%s-%s before closing; set it in Trade Manager / DB",
+                dbDict['MKT_SYMBOL'],
+                dbDict['STRATEGY'],
+                dbDict['REC_DATE'],
+                dbDict['REC_TIME'],
+            )
+            return False, dbDict, ''
 
         self.__logger.info("Closing position: nseSym=%s-%s-%s-%s, qty=%s, buySell=%s, product=%s orderType=%s", dbDict['MKT_SYMBOL'], dbDict['STRATEGY'], dbDict['REC_DATE'], dbDict['REC_TIME'], closeQty, buySell, product, orderType)
         orderStatus, orderMessage, orderNum = self.__parent.placeOrder(dbDict, closeQty, buySell, orderType, limitPrice)

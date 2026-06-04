@@ -20,7 +20,7 @@ Rebuild from JSON when `payTmMoney.json` changes (always run both, in order):
 .venv/bin/python scripts/migrate_core_to_db.py
 ```
 
-`appPaytm` subtracts MANUAL/CORE rows from broker holdings before startup sync (same as the old `__core` list).
+`appPaytm` startup sync checks `broker(symbol) == sum of all non-margin DB rows for that symbol` (including MANUAL/CORE), using `POS_HOLD_QTY - POS_QTY` per row.
 
 ## Adjust held quantity (offline / missed appPaytm)
 

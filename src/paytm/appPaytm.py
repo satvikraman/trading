@@ -1,5 +1,4 @@
 import dotenv
-import csv
 import logging
 import os
 import re
@@ -13,7 +12,6 @@ from flask import Flask, request, jsonify
 
 sys.path.append('./src/common')
 from persistence import persistence
-from mapIciciToNseStock import MapIciciToNseStock
 from workflow import Workflow
 
 sys.path.append('../pyPMClient')
@@ -51,11 +49,6 @@ class AppPaytmBroker():
             dotenv.load_dotenv('./.env', override=True)
 
             self.__workflow = Workflow(self, self.__logger)
-            self.__mapper = MapIciciToNseStock(
-                './dataset/NSEScripMaster.txt',
-                './dataset/BSEScripMaster.txt',
-                './dataset/FONSEScripMaster.txt',
-            )
             backupPath = './src/paytm/db/backup'
 
             if dbInv == None:
@@ -103,61 +96,11 @@ class AppPaytmBroker():
             self.cmp = {}
 
 
-    def __coreQtyBySymbol(self):
-        """Qty held in the core book (MANUAL/CORE rows in DB; replaces hardcoded __core)."""
-        core_qty = {}
-        if self.persistenceInv is None:
-            return core_qty
-        dbDicts = self.persistenceInv.getDb([['SOURCE', 'MANUAL'], ['STRATEGY', 'CORE']])
-        for dbDict in dbDicts:
-            # Some closed core records still carry live broker holdings in HOLD_QTY.
-            # We must subtract any positive held quantity from broker holdings.
-            sym = dbDict['MKT_SYMBOL']
-            qty = int(dbDict.get('HOLD_QTY') or dbDict.get('POS_HOLD_QTY') or dbDict.get('QTY') or 0)
-            if qty <= 0:
-                continue
-            core_qty[sym] = core_qty.get(sym, 0) + qty
-        return core_qty
-
     def getHoldingsData(self):
         status, self.__holdings = self.__payTmMoney.user_holdings_data()
 
         if not status:
             self.__logger.error("getHoldingsData function returned error")
-            return
-
-        # Trade book only: subtract core portfolio qty (same as former __core list).
-        core_qty = self.__coreQtyBySymbol()
-        for holding in self.__holdings:
-            sym = holding['MKT_SYMBOL']
-            if sym in core_qty:
-                holding['HOLD_QTY'] -= core_qty[sym]
-                if holding['HOLD_QTY'] < 0:
-                    self.__logger.warning(
-                        "Core qty %d exceeds broker holding for %s; using 0 for sync",
-                        core_qty[sym],
-                        sym,
-                    )
-                    holding['HOLD_QTY'] = 0
-
-    def __isClosedSymbolStillReportedInHolding(self, symbol, holdQty):
-        if self.persistenceInv is None:
-            return False
-        dbDicts = self.persistenceInv.getDb([['MKT_SYMBOL', symbol]])
-        if len(dbDicts) == 0:
-            return False
-
-        for dbDict in dbDicts:
-            if dbDict.get('POS_HOLD_STATUS') != 'CLOSE':
-                continue
-            if int(dbDict.get('QTY') or 0) != int(holdQty or 0):
-                continue
-            closeOrders = dbDict.get('CLOSE_ORDERS', [])
-            for closeOrder in closeOrders:
-                if (closeOrder.get('ORDER_STATUS') == 'CLOSE' and
-                        int(closeOrder.get('TRADED_QTY') or 0) == int(holdQty or 0)):
-                    return True
-        return False
 
     def checkDbHoldingSynch(self, persistenceInsts):
         status = True
@@ -166,13 +109,9 @@ class AppPaytmBroker():
         for persistenceInst in persistenceInsts:
             if persistenceInst == None:
                 continue
-            # Consolidate DB holdings. The same stock could be mentioned across strategies and dates
-            # Goal is to compare that total quantity of a stock matches actuals
+            # Consolidate DB holdings (CORE + strategies). Per symbol: broker == sum(POS_HOLD_QTY - POS_QTY).
             dbDicts = persistenceInst.getDb([['PRODUCT', '!MARGIN']])
             for dbDict in dbDicts:
-                # Core book is subtracted from broker holdings in getHoldingsData().
-                if dbDict.get('STRATEGY') == 'CORE':
-                    continue
                 if dbDict['POS_QTY'] != 0 or dbDict['POS_HOLD_QTY'] != 0:
                     found = False
                     for dbHolding in dbHoldings:
@@ -203,7 +142,7 @@ class AppPaytmBroker():
                     status = False
                     self.__logger.critical("Stock %s is in DB but not in holding", dbHolding['MKT_SYMBOL'])
 
-        # Check if all stocks in holding that are not entirely in core also find a mention in Holding for the same quantity.
+        # Check if all stocks in broker holdings match consolidated DB quantity for that symbol.
         for holding in self.__holdings:
             if not holding['IN_DB'] and holding['HOLD_QTY'] > 0:
                 found = False
@@ -216,16 +155,8 @@ class AppPaytmBroker():
                             self.__logger.critical("For stock %s, quantities don't match. holdQty[%d] != dbHoldQty[%d]", 
                                                     holding['MKT_SYMBOL'], holding['HOLD_QTY'], dbHolding['HOLD_QTY'])
                 if not found:
-                    if self.__isClosedSymbolStillReportedInHolding(holding['MKT_SYMBOL'], holding['HOLD_QTY']):
-                        found = True
-                        holding['IN_DB'] = True
-                        self.__logger.warning(
-                            "Stock %s is still reported in broker holdings but DB indicates the position is fully closed; ignoring stale holding.",
-                            holding['MKT_SYMBOL'],
-                        )
-                    else:
-                        status = False
-                        self.__logger.critical("Stock %s is in holding but not in DB", holding['MKT_SYMBOL'])
+                    status = False
+                    self.__logger.critical("Stock %s is in holding but not in DB", holding['MKT_SYMBOL'])
         return status
 
 
@@ -410,48 +341,6 @@ class AppPaytmBroker():
             amountPerOrder = self.amountPerOrder
         status = self.__workflow.handleRec(recDict, amountPerOrder)
         return status
-
-
-    def resolveSecurityId(self, dbDict):
-        securityId = str(dbDict.get('SECURITY_ID') or '').strip()
-        if securityId:
-            return securityId
-        mktSymbol = str(dbDict.get('MKT_SYMBOL') or '').strip().upper()
-        if mktSymbol:
-            nseMasterPath = './dataset/NSEScripMaster.txt'
-            if os.path.isfile(nseMasterPath):
-                eqMatch = None
-                anyMatch = None
-                with open(nseMasterPath, encoding='utf-8', errors='ignore') as csvFile:
-                    reader = csv.DictReader(csvFile)
-                    for row in reader:
-                        values = [str(v).strip().strip('"') for v in row.values()]
-                        if len(values) < 4:
-                            continue
-                        token, shortName, series = values[0], values[1], values[2]
-                        exchangeCode = values[-1]
-                        if exchangeCode.upper() != mktSymbol:
-                            continue
-                        hit = token.strip()
-                        if series.upper() == 'EQ':
-                            eqMatch = hit
-                            break
-                        if anyMatch is None:
-                            anyMatch = hit
-                if eqMatch or anyMatch:
-                    dbDict['SECURITY_ID'] = eqMatch or anyMatch
-                    return dbDict['SECURITY_ID']
-        status, secId, _iciciSymbol, _mktSymbol, _mkt, _lot, _product = self.__mapper.mapICICSymbolToMktSymbol(
-            dbDict.get('STOCK', ''),
-            dbDict.get('STOCK', ''),
-            dbDict.get('PRODUCT', 'CASH'),
-            dbDict.get('MKT', 'NSE'),
-        )
-        if status and secId:
-            secId = re.sub(r'.*!', '', str(secId))
-            dbDict['SECURITY_ID'] = secId
-            return secId
-        return ''
 
 
     def on_paytm_sock_open(self):
