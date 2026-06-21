@@ -40,7 +40,8 @@ class payTmMoney:
         self.__request_token = os.environ.get('request_token', '')
         self.__state_key = os.environ.get('state_key', '')
         self.__orderBook = None
-        self.__telegram = TelegramClient(logger=self.__logger)
+        self.__skip_telegram = os.environ.get('SKIP_TELEGRAM', '0').strip().lower() in ('1', 'true', 'yes')
+        self.__telegram = None if self.__skip_telegram else TelegramClient(logger=self.__logger)
         self.__browser = browser
         if browser == 'CHROME':
             self.__browserDriver = chromeBrowser
@@ -96,7 +97,10 @@ class payTmMoney:
             otpIn[i].send_keys(int(otp[i]))
 
     def __getRequestToken(self, loginURL):
-        self.__telegram.wait_for_yes('Paytm login: reply GO when ready to open the browser.')
+        if self.__skip_telegram:
+            print('SKIP_TELEGRAM enabled: proceeding with Paytm login without Telegram prompts.')
+        else:
+            self.__telegram.wait_for_yes('Paytm login: reply GO when ready to open the browser.')
 
         self.__browser.get(loginURL)
         time.sleep(5)
@@ -107,14 +111,20 @@ class payTmMoney:
         pwd.send_keys(os.environ.get('paytm_pwd', ''))
         self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div/div[2]/button', 'CLICKABLE')
 
-        otp1 = self.__telegram.wait_for_otp('Enter Paytm OTP1 (6 digits).')
+        if self.__skip_telegram:
+            otp1 = input('Enter Paytm OTP1 (6 digits): ').strip()
+        else:
+            otp1 = self.__telegram.wait_for_otp('Enter Paytm OTP1 (6 digits).')
         self.__enter_otp_digits(otp1, '//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div[2]/div[2]/div[2]/fieldset/div/input')
         time.sleep(1)
         self.__getWebElement('//*[@id="root"]/div/div/div[1]/div[2]/div/main/div/div/div[3]/span/button', 'CLICKABLE')
         time.sleep(5)
         self.__getWebElement('//*[@id="newroot"]/div/div/div/div[1]/div[2]/div/button', 'CLICKABLE')
 
-        otp2 = self.__telegram.wait_for_otp('Enter Paytm OTP2 (6 digits).')
+        if self.__skip_telegram:
+            otp2 = input('Enter Paytm OTP2 (6 digits): ').strip()
+        else:
+            otp2 = self.__telegram.wait_for_otp('Enter Paytm OTP2 (6 digits).')
         self.__enter_otp_digits(otp2, '//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[2]/div/div[2]/div/div/input')
         time.sleep(1)
         self.__getWebElement('//*[@id="newroot"]/div/div/div/div/div/div[1]/div[1]/div/div[3]/button', 'CLICKABLE')
@@ -122,7 +132,10 @@ class payTmMoney:
         requestToken = re.search(r'.*&requestToken=(\w+)&.*', self.__browser.current_url, re.IGNORECASE)
         if requestToken is not None:
             requestToken = requestToken.group(1)
-            self.__telegram.notify('Paytm login: request token captured.')
+            if self.__telegram:
+                self.__telegram.notify('Paytm login: request token captured.')
+            else:
+                print('Paytm login: request token captured.')
         else:
             requestToken = None
 
