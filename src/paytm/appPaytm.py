@@ -413,7 +413,7 @@ if __name__ == '__main__':
     login_hour = int(os.environ.get('PAYTM_LOGIN_HOUR', '7'))
     login_minute = int(os.environ.get('PAYTM_LOGIN_MINUTE', '0'))
     websocket_hour = int(os.environ.get('PAYTM_WEBSOCKET_HOUR', '8'))
-    websocket_minute = int(os.environ.get('PAYTM_WEBSOCKET_MINUTE', '30'))
+    websocket_minute = int(os.environ.get('PAYTM_WEBSOCKET_MINUTE', '45'))
 
     # Wait until the configured login time, then perform the web login flow.
     login_time_reached = datetime.datetime.now() >= datetime.datetime.now().replace(hour=login_hour, minute=login_minute)
