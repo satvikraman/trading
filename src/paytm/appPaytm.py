@@ -2,7 +2,6 @@ import dotenv
 import logging
 import os
 import re
-import shutil
 import sys
 import datetime
 import time
@@ -49,15 +48,14 @@ class AppPaytmBroker():
             dotenv.load_dotenv('./.env', override=True)
 
             self.__workflow = Workflow(self, self.__logger)
-            backupPath = './src/paytm/db/backup'
 
             if dbInv == None:
                 dbInv = self.__config['DATABASE']['DB_EQUITY']
-            self.persistenceInv = persistence(self.__logger, dbInv) if self.__workflow.backup(dbInv, backupPath) else None
+            self.persistenceInv = persistence(self.__logger, dbInv)
 
             if dbIntraDay == None:
                 dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
-            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay) if self.__workflow.backup(dbIntraDay, backupPath) else None
+            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay)
             valid_until_date = os.environ.get('valid_until_date', '')
             valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
             if valid_until_date.lower() != valid_today and self.persistenceIntraDay != None:
@@ -65,7 +63,7 @@ class AppPaytmBroker():
 
             if dbFnO == None:
                 dbFnO = self.__config['DATABASE']['DB_FNO']
-            self.persistenceFnO = persistence(self.__logger, dbFnO) if self.__workflow.backup(dbFnO, backupPath) else None
+            self.persistenceFnO = persistence(self.__logger, dbFnO)
 
             self.__dryRun = dryRun
             if dryRun:
