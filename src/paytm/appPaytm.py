@@ -51,11 +51,11 @@ class AppPaytmBroker():
 
             if dbInv == None:
                 dbInv = self.__config['DATABASE']['DB_EQUITY']
-            self.persistenceInv = persistence(self.__logger, dbInv)
+            self.persistenceInv = persistence(self.__logger, dbInv) if dbInv else None
 
             if dbIntraDay == None:
                 dbIntraDay = self.__config['DATABASE']['DB_INTRADAY']
-            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay)
+            self.persistenceIntraDay = persistence(self.__logger, dbIntraDay) if dbIntraDay else None
             valid_until_date = os.environ.get('valid_until_date', '')
             valid_today = datetime.datetime.today().strftime("%d-%b-%Y").lower()
             if valid_until_date.lower() != valid_today and self.persistenceIntraDay != None:
@@ -63,7 +63,7 @@ class AppPaytmBroker():
 
             if dbFnO == None:
                 dbFnO = self.__config['DATABASE']['DB_FNO']
-            self.persistenceFnO = persistence(self.__logger, dbFnO)
+            self.persistenceFnO = persistence(self.__logger, dbFnO) if dbFnO else None
 
             self.__dryRun = dryRun
             if dryRun:
