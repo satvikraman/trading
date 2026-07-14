@@ -46,3 +46,14 @@ class SymbolRenameRequest(BaseModel):
 
 class HeldQtyAdjustRequest(BaseModel):
     pos_hold_qty: int = Field(ge=0, description="Held quantity; drives POS_HOLD_STATUS transitions")
+
+
+class PortfolioCloseRequest(BaseModel):
+    member_ids: list[str] = Field(
+        min_length=1,
+        description="Trade ids of all legs in the bucket to collapse into one aggregated CLOSE record",
+    )
+    total_qty: int = Field(
+        ge=0,
+        description="Total held quantity across legs; must equal the sum of leg POS_HOLD_QTY",
+    )

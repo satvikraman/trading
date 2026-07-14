@@ -115,10 +115,17 @@ function closePortfolioSummaryLines(bucket, toClose, acrossSource, acrossStrateg
     .filter(Boolean)
     .join(' / ')
   const lines = [
-    summaryLine('Operation', `CLOSE — mark ${toClose.length} trade record(s) closed`),
+    summaryLine(
+      'Operation',
+      `CLOSE — single aggregated SELL order for ${bucket.POS_HOLD_QTY} share(s) across ${toClose.length} leg(s)`,
+    ),
     summaryLine('Portfolio bucket', label),
     summaryLine('Bucket QTY (sum)', bucket.QTY),
     summaryLine('Bucket POS_HOLD_QTY (sum)', bucket.POS_HOLD_QTY),
+    summaryLine(
+      'Aggregation',
+      `Legs collapsed into one record so the broker places 1 order (not ${toClose.length})`,
+    ),
   ]
   toClose.slice(0, 8).forEach((m, i) => {
     const t = m.trade
@@ -647,7 +654,7 @@ export default function App() {
     if (toClose.length === 0) return
     setConfirmPending({
       title: 'Confirm close portfolio position',
-      actionLabel: `Close ${toClose.length} leg(s)`,
+      actionLabel: 'Close aggregated position',
       lines: closePortfolioSummaryLines(
         bucket,
         toClose,
@@ -656,6 +663,25 @@ export default function App() {
       ),
       onConfirm: async () => {
         setBanner('')
+        // Try the single aggregated CLOSE order first. On any failure (e.g. validation 422
+        // because legs are not fungible / not fully held), fall back to today's per-leg loop.
+        try {
+          await api('/api/portfolio/close', {
+            method: 'POST',
+            body: JSON.stringify({
+              member_ids: toClose.map((m) => m.id),
+              total_qty: bucket.POS_HOLD_QTY,
+            }),
+          })
+          await load()
+          return
+        } catch (aggErr) {
+          const msg = String(aggErr?.message || aggErr)
+          if (!/422/.test(msg)) {
+            setBanner(`Aggregated close failed, falling back to per-leg close: ${msg}`)
+          }
+        }
+
         const errors = []
         for (const { id } of toClose) {
           try {

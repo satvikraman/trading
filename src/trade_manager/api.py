@@ -5,7 +5,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .models import HeldQtyAdjustRequest, SymbolRenameRequest, TradeCreate, TradePatch
+from .models import (
+    HeldQtyAdjustRequest,
+    PortfolioCloseRequest,
+    SymbolRenameRequest,
+    TradeCreate,
+    TradePatch,
+)
 from .service import TradeService
 from .validation import ValidationError
 
@@ -134,6 +140,14 @@ def preview_adjust_held_qty(trade_id: str, pos_hold_qty: int = Query(..., ge=0))
     if not preview:
         raise HTTPException(status_code=404, detail="Not found")
     return preview
+
+
+@app.post("/api/portfolio/close")
+def close_portfolio_bucket(payload: PortfolioCloseRequest):
+    try:
+        return service.close_portfolio_bucket(payload.member_ids, payload.total_qty)
+    except ValidationError as e:
+        _validation_http(e)
 
 
 @app.post("/api/trades/{trade_id}/held-qty")

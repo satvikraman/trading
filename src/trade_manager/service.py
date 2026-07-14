@@ -731,3 +731,229 @@ class TradeService:
             return None
         self._invalidate()
         return self.get_trade(trade_id)
+
+    def close_portfolio_bucket(self, member_ids, total_qty=0):
+        """
+        Collapse a portfolio bucket of fully-held CASH legs sharing one SECURITY_ID into a single
+        synthetic aggregated record, then mark it for closing so the running broker app places
+        exactly one SELL order for the combined quantity (instead of one order per leg).
+
+        The original legs are deleted in the same synchronous call so the DB never double-counts
+        the buys + sells.
+        """
+        self._backup()
+
+        members = []
+        for mid in member_ids:
+            row = self.get_trade(mid)
+            if not row:
+                raise ValidationError(
+                    [{"field": "member_ids", "message": f"Unknown trade id '{mid}'"}]
+                )
+            members.append(row["trade"])
+
+        if not members:
+            raise ValidationError(
+                [{"field": "member_ids", "message": "No members provided"}]
+            )
+
+        # --- Validation ---------------------------------------------------------
+        security_ids = {
+            str(m.get("SECURITY_ID") or "").strip() for m in members
+        }
+        if any(not sid for sid in security_ids):
+            raise ValidationError(
+                [
+                    {
+                        "field": "member_ids",
+                        "message": "Every leg must have a non-empty SECURITY_ID to aggregate",
+                    }
+                ]
+            )
+        if len(security_ids) != 1:
+            raise ValidationError(
+                [
+                    {
+                        "field": "member_ids",
+                        "message": "All legs must share the same SECURITY_ID to aggregate",
+                    }
+                ]
+            )
+
+        mkt_symbols = {str(m.get("MKT_SYMBOL") or "").strip() for m in members}
+        if len(mkt_symbols) != 1:
+            raise ValidationError(
+                [
+                    {
+                        "field": "member_ids",
+                        "message": "All legs must be the same MKT_SYMBOL to aggregate",
+                    }
+                ]
+            )
+
+        for m in members:
+            if m.get("PRODUCT") != "CASH":
+                raise ValidationError(
+                    [
+                        {
+                            "field": "member_ids",
+                            "message": "All legs must be PRODUCT=CASH to aggregate "
+                            "(OPTION/FNO lots are not fungible)",
+                        }
+                    ]
+                )
+            if m.get("REC_STATUS") not in ("OPEN", "PARTIAL_CLOSE"):
+                raise ValidationError(
+                    [
+                        {
+                            "field": "member_ids",
+                            "message": f"Leg {m.get('STRATEGY')} is not in OPEN/PARTIAL_CLOSE "
+                            "state and cannot be aggregated",
+                        }
+                    ]
+                )
+            if m.get("POS_HOLD_STATUS") != "POSITION":
+                raise ValidationError(
+                    [
+                        {
+                            "field": "member_ids",
+                            "message": f"Leg {m.get('STRATEGY')} is not fully held "
+                            "(POS_HOLD_STATUS != POSITION)",
+                        }
+                    ]
+                )
+            if int(m.get("POS_HOLD_QTY") or 0) <= 0:
+                raise ValidationError(
+                    [
+                        {
+                            "field": "member_ids",
+                            "message": f"Leg {m.get('STRATEGY')} has no held quantity",
+                        }
+                    ]
+                )
+            for o in m.get("OPEN_ORDERS") or []:
+                if o.get("ORDER_STATUS") == "OPEN":
+                    raise ValidationError(
+                        [
+                            {
+                                "field": "member_ids",
+                                "message": f"Leg {m.get('STRATEGY')} has an in-flight open order; "
+                                "cannot aggregate",
+                            }
+                        ]
+                    )
+
+        security_id = next(iter(security_ids))
+        mkt_symbol = next(iter(mkt_symbols))
+
+        computed_total = sum(int(m.get("POS_HOLD_QTY") or 0) for m in members)
+        if total_qty and total_qty > 0 and total_qty != computed_total:
+            raise ValidationError(
+                [
+                    {
+                        "field": "total_qty",
+                        "message": f"total_qty ({total_qty}) does not match the sum of leg "
+                        f"POS_HOLD_QTY ({computed_total})",
+                    }
+                ]
+            )
+        total = total_qty if (total_qty or 0) > 0 else computed_total
+        if total <= 0:
+            raise ValidationError(
+                [{"field": "total_qty", "message": "Aggregated quantity must be > 0"}]
+            )
+
+        # --- Build the aggregated record ---------------------------------------
+        # Representative choices: oldest leg's REC_DATE (acquisition date), newest leg's
+        # STRATEGY/SOURCE. REC_TIME is a real current HH:MM so the
+        # (MKT_SYMBOL, STRATEGY, REC_DATE, REC_TIME) key is unique (legs may carry "xx:xx").
+        def _sort_key(m):
+            rt = m.get("REC_TIME") or ""
+            return (str(m.get("REC_DATE") or ""), rt if rt != "xx:xx" else "")
+
+        oldest = min(members, key=_sort_key)
+        newest = max(members, key=_sort_key)
+
+        rec_date = str(oldest.get("REC_DATE") or datetime.datetime.today().strftime("%d-%b-%Y"))
+
+        def _num(v, default=1.0):
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                f = 0.0
+            return f if f > 0 else default
+
+        doc = {
+            "MKT_SYMBOL": mkt_symbol,
+            "STOCK": mkt_symbol,
+            "SOURCE": str(newest.get("SOURCE") or "MANUAL"),
+            "STRATEGY": str(newest.get("STRATEGY") or "AGGREGATED"),
+            "PRODUCT": "CASH",
+            "BUY_SELL": "BUY",
+            "MKT": str(newest.get("MKT") or "NSE"),
+            "REC_DATE": rec_date,
+            "REC_TIME": datetime.datetime.now().strftime("%H:%M"),
+            "EXP_DATE": str(newest.get("EXP_DATE") or rec_date),
+            "LOW_REC_PRICE": _num(newest.get("LOW_REC_PRICE")),
+            "HIGH_REC_PRICE": _num(newest.get("HIGH_REC_PRICE")),
+            "TARGET": _num(newest.get("TARGET")),
+            "STOP_LOSS": _num(newest.get("STOP_LOSS")),
+            "QTY": total,
+            "SECURITY_ID": security_id,
+            "ICICI_SYMBOL": str(newest.get("ICICI_SYMBOL") or ""),
+            "REC_STATUS": "OPEN",
+            "VISIBLE": "VISIBLE",
+            "POS_QTY": 0,
+            "HOLD_QTY": 0,
+            "POS_DATE": datetime.datetime.today().strftime("%d-%b-%Y"),
+            "OPEN_ORDERS": [],
+            "CLOSE_ORDERS": [],
+            "LATE_ADD": False,
+            "POS_HOLD_STATUS": "OPEN",
+            "POS_HOLD_QTY": 0,
+        }
+
+        # Guarantee a unique (SOURCE, MKT_SYMBOL, STRATEGY, REC_DATE, REC_TIME) tuple while
+        # keeping REC_TIME in strict HH:MM format.
+        candidate = datetime.datetime.now()
+        for _ in range(1441):
+            rec_time = candidate.strftime("%H:%M")
+            exists, _ = self.__store.isInDb(
+                [
+                    ["SOURCE", doc["SOURCE"]],
+                    ["MKT_SYMBOL", doc["MKT_SYMBOL"]],
+                    ["STRATEGY", doc["STRATEGY"]],
+                    ["REC_DATE", doc["REC_DATE"]],
+                    ["REC_TIME", rec_time],
+                ]
+            )
+            if not exists:
+                break
+            candidate += datetime.timedelta(minutes=1)
+        doc["REC_TIME"] = rec_time
+
+        # Reuse the existing already_held creation helper: held == QTY -> POSITION + dummy order.
+        agg = apply_held_qty_to_trade(doc, total)
+        agg_id = encode_trade_id(agg)
+        if not self.__store.insertDb(agg, None):
+            raise ValidationError(
+                [{"field": "key", "message": "Failed to insert aggregated record"}]
+            )
+
+        # Mark the new record for closing so the running app places exactly one SELL order.
+        agg["REC_STATUS"] = "CLOSE"
+        self.__store.updateDb(agg, decode_trade_id(agg_id))
+        self._invalidate()
+
+        # Delete the original legs so the DB does not double-count buys + sells.
+        for mid in member_ids:
+            self.__store.removeFromDb(decode_trade_id(mid))
+        self._invalidate()
+
+        return {
+            "agg_trade_id": agg_id,
+            "member_count": len(members),
+            "total_qty": total,
+            "security_id": security_id,
+            "mkt_symbol": mkt_symbol,
+        }
