@@ -1,0 +1,14 @@
+#!/bin/sh
+# Block commits that contain secrets. Enable once per clone with:
+#   git config core.hooksPath .githooks
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-commit: gitleaks not found. Install it: winget install Gitleaks.Gitleaks" >&2
+    exit 1
+fi
+gitleaks git --staged --redact --no-banner --verbose
+status=$?
+if [ $status -ne 0 ]; then
+    echo "pre-commit: possible secret in staged changes. Commit blocked." >&2
+    echo "Move it to .env. If it's a false positive, add '# gitleaks:allow' to that line." >&2
+fi
+exit $status

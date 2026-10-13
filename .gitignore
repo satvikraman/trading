@@ -15,3 +15,12 @@ credentials.json
 token.json
 *.zip
 **/db/backup/*.json
+
+# Secrets: never commit. Real values live only in the local .env.
+.env*
+!.env.example
+secrets*.json
+*.bk
+*.bak
+credentials*.json
+token*.json
